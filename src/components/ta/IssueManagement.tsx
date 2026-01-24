@@ -52,13 +52,6 @@ export default function IssueManagement() {
 
     const fetchTickets = async () => {
         setIsLoading(true);
-        // We need to join with students_roster to get the latest name
-        // However, Supabase simple join might be tricky if no foreign key exists on erased_erp
-        // But we can fetch roster data separately or try a join if FK exists. 
-        // Let's assume no FK on entered_erp (it's just text). 
-        // We'll fetch all tickets, then fetch all matching roster entries? Or just rely on what we have?
-        // Better: Use a custom query or just fetch roster names for the ERPs we have.
-
         const { data: ticketsData, error } = await supabase
             .from('tickets')
             .select('*')
@@ -226,14 +219,29 @@ export default function IssueManagement() {
 
                                                         {ticket.details_json && (
                                                             <div>
-                                                                <h4 className="text-sm font-medium text-muted-foreground mb-1">Structured Data</h4>
-                                                                <pre className="bg-muted p-3 rounded-md text-xs overflow-auto">
-                                                                    {JSON.stringify(ticket.details_json, null, 2)}
-                                                                </pre>
+                                                                {/* Structured Data Removed as requested */}
                                                             </div>
                                                         )}
 
-                                                        <div className="pt-4 border-t">
+                                                        <div className="space-y-2">
+                                                            <h4 className="text-sm font-medium text-muted-foreground mb-1">TA Response (Private)</h4>
+                                                            <Textarea
+                                                                placeholder="Write or edit response..."
+                                                                value={ticket.ta_response || ''}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value;
+                                                                    setTickets(prev => prev.map(t => t.id === ticket.id ? { ...t, ta_response: val } : t));
+                                                                }}
+                                                                onBlur={async (e) => {
+                                                                    const val = e.target.value;
+                                                                    const { error } = await supabase.from('tickets').update({ ta_response: val }).eq('id', ticket.id);
+                                                                    if (error) toast.error('Failed to save response');
+                                                                    else toast.success('Response saved');
+                                                                }}
+                                                            />
+                                                        </div>
+
+                                                        <div className="pt-4 border-t space-y-2">
                                                             <Button
                                                                 className="w-full"
                                                                 variant={ticket.status === 'pending' ? 'default' : 'outline'}
@@ -241,6 +249,27 @@ export default function IssueManagement() {
                                                             >
                                                                 {ticket.status === 'pending' ? 'Mark Resolved' : 'Reopen Ticket'}
                                                             </Button>
+
+                                                            {ticket.group_type === 'class_issue' && (
+                                                                <Button
+                                                                    variant="secondary"
+                                                                    className="w-full"
+                                                                    onClick={async () => {
+                                                                        const { error } = await supabase.from('rule_exceptions' as any).insert({
+                                                                            erp: ticket.entered_erp,
+                                                                            student_name: ticket.real_name || ticket.roster_name || 'Unknown',
+                                                                            class_no: ticket.roster_class_no,
+                                                                            issue_type: 'camera_excused', // Defaulting, they can edit later in Exceptions tab
+                                                                            assigned_day: 'both',
+                                                                            notes: 'Added from ticket: ' + ticket.category
+                                                                        });
+                                                                        if (error) toast.error('Failed to add exception: ' + error.message);
+                                                                        else toast.success('Added to Rule Exceptions');
+                                                                    }}
+                                                                >
+                                                                    Add to Rule Exceptions
+                                                                </Button>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </SheetContent>
