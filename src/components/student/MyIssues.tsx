@@ -16,7 +16,12 @@ export default function MyIssues() {
     const fetchTickets = async () => {
       if (!erp) return;
       setIsLoading(true);
-      const { data, error } = await supabase.rpc('get_student_tickets', { student_erp: erp });
+      const { data, error } = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('entered_erp', erp)
+        .order('created_at', { ascending: false });
+
       if (!error && data) {
         setTickets(data);
       }
