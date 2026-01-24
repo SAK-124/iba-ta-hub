@@ -25,8 +25,8 @@ export default function Layout({ children }: LayoutProps) {
               <GraduationCap className="w-5 h-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-foreground">TA Dashboard</h1>
-              <p className="text-xs text-muted-foreground">IBA Course Portal</p>
+              <h1 className="text-lg font-semibold text-foreground">AAMD Portal</h1>
+              <p className="text-xs text-muted-foreground">Course Management</p>
             </div>
           </div>
 

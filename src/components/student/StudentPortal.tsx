@@ -11,15 +11,15 @@ import MyIssues from './MyIssues';
 import AttendanceView from './AttendanceView';
 
 export default function StudentPortal() {
-  const { erp, setERP, isVerified, studentName, isLoading } = useERP();
-  const [inputErp, setInputErp] = useState(erp || '');
+  const { erp, isVerified, studentName, isLoading } = useERP();
 
-  const handleErpSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (inputErp.trim()) {
-      setERP(inputErp.trim());
-    }
-  };
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div className="container max-w-4xl mx-auto p-4 space-y-6 animate-fade-in">
@@ -29,43 +29,28 @@ export default function StudentPortal() {
           <p className="text-muted-foreground">Manage your course issues and track attendance</p>
         </div>
 
-        <Card className="w-full md:w-auto min-w-[300px]">
-          <CardContent className="pt-6">
-            <form onSubmit={handleErpSubmit} className="flex gap-2">
-              <Input
-                placeholder="Enter your ERP"
-                value={inputErp}
-                onChange={(e) => setInputErp(e.target.value)}
-                className={isVerified ? "border-green-500" : ""}
-              />
-              <Button type="submit" disabled={isLoading}>
-                {isLoading ? (
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                ) : (
-                  <Search className="h-4 w-4" />
-                )}
-              </Button>
-            </form>
-            {erp && (
-              <div className="mt-2 text-sm flex items-center gap-2">
+        {erp && (
+          <Card className="w-full md:w-auto min-w-[300px]">
+            <CardContent className="pt-6">
+              <div className="text-sm flex items-center gap-2">
                 {isVerified ? (
                   <>
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    <span className="text-green-600 font-medium">Verified: {studentName}</span>
+                    <span className="text-green-600 font-medium">Verified: {studentName} ({erp})</span>
                   </>
                 ) : (
                   <>
                     <AlertCircle className="h-4 w-4 text-destructive" />
-                    <span className="text-destructive font-medium">Not found in roster</span>
+                    <span className="text-destructive font-medium">Not found in roster: {erp}</span>
                   </>
                 )}
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      {!isVerified && erp && !isLoading ? (
+      {!isVerified && erp ? (
         <Card className="border-destructive/50 bg-destructive/5">
           <CardHeader>
             <CardTitle className="text-destructive flex items-center gap-2">
@@ -73,7 +58,7 @@ export default function StudentPortal() {
               Access Restricted
             </CardTitle>
             <CardDescription className="text-destructive/90">
-              Your ERP wasn't found in the roster. Please contact the TAs via email.
+              Your ERP ({erp}) wasn't found in the roster. Please contact the TAs via email if you believe this is a mistake.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -99,8 +84,9 @@ export default function StudentPortal() {
         </Tabs>
       ) : (
         <div className="text-center py-12 text-muted-foreground">
-          <Search className="h-12 w-12 mx-auto mb-4 opacity-20" />
-          <p>Please enter your ERP above to access the portal.</p>
+          <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-20" />
+          <p>Could not identify your ERP from your email.</p>
+          <p className="text-sm mt-2">Please ensure you are logged in with your IBA email.</p>
         </div>
       )}
     </div>
