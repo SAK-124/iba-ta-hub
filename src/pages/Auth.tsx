@@ -95,7 +95,7 @@ export default function Auth() {
 
       // 1. Check if TA
       const { data: isAllowed, error: rpcError } = await supabase
-        .rpc('check_ta_allowlist', { check_email: trimmedEmail });
+        .rpc('check_ta_allowlist' as any, { check_email: trimmedEmail });
 
       if (isAllowed) {
         // User is a TA -> Switch to Password Mode
