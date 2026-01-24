@@ -16,7 +16,7 @@ export default function TAPortal() {
       </div>
 
       <Tabs defaultValue="issues" className="w-full">
-        <TabsList className="grid w-full grid-cols-6 lg:w-[800px]">
+        <TabsList className="flex w-full overflow-x-auto justify-start h-auto p-1">
           <TabsTrigger value="issues">Issues</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
           <TabsTrigger value="roster">Roster</TabsTrigger>

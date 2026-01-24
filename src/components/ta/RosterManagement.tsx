@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
 import { Loader2, Upload } from 'lucide-react';
 
 export default function RosterManagement() {
@@ -128,9 +129,11 @@ export default function RosterManagement() {
             <Card>
                 <CardHeader>
                     <div className="flex justify-between items-center">
-                        <div>
+                        <div className="flex items-center gap-2">
                             <CardTitle>Current Roster</CardTitle>
-                            <CardDescription>Total Students: {count}</CardDescription>
+                            <Badge variant="secondary" className="text-sm">
+                                {count} Students
+                            </Badge>
                         </div>
                         <Input
                             placeholder="Search..."
