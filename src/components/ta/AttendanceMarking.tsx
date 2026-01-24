@@ -215,7 +215,12 @@ export default function AttendanceMarking() {
             <Card className="md:col-span-2">
                 <CardHeader>
                     <div className="flex justify-between items-center">
-                        <CardTitle>Attendance List</CardTitle>
+                        <div>
+                            <CardTitle>Attendance List</CardTitle>
+                            <CardDescription className="text-xs text-muted-foreground mt-1">
+                                Changes to status and penalties save automatically
+                            </CardDescription>
+                        </div>
                         <Input
                             placeholder="Search Name or ERP"
                             className="w-[200px]"

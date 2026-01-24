@@ -98,8 +98,8 @@ export default function ExportData() {
                 <CardTitle>Export Attendance</CardTitle>
                 <CardDescription>Download full attendance report</CardDescription>
             </CardHeader>
-            <CardContent className="space-x-4">
-                <Button onClick={() => handleExport('csv')} disabled={isExporting}>
+            <CardContent>
+                <Button onClick={() => handleExport('csv')} disabled={isExporting} className="w-full sm:w-auto">
                     {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                     Download CSV
                 </Button>
