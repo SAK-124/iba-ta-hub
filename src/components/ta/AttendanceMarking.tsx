@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
+import { saveToGoogleSheet } from '@/lib/google-sheets';
 import { Loader2, Save } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -100,6 +101,18 @@ export default function AttendanceMarking() {
             if (error) throw error;
 
             toast.success('Attendance marked successfully');
+
+            // Log to Google Sheet (Fire and forget)
+            const presentCount = newRecords.filter(r => r.status === 'present').length;
+            const absentCount = newRecords.filter(r => r.status === 'absent').length;
+            const session = sessions.find(s => s.id === selectedSessionId);
+            const sessionLabel = session ? `Session ${session.session_number} (${format(new Date(session.session_date), 'MMM d')})` : 'Unknown Session';
+
+            saveToGoogleSheet({
+                name: sessionLabel,
+                email: `Present: ${presentCount}, Absent: ${absentCount}`
+            });
+
             setAbsentErps('');
             setShowOverwriteAlert(false);
             fetchAttendance(selectedSessionId);
@@ -131,7 +144,7 @@ export default function AttendanceMarking() {
         // Optimistic update
         setAttendanceData(prev => prev.map(r => r.id === record.id ? { ...r, naming_penalty: checked } : r));
 
-        const { error } = await supabase.from('attendance').update({ naming_penalty: checked }).eq('id', record.id);
+        const { error } = await supabase.from('attendance').update({ naming_penalty: checked } as any).eq('id', record.id);
         if (error) {
             toast.error('Failed to update naming penalty');
             // Revert
