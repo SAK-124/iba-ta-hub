@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,12 +40,17 @@ export default function Auth() {
       }
     }
 
-    // Check for IBA email domain for students (non-TAs need IBA email)
-    // TAs can have any email, but for sign-up we require IBA email
-    // TA status is checked after sign-in
-    if (isSignUp && !email.endsWith('@khi.iba.edu.pk')) {
-      setError('Only IBA emails (@khi.iba.edu.pk) can register for this portal.');
-      return;
+    // Check for IBA email or TA allowlist
+    if (isSignUp) {
+      if (!email.endsWith('@khi.iba.edu.pk')) {
+        // If not IBA email, check if it's in the TA allowlist
+        const { data: isAllowed, error: rpcError } = await supabase.rpc('check_ta_allowlist' as any, { check_email: email });
+
+        if (rpcError || !isAllowed) {
+          setError('Only IBA emails or invited TAs can register for this portal.');
+          return;
+        }
+      }
     }
 
     setIsLoading(true);
@@ -99,7 +105,7 @@ export default function Auth() {
               <TabsTrigger value="signin">Sign In</TabsTrigger>
               <TabsTrigger value="signup">Sign Up</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="signin">
               <form onSubmit={(e) => handleSubmit(e, false)}>
                 <CardHeader>
@@ -146,12 +152,12 @@ export default function Auth() {
                 </CardFooter>
               </form>
             </TabsContent>
-            
+
             <TabsContent value="signup">
               <form onSubmit={(e) => handleSubmit(e, true)}>
                 <CardHeader>
                   <CardTitle>Create account</CardTitle>
-                  <CardDescription>Only IBA emails are allowed</CardDescription>
+                  <CardDescription>IBA Email or Invited TAs</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {error && (
