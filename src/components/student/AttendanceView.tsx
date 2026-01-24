@@ -18,7 +18,7 @@ export default function AttendanceView() {
         const fetchAttendance = async () => {
             if (!erp) return;
             setIsLoading(true);
-            const { data, error } = await supabase.rpc('get_student_attendance', { student_erp: erp });
+            const { data, error } = await supabase.rpc('get_student_attendance' as any, { student_erp: erp });
 
             if (!error && data) {
                 const result = data as { records: any[], total_absences: number, total_naming_penalties: number };
