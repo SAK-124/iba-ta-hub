@@ -102,16 +102,14 @@ export default function AttendanceMarking() {
 
             toast.success('Attendance marked successfully');
 
-            // Log to Google Sheet (Fire and forget)
-            const presentCount = newRecords.filter(r => r.status === 'present').length;
-            const absentCount = newRecords.filter(r => r.status === 'absent').length;
-            const session = sessions.find(s => s.id === selectedSessionId);
-            const sessionLabel = session ? `Session ${session.session_number} (${format(new Date(session.session_date), 'MMM d')})` : 'Unknown Session';
+            // Note: We only auto-sync summary on initial submit. Full sync is manual or separate.
+            // But user wants "entire proper attendance" on update.
+            // Let's trigger a full sync here too? 
+            // Better: keep submit as summary, add a "Sync" button for full detail, 
+            // OR just send full detail always.
+            // Let's send full detail always if it's not too huge. 150 students is fine.
 
-            saveToGoogleSheet({
-                name: sessionLabel,
-                email: `Present: ${presentCount}, Absent: ${absentCount}`
-            });
+            await handleSyncToGoogleSheet(selectedSessionId, newRecords);
 
             setAbsentErps('');
             setShowOverwriteAlert(false);
@@ -122,6 +120,51 @@ export default function AttendanceMarking() {
         } finally {
             setIsSaving(false);
         }
+    };
+
+    const handleSyncToGoogleSheet = async (sessionId: string, records: any[]) => {
+        const session = sessions.find(s => s.id === sessionId);
+        const sessionLabel = session ? `Session ${session.session_number} (${format(new Date(session.session_date), 'MMM d')})` : 'Unknown Session';
+
+        // Prepare detailed payload
+        // We need student names. If records come from 'roster.map', they have erp but maybe not name directly if not joined.
+        // But 'newRecords' in handleMarkSubmit uses 'roster' state which has student_name.
+        // Wait, 'newRecords' constructed in handleMarkSubmit maps from 'roster', so we can access roster there.
+        // But if we call this from a button, we might use 'attendanceData'.
+
+        let payloadRecords = [];
+        if (records.length > 0 && records[0].student_name) {
+            // Already has name (from specific flow)
+            payloadRecords = records.map(r => ({
+                name: r.student_name || 'Unknown',
+                erp: r.erp,
+                status: r.status,
+                naming_penalty: r.naming_penalty ? -1 : 0
+            }));
+        } else {
+            // Join with roster
+            payloadRecords = records.map(r => {
+                const student = roster.find(s => s.erp === r.erp);
+                return {
+                    name: student?.student_name || 'Unknown',
+                    erp: r.erp,
+                    status: r.status,
+                    naming_penalty: r.naming_penalty ? -1 : 0
+                };
+            });
+        }
+
+        const payload = {
+            type: 'full_sync',
+            session: sessionLabel,
+            date: new Date().toISOString(),
+            data: payloadRecords
+        };
+
+        toast.info('Syncing to Google Sheet...');
+        const success = await saveToGoogleSheet(payload as any);
+        if (success) toast.success('Synced to Google Sheet');
+        else toast.error('Failed to sync to Google Sheet');
     };
 
     const toggleStatus = async (record: any) => {
@@ -214,19 +257,30 @@ export default function AttendanceMarking() {
 
             <Card className="md:col-span-2">
                 <CardHeader>
-                    <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-center space-x-2">
                         <div>
                             <CardTitle>Attendance List</CardTitle>
                             <CardDescription className="text-xs text-muted-foreground mt-1">
                                 Changes to status and penalties save automatically
                             </CardDescription>
                         </div>
-                        <Input
-                            placeholder="Search Name or ERP"
-                            className="w-[200px]"
-                            value={searchQuery}
-                            onChange={e => setSearchQuery(e.target.value)}
-                        />
+                        <div className="flex space-x-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleSyncToGoogleSheet(selectedSessionId, attendanceData)}
+                                disabled={!selectedSessionId || attendanceData.length === 0}
+                            >
+                                <Save className="mr-2 h-4 w-4" />
+                                Sync to Sheet
+                            </Button>
+                            <Input
+                                placeholder="Search Name or ERP"
+                                className="w-[150px]"
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                            />
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent>
