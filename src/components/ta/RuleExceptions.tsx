@@ -105,7 +105,6 @@ export default function RuleExceptions() {
                                 <SelectItem value="all">All Days</SelectItem>
                                 <SelectItem value="friday">Friday</SelectItem>
                                 <SelectItem value="saturday">Saturday</SelectItem>
-                                <SelectItem value="both">Both</SelectItem>
                             </SelectContent>
                         </Select>
 

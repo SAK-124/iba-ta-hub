@@ -103,7 +103,7 @@ export default function Auth() {
                 <Input
                   id="email"
                   type="text"
-                  placeholder="email@khi.iba.edu.pk or 00000"
+                  placeholder="email@khi.iba.edu.pk"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
