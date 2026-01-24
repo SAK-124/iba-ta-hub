@@ -15,70 +15,50 @@ const passwordSchema = z.string().min(6, 'Password must be at least 6 characters
 
 export default function Auth() {
   const navigate = useNavigate();
-  const { signIn, signUp } = useAuth();
+  const { signInWithOtp, loginAsTestUser, signIn } = useAuth(); // Keeping signIn for password fallback if needed
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>, isSignUp: boolean) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccessMessage(null);
 
-    const formData = new FormData(e.currentTarget);
-    const email = formData.get('email') as string;
-    const password = formData.get('password') as string;
+    const trimmedEmail = email.trim();
 
-    // Validate inputs
-    try {
-      emailSchema.parse(email);
-      passwordSchema.parse(password);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        setError(err.errors[0].message);
-        return;
-      }
+    if (!trimmedEmail) {
+      setError('Please enter your email.');
+      return;
     }
 
-    // Check for IBA email or TA allowlist
-    if (isSignUp) {
-      if (!email.endsWith('@khi.iba.edu.pk')) {
-        // If not IBA email, check if it's in the TA allowlist
-        const { data: isAllowed, error: rpcError } = await supabase.rpc('check_ta_allowlist' as any, { check_email: email });
+    // Test User Bypass
+    if (trimmedEmail === '00000') {
+      loginAsTestUser();
+      navigate('/');
+      return;
+    }
 
-        if (rpcError || !isAllowed) {
-          setError('Only IBA emails or invited TAs can register for this portal.');
-          return;
-        }
-      }
+    // Email Validation
+    try {
+      emailSchema.parse(trimmedEmail);
+    } catch (err) {
+      setError('Please enter a valid email address.');
+      return;
     }
 
     setIsLoading(true);
-
     try {
-      if (isSignUp) {
-        const { error } = await signUp(email, password);
-        if (error) {
-          if (error.message.includes('already registered')) {
-            setError('This email is already registered. Please sign in instead.');
-          } else {
-            setError(error.message);
-          }
-        } else {
-          setSuccessMessage('Account created successfully! You can now sign in.');
-        }
+      // Send Magic Link
+      const { error } = await signInWithOtp(trimmedEmail);
+      if (error) {
+        setError(error.message);
       } else {
-        const { error } = await signIn(email, password);
-        if (error) {
-          if (error.message.includes('Invalid login credentials')) {
-            setError('Invalid email or password. Please try again.');
-          } else {
-            setError(error.message);
-          }
-        } else {
-          navigate('/');
-        }
+        setSuccessMessage('Check your email for the login link!');
       }
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setIsLoading(false);
     }
@@ -93,114 +73,51 @@ export default function Auth() {
               <GraduationCap className="w-7 h-7 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-foreground">TA Dashboard</h1>
-              <p className="text-sm text-muted-foreground">IBA Course Portal</p>
+              <h1 className="text-2xl font-bold text-foreground">Course Portal</h1>
+              <p className="text-sm text-muted-foreground">Sign in to continue</p>
             </div>
           </div>
         </div>
 
         <Card className="shadow-lg">
-          <Tabs defaultValue="signin" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="signin">Sign In</TabsTrigger>
-              <TabsTrigger value="signup">Sign Up</TabsTrigger>
-            </TabsList>
+          <CardHeader>
+            <CardTitle>Welcome</CardTitle>
+            <CardDescription>Enter your email to sign in (No password required).</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {error && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+            {successMessage && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-success/10 text-success text-sm">
+                <span>{successMessage}</span>
+              </div>
+            )}
 
-            <TabsContent value="signin">
-              <form onSubmit={(e) => handleSubmit(e, false)}>
-                <CardHeader>
-                  <CardTitle>Welcome back</CardTitle>
-                  <CardDescription>Sign in to access your dashboard</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {error && (
-                    <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-                      <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                      <span>{error}</span>
-                    </div>
-                  )}
-                  {successMessage && (
-                    <div className="flex items-start gap-2 p-3 rounded-lg bg-success/10 text-success text-sm">
-                      <span>{successMessage}</span>
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <Label htmlFor="signin-email">Email</Label>
-                    <Input
-                      id="signin-email"
-                      name="email"
-                      type="email"
-                      placeholder="your.email@khi.iba.edu.pk"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signin-password">Password</Label>
-                    <Input
-                      id="signin-password"
-                      name="password"
-                      type="password"
-                      required
-                    />
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Button type="submit" className="w-full" disabled={isLoading}>
-                    {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Sign In
-                  </Button>
-                </CardFooter>
-              </form>
-            </TabsContent>
-
-            <TabsContent value="signup">
-              <form onSubmit={(e) => handleSubmit(e, true)}>
-                <CardHeader>
-                  <CardTitle>Create account</CardTitle>
-                  <CardDescription>IBA Email or Invited TAs</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {error && (
-                    <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-                      <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                      <span>{error}</span>
-                    </div>
-                  )}
-                  {successMessage && (
-                    <div className="flex items-start gap-2 p-3 rounded-lg bg-success/10 text-success text-sm">
-                      <span>{successMessage}</span>
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-email">IBA Email</Label>
-                    <Input
-                      id="signup-email"
-                      name="email"
-                      type="email"
-                      placeholder="your.email@khi.iba.edu.pk"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-password">Password</Label>
-                    <Input
-                      id="signup-password"
-                      name="password"
-                      type="password"
-                      placeholder="At least 6 characters"
-                      required
-                    />
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Button type="submit" className="w-full" disabled={isLoading}>
-                    {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Create Account
-                  </Button>
-                </CardFooter>
-              </form>
-            </TabsContent>
-          </Tabs>
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="text"
+                  placeholder="email@khi.iba.edu.pk or 00000"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Continue
+              </Button>
+            </form>
+          </CardContent>
+          <CardFooter className="justify-center text-xs text-muted-foreground">
+            TAs will be automatically recognized as admins.
+          </CardFooter>
         </Card>
       </div>
     </div>

@@ -82,6 +82,12 @@ export default function MyIssues() {
               <p className="text-sm text-foreground/90 whitespace-pre-wrap">
                 {ticket.details_text || (ticket.details_json && JSON.stringify(ticket.details_json, null, 2))}
               </p>
+              {ticket.ta_response && (
+                <div className="mt-4 p-3 bg-muted rounded-md border text-sm">
+                  <span className="font-semibold block mb-1">TA Response:</span>
+                  {ticket.ta_response}
+                </div>
+              )}
             </CardContent>
           </Card>
         ))}

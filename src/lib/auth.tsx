@@ -9,6 +9,8 @@ interface AuthContextType {
   isTA: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signInWithOtp: (email: string) => Promise<{ error: Error | null }>;
+  loginAsTestUser: () => void;
   signOut: () => Promise<void>;
 }
 
@@ -28,7 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .eq('email', email)
         .eq('active', true)
         .maybeSingle();
-      
+
       setIsTA(!!data);
     } catch {
       setIsTA(false);
@@ -70,7 +72,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error };
   };
 
+  const signInWithOtp = async (email: string) => {
+    const redirectUrl = `${window.location.origin}/`;
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: redirectUrl }
+    });
+    return { error };
+  }
+
+  const loginAsTestUser = () => {
+    const mockUser = {
+      id: '00000',
+      email: 'test@student.com',
+      app_metadata: {},
+      user_metadata: {},
+      aud: 'authenticated',
+      created_at: new Date().toISOString()
+    } as User;
+
+    setUser(mockUser);
+    setIsLoading(false);
+  };
+
   const signUp = async (email: string, password: string) => {
+    // ... keeping existing signUp for TAs if needed, or we can just rely on OTP
     const redirectUrl = `${window.location.origin}/`;
     const { error } = await supabase.auth.signUp({
       email,
@@ -81,11 +107,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    if (user?.id === '00000') {
+      setUser(null);
+      setSession(null);
+      return;
+    }
     await supabase.auth.signOut();
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, isLoading, isTA, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, session, isLoading, isTA, signIn, signUp, signOut, signInWithOtp, loginAsTestUser }}>
       {children}
     </AuthContext.Provider>
   );

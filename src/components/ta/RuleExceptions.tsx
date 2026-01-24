@@ -86,7 +86,7 @@ export default function RuleExceptions() {
     };
 
     const filteredExceptions = exceptions.filter(e => {
-        if (filterDay !== 'all' && e.assigned_day !== filterDay) return false;
+        if (filterDay !== 'all' && e.assigned_day !== filterDay && e.assigned_day !== 'both') return false;
         return true;
     });
 

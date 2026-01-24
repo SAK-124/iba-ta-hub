@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useERP } from '@/lib/erp-context';
+import { useAuth } from '@/lib/auth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -63,12 +64,16 @@ export default function SubmitIssue() {
     if (!issueType) return;
     setIsSubmitting(true);
 
+    const { user } = useAuth();
+
+    // ... inside handleSubmit
+
     try {
       const ticketData: any = {
         entered_erp: erp,
         roster_name: studentName,
         roster_class_no: classNo,
-        created_by_email: (await supabase.auth.getUser()).data.user?.email || 'unknown',
+        created_by_email: user?.email || 'unknown',
         status: 'pending'
       };
 
@@ -77,19 +82,20 @@ export default function SubmitIssue() {
         ticketData.category = specificIssue;
 
         if (specificIssue === 'camera_issue') {
-          // Sub-logic handled in UI, assume "camera_not_working" or "camera_excused" mapped to correct structure
-          // Simplified for brevity: using state directly
-        }
-
-        // Logic to construct details_json based on specificIssue
-        if (specificIssue === 'camera_excused') {
-          ticketData.subcategory = 'camera_excused';
-          ticketData.details_json = {
-            duration,
-            days: duration !== 'one_day' ? days : undefined,
-            weeks: duration === 'recurring' ? weeks : undefined,
-            date: duration === 'one_day' ? date : undefined
-          };
+          // Map visual reason to data structure
+          if (reason === 'excused') {
+            ticketData.subcategory = 'camera_excused';
+            ticketData.details_json = {
+              duration,
+              days: duration !== 'one_day' ? days : undefined,
+              weeks: duration === 'recurring' ? weeks : undefined,
+              date: duration === 'one_day' ? date : undefined
+            };
+          } else {
+            ticketData.subcategory = 'camera_not_working';
+            ticketData.details_text = query; // Use query input for not working reason
+          }
+          ticketData.category = 'Camera Issue';
         } else {
           ticketData.details_text = reason;
         }
@@ -188,11 +194,19 @@ export default function SubmitIssue() {
             <CardTitle className="text-base">Camera Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex gap-4">
-              <Button variant={reason === 'not_working' ? 'default' : 'outline'} onClick={() => { setReason('not_working'); setSpecificIssue('camera_not_working'); }}>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Button
+                variant={reason === 'not_working' ? 'default' : 'outline'}
+                className="flex-1 whitespace-normal h-auto py-2"
+                onClick={() => setReason('not_working')}
+              >
                 Camera Not Working
               </Button>
-              <Button variant={reason === 'excused' ? 'default' : 'outline'} onClick={() => { setReason('excused'); setSpecificIssue('camera_excused'); }}>
+              <Button
+                variant={reason === 'excused' ? 'default' : 'outline'}
+                className="flex-1 whitespace-normal h-auto py-2"
+                onClick={() => setReason('excused')}
+              >
                 Camera Excused
               </Button>
             </div>
@@ -311,14 +325,14 @@ export default function SubmitIssue() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Button
             variant={issueType === 'class' ? 'default' : 'outline'}
-            className="h-24 text-lg"
+            className="h-auto py-6 text-lg whitespace-normal text-center"
             onClick={() => { setIssueType('class'); setSpecificIssue(''); }}
           >
             Class-specific issues
           </Button>
           <Button
             variant={issueType === 'other' ? 'default' : 'outline'}
-            className="h-24 text-lg"
+            className="h-auto py-6 text-lg whitespace-normal text-center"
             onClick={() => { setIssueType('other'); setSpecificIssue(''); }}
           >
             Other options
