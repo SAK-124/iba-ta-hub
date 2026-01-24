@@ -1,99 +1,93 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-
-interface RosterInfo {
-  found: boolean;
-  student_name?: string;
-  class_no?: string;
-}
+import { toast } from 'sonner';
 
 interface ERPContextType {
-  erp: string;
-  setErp: (erp: string) => void;
-  rosterInfo: RosterInfo | null;
-  isVerifying: boolean;
-  isVerificationEnabled: boolean;
-  verifyErp: (erp: string) => Promise<RosterInfo>;
-  clearErp: () => void;
+  erp: string | null;
+  setERP: (erp: string) => void;
+  isVerified: boolean;
+  studentName: string | null;
+  classNo: string | null;
+  isLoading: boolean;
+  checkRoster: (erpToCheck: string) => Promise<boolean>;
 }
 
 const ERPContext = createContext<ERPContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'ta_dashboard_erp';
-
 export function ERPProvider({ children }: { children: React.ReactNode }) {
-  const [erp, setErpState] = useState<string>('');
-  const [rosterInfo, setRosterInfo] = useState<RosterInfo | null>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [isVerificationEnabled, setIsVerificationEnabled] = useState(true);
+  const [erp, setErpState] = useState<string | null>(() => {
+    return localStorage.getItem('student_erp');
+  });
+  const [isVerified, setIsVerified] = useState(false);
+  const [studentName, setStudentName] = useState<string | null>(null);
+  const [classNo, setClassNo] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    const storedErp = localStorage.getItem(STORAGE_KEY);
-    if (storedErp) {
-      setErpState(storedErp);
+    if (erp) {
+      checkRoster(erp);
     }
-
-    // Check if roster verification is enabled
-    supabase
-      .from('app_settings')
-      .select('roster_verification_enabled')
-      .eq('id', '00000000-0000-0000-0000-000000000001')
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          setIsVerificationEnabled(data.roster_verification_enabled);
-        }
-      });
   }, []);
 
-  const setErp = (newErp: string) => {
+  const setERP = (newErp: string) => {
     setErpState(newErp);
-    localStorage.setItem(STORAGE_KEY, newErp);
-    setRosterInfo(null);
+    localStorage.setItem('student_erp', newErp);
+    checkRoster(newErp);
   };
 
-  const verifyErp = async (checkErp: string): Promise<RosterInfo> => {
-    if (!isVerificationEnabled) {
-      const info = { found: true };
-      setRosterInfo(info);
-      return info;
-    }
-
-    setIsVerifying(true);
+  const checkRoster = async (erpToCheck: string) => {
+    setIsLoading(true);
     try {
-      const { data, error } = await supabase.rpc('check_roster', { check_erp: checkErp });
-      
-      if (error) {
-        console.error('Error checking roster:', error);
-        const info: RosterInfo = { found: false };
-        setRosterInfo(info);
-        return info;
+      // First check if verification is enabled
+      const { data: settings } = await supabase
+        .from('app_settings')
+        .select('roster_verification_enabled')
+        .single();
+
+      const verificationEnabled = settings?.roster_verification_enabled ?? true;
+
+      if (!verificationEnabled) {
+        setIsVerified(true);
+        setStudentName('Student');
+        setIsLoading(false);
+        return true;
       }
 
-      const info = data as unknown as RosterInfo;
-      setRosterInfo(info);
-      return info;
-    } finally {
-      setIsVerifying(false);
-    }
-  };
+      const { data, error } = await supabase
+        .rpc('check_roster', { check_erp: erpToCheck });
 
-  const clearErp = () => {
-    setErpState('');
-    localStorage.removeItem(STORAGE_KEY);
-    setRosterInfo(null);
+      if (error) {
+        console.error('Roster check error:', error);
+        toast.error('Failed to verify roster');
+        setIsVerified(false);
+        return false;
+      }
+
+      // data is returned as jsonb from the RPC
+      const result = data as { found: boolean; student_name?: string; class_no?: string };
+
+      if (result.found) {
+        setIsVerified(true);
+        setStudentName(result.student_name || null);
+        setClassNo(result.class_no || null);
+        return true;
+      } else {
+        setIsVerified(false);
+        setStudentName(null);
+        setClassNo(null);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error checking roster:', error);
+      setIsVerified(false);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <ERPContext.Provider value={{ 
-      erp, 
-      setErp, 
-      rosterInfo, 
-      isVerifying, 
-      isVerificationEnabled, 
-      verifyErp,
-      clearErp 
-    }}>
+    <ERPContext.Provider value={{ erp, setERP, isVerified, studentName, classNo, isLoading, checkRoster }}>
       {children}
     </ERPContext.Provider>
   );

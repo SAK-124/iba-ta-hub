@@ -1,174 +1,91 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useERP } from '@/lib/erp-context';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { AlertCircle, Loader2, RefreshCw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
+import { Loader2 } from 'lucide-react';
 
-interface MyIssuesProps {
-  canAccess: boolean | null;
-  isBlocked: boolean | null | undefined;
-}
-
-interface Ticket {
-  id: string;
-  created_at: string;
-  group_type: string;
-  category: string;
-  subcategory: string | null;
-  status: string;
-  details_text: string | null;
-}
-
-export default function MyIssues({ canAccess, isBlocked }: MyIssuesProps) {
+export default function MyIssues() {
   const { erp } = useERP();
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (canAccess && erp) {
-      fetchTickets();
-      
-      // Subscribe to realtime updates
-      const channel = supabase
-        .channel('tickets-status')
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'tickets', filter: `entered_erp=eq.${erp}` },
-          (payload) => {
-            setTickets(prev => prev.map(t => 
-              t.id === payload.new.id ? { ...t, status: payload.new.status } : t
-            ));
-          }
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    }
-  }, [canAccess, erp]);
-
-  const fetchTickets = async () => {
-    if (!erp) return;
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('tickets')
-        .select('id, created_at, group_type, category, subcategory, status, details_text')
-        .eq('entered_erp', erp)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setTickets(data || []);
-    } catch (error) {
-      console.error('Error fetching tickets:', error);
-    } finally {
+    const fetchTickets = async () => {
+      if (!erp) return;
+      setIsLoading(true);
+      const { data, error } = await supabase.rpc('get_student_tickets', { student_erp: erp });
+      if (!error && data) {
+        setTickets(data);
+      }
       setIsLoading(false);
-    }
-  };
+    };
 
-  if (!erp) {
+    fetchTickets();
+
+    // Subscribe to realtime updates for this ERP's tickets
+    const channel = supabase
+      .channel('my-tickets')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'tickets', filter: `entered_erp=eq.${erp}` },
+        (payload) => {
+          // Update the specific ticket in state
+          setTickets(prev => prev.map(t => t.id === payload.new.id ? payload.new : t));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [erp]);
+
+  if (isLoading) {
+    return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
+  }
+
+  if (tickets.length === 0) {
     return (
       <Card>
-        <CardContent className="py-12 text-center">
-          <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <p className="text-muted-foreground">Please enter your ERP above to view your issues.</p>
+        <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+          <p>No issues reported yet.</p>
         </CardContent>
       </Card>
     );
   }
-
-  if (isBlocked) {
-    return (
-      <Card>
-        <CardContent className="py-12 text-center">
-          <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
-          <p className="text-destructive font-medium">Your ERP wasn't found in the roster.</p>
-          <p className="text-muted-foreground mt-2">Please contact the TAs via email.</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const getGroupTypeLabel = (type: string) => {
-    switch (type) {
-      case 'class_issue': return 'Class Issue';
-      case 'grading_query': return 'Grading Query';
-      case 'penalty_query': return 'Penalty Query';
-      case 'absence_query': return 'Absence Query';
-      default: return type;
-    }
-  };
-
-  const getCategoryLabel = (category: string) => {
-    switch (category) {
-      case 'two_devices': return 'Two Devices';
-      case 'camera_issue': return 'Camera Issue';
-      case 'connectivity_issue': return 'Connectivity';
-      case 'other': return 'Other';
-      case 'grading_query': return 'Grading';
-      case 'penalty_query': return 'Penalty';
-      case 'absence_query': return 'Absence';
-      default: return category;
-    }
-  };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>My Issues</CardTitle>
-        <Button variant="ghost" size="sm" onClick={fetchTickets} disabled={isLoading}>
-          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-        </Button>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : tickets.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <p>No issues submitted yet.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tickets.map(ticket => (
-                  <TableRow key={ticket.id}>
-                    <TableCell className="whitespace-nowrap">
-                      {format(new Date(ticket.created_at), 'MMM d, yyyy')}
-                    </TableCell>
-                    <TableCell>{getGroupTypeLabel(ticket.group_type)}</TableCell>
-                    <TableCell>
-                      {getCategoryLabel(ticket.category)}
-                      {ticket.subcategory && (
-                        <span className="text-muted-foreground"> - {ticket.subcategory}</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span className={`status-badge ${ticket.status === 'pending' ? 'status-pending' : 'status-resolved'}`}>
-                        {ticket.status}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+    <ScrollArea className="h-[600px] pr-4">
+      <div className="space-y-4">
+        {tickets.map((ticket) => (
+          <Card key={ticket.id}>
+            <CardHeader className="pb-2">
+              <div className="flex justify-between items-start">
+                <div>
+                  <CardTitle className="text-lg font-semibold">{ticket.category}</CardTitle>
+                  <CardDescription>
+                    {format(new Date(ticket.created_at), 'PPP p')}
+                  </CardDescription>
+                </div>
+                <Badge variant={ticket.status === 'resolved' ? 'default' : 'secondary'} className={ticket.status === 'resolved' ? 'bg-green-500 hover:bg-green-600' : ''}>
+                  {ticket.status.toUpperCase()}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {ticket.subcategory && (
+                <Badge variant="outline" className="mb-2 mr-2">{ticket.subcategory}</Badge>
+              )}
+              <p className="text-sm text-foreground/90 whitespace-pre-wrap">
+                {ticket.details_text || (ticket.details_json && JSON.stringify(ticket.details_json, null, 2))}
+              </p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </ScrollArea>
   );
 }

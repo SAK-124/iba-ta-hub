@@ -1,70 +1,51 @@
-import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Ticket, CalendarCheck, Users, Calendar, Settings, Download } from 'lucide-react';
-import TAIssues from '@/components/ta/TAIssues';
-import TAAttendance from '@/components/ta/TAAttendance';
-import TARoster from '@/components/ta/TARoster';
-import TASessions from '@/components/ta/TASessions';
-import TASettings from '@/components/ta/TASettings';
-import TAExport from '@/components/ta/TAExport';
+import IssueManagement from './IssueManagement';
+import AttendanceMarking from './AttendanceMarking';
+import RosterManagement from './RosterManagement';
+import SessionManagement from './SessionManagement';
+import ListsSettings from './ListsSettings';
+import ExportData from './ExportData';
 
 export default function TAPortal() {
-  const [activeTab, setActiveTab] = useState('issues');
-
   return (
-    <div className="animate-fade-in">
-      <h2 className="text-2xl font-bold mb-6">TA Portal</h2>
+    <div className="container mx-auto p-4 space-y-6 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold tracking-tight">TA Dashboard</h1>
+        <div className="text-sm text-muted-foreground">Admin Access</div>
+      </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6 mb-6">
-          <TabsTrigger value="issues" className="flex items-center gap-2">
-            <Ticket className="w-4 h-4" />
-            <span className="hidden sm:inline">Issues</span>
-          </TabsTrigger>
-          <TabsTrigger value="attendance" className="flex items-center gap-2">
-            <CalendarCheck className="w-4 h-4" />
-            <span className="hidden sm:inline">Attendance</span>
-          </TabsTrigger>
-          <TabsTrigger value="roster" className="flex items-center gap-2">
-            <Users className="w-4 h-4" />
-            <span className="hidden sm:inline">Roster</span>
-          </TabsTrigger>
-          <TabsTrigger value="sessions" className="flex items-center gap-2">
-            <Calendar className="w-4 h-4" />
-            <span className="hidden sm:inline">Sessions</span>
-          </TabsTrigger>
-          <TabsTrigger value="settings" className="flex items-center gap-2">
-            <Settings className="w-4 h-4" />
-            <span className="hidden sm:inline">Settings</span>
-          </TabsTrigger>
-          <TabsTrigger value="export" className="flex items-center gap-2">
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Export</span>
-          </TabsTrigger>
+      <Tabs defaultValue="issues" className="w-full">
+        <TabsList className="grid w-full grid-cols-6 lg:w-[800px]">
+          <TabsTrigger value="issues">Issues</TabsTrigger>
+          <TabsTrigger value="attendance">Attendance</TabsTrigger>
+          <TabsTrigger value="roster">Roster</TabsTrigger>
+          <TabsTrigger value="sessions">Sessions</TabsTrigger>
+          <TabsTrigger value="lists">Settings</TabsTrigger>
+          <TabsTrigger value="export">Export</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="issues">
-          <TAIssues />
+        <TabsContent value="issues" className="mt-6 space-y-4">
+          <IssueManagement />
         </TabsContent>
-        
-        <TabsContent value="attendance">
-          <TAAttendance />
+
+        <TabsContent value="attendance" className="mt-6 space-y-4">
+          <AttendanceMarking />
         </TabsContent>
-        
-        <TabsContent value="roster">
-          <TARoster />
+
+        <TabsContent value="roster" className="mt-6 space-y-4">
+          <RosterManagement />
         </TabsContent>
-        
-        <TabsContent value="sessions">
-          <TASessions />
+
+        <TabsContent value="sessions" className="mt-6 space-y-4">
+          <SessionManagement />
         </TabsContent>
-        
-        <TabsContent value="settings">
-          <TASettings />
+
+        <TabsContent value="lists" className="mt-6 space-y-4">
+          <ListsSettings />
         </TabsContent>
-        
-        <TabsContent value="export">
-          <TAExport />
+
+        <TabsContent value="export" className="mt-6 space-y-4">
+          <ExportData />
         </TabsContent>
       </Tabs>
     </div>
