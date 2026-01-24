@@ -1,5 +1,5 @@
 
-export const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxj3q1xomykdIlJNWlgdRgsGL1DOwAVGWwf7pUFb42cPP69kZEBu4nrBjiNXIHLcnFY/exec";
+export const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxBpSICCjqzMNDesr6zkV5-F3qQn4Jo41uRzaoQpLM-8ShGPLEQd7d6TaNSv46DlyQHnQ/exec";
 
 export interface SheetPayload {
     name: string;
