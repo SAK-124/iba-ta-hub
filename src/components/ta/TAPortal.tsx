@@ -5,6 +5,7 @@ import RosterManagement from './RosterManagement';
 import SessionManagement from './SessionManagement';
 import ListsSettings from './ListsSettings';
 import ExportData from './ExportData';
+import ConsolidatedView from './ConsolidatedView';
 
 export default function TAPortal() {
   return (
@@ -20,6 +21,7 @@ export default function TAPortal() {
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
           <TabsTrigger value="roster">Roster</TabsTrigger>
           <TabsTrigger value="sessions">Sessions</TabsTrigger>
+          <TabsTrigger value="consolidated">Consolidated</TabsTrigger>
           <TabsTrigger value="lists">Settings</TabsTrigger>
           <TabsTrigger value="export">Export</TabsTrigger>
         </TabsList>
@@ -38,6 +40,10 @@ export default function TAPortal() {
 
         <TabsContent value="sessions" className="mt-6 space-y-4">
           <SessionManagement />
+        </TabsContent>
+
+        <TabsContent value="consolidated" className="mt-6 space-y-4">
+          <ConsolidatedView />
         </TabsContent>
 
         <TabsContent value="lists" className="mt-6 space-y-4">

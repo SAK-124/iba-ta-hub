@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
@@ -13,13 +14,15 @@ export default function RosterManagement() {
     const [isUploading, setIsUploading] = useState(false);
     const [students, setStudents] = useState<any[]>([]);
     const [count, setCount] = useState(0);
+    const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
         fetchRoster();
     }, []);
 
     const fetchRoster = async () => {
-        const { count, data } = await supabase.from('students_roster').select('*', { count: 'exact' }).limit(10);
+        // Fetch more for search (limit 1000)
+        const { count, data } = await supabase.from('students_roster').select('*', { count: 'exact' }).limit(1000);
         setCount(count || 0);
         setStudents(data || []);
     };
@@ -74,6 +77,12 @@ export default function RosterManagement() {
         }
     };
 
+    const filteredStudents = students.filter(s =>
+        s.student_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.erp.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.class_no.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     return (
         <div className="grid gap-6 md:grid-cols-2">
             <Card>
@@ -118,35 +127,47 @@ export default function RosterManagement() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Current Roster</CardTitle>
-                    <CardDescription>Total Students: {count}</CardDescription>
+                    <div className="flex justify-between items-center">
+                        <div>
+                            <CardTitle>Current Roster</CardTitle>
+                            <CardDescription>Total Students: {count}</CardDescription>
+                        </div>
+                        <Input
+                            placeholder="Search..."
+                            className="w-[150px]"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </div>
                 </CardHeader>
                 <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Class</TableHead>
-                                <TableHead>Name</TableHead>
-                                <TableHead>ERP</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {students.map((s) => (
-                                <TableRow key={s.id}>
-                                    <TableCell>{s.class_no}</TableCell>
-                                    <TableCell>{s.student_name}</TableCell>
-                                    <TableCell>{s.erp}</TableCell>
-                                </TableRow>
-                            ))}
-                            {students.length < count && (
+                    <div className="rounded-md border max-h-[500px] overflow-y-auto">
+                        <Table>
+                            <TableHeader>
                                 <TableRow>
-                                    <TableCell colSpan={3} className="text-center text-muted-foreground">
-                                        ...and {count - students.length} more
-                                    </TableCell>
+                                    <TableHead>Class</TableHead>
+                                    <TableHead>Name</TableHead>
+                                    <TableHead>ERP</TableHead>
                                 </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
+                            </TableHeader>
+                            <TableBody>
+                                {filteredStudents.map((s) => (
+                                    <TableRow key={s.id}>
+                                        <TableCell>{s.class_no}</TableCell>
+                                        <TableCell>{s.student_name}</TableCell>
+                                        <TableCell>{s.erp}</TableCell>
+                                    </TableRow>
+                                ))}
+                                {filteredStudents.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={3} className="text-center text-muted-foreground py-4">
+                                            No students found
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </CardContent>
             </Card>
         </div>

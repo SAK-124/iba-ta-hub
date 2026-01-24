@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { Loader2, Save } from 'lucide-react';
@@ -85,7 +86,8 @@ export default function AttendanceMarking() {
             const newRecords = roster.map(student => ({
                 session_id: selectedSessionId,
                 erp: student.erp,
-                status: absentSet.has(student.erp.toLowerCase()) ? 'absent' : 'present'
+                status: absentSet.has(student.erp.toLowerCase()) ? 'absent' : 'present',
+                naming_penalty: false // Default to false
             }));
 
             // 3. Delete existing for this session (if overwrite)
@@ -122,6 +124,18 @@ export default function AttendanceMarking() {
             toast.error('Failed to update status');
             // Revert
             setAttendanceData(prev => prev.map(r => r.id === record.id ? { ...r, status: record.status } : r));
+        }
+    };
+
+    const toggleNamingPenalty = async (record: any, checked: boolean) => {
+        // Optimistic update
+        setAttendanceData(prev => prev.map(r => r.id === record.id ? { ...r, naming_penalty: checked } : r));
+
+        const { error } = await supabase.from('attendance').update({ naming_penalty: checked }).eq('id', record.id);
+        if (error) {
+            toast.error('Failed to update naming penalty');
+            // Revert
+            setAttendanceData(prev => prev.map(r => r.id === record.id ? { ...r, naming_penalty: !checked } : r));
         }
     };
 
@@ -213,6 +227,7 @@ export default function AttendanceMarking() {
                                         <TableHead>Name</TableHead>
                                         <TableHead>ERP</TableHead>
                                         <TableHead>Status</TableHead>
+                                        <TableHead>Naming Penalty</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -224,13 +239,25 @@ export default function AttendanceMarking() {
                                             <TableCell>
                                                 <Badge
                                                     className={`cursor-pointer select-none ${record.status === 'present' ? 'bg-green-500 hover:bg-green-600' :
-                                                            record.status === 'absent' ? 'bg-red-500 hover:bg-red-600' :
-                                                                'bg-yellow-500 hover:bg-yellow-600'
+                                                        record.status === 'absent' ? 'bg-red-500 hover:bg-red-600' :
+                                                            'bg-yellow-500 hover:bg-yellow-600'
                                                         }`}
                                                     onClick={() => toggleStatus(record)}
                                                 >
                                                     {record.status.toUpperCase()}
                                                 </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex items-center space-x-2">
+                                                    <Checkbox
+                                                        id={`np-${record.id}`}
+                                                        checked={record.naming_penalty}
+                                                        onCheckedChange={(checked) => toggleNamingPenalty(record, checked as boolean)}
+                                                    />
+                                                    <label htmlFor={`np-${record.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                                        -1
+                                                    </label>
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     ))}

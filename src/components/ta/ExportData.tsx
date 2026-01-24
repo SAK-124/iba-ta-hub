@@ -28,8 +28,9 @@ export default function ExportData() {
 
             const attendanceMap = new Map(); // erp -> { session_num -> status }
             const absenceCount = new Map(); // erp -> count
+            const penaltyCount = new Map(); // erp -> count (naming penalties)
 
-            attendance.forEach(rec => {
+            attendance.forEach((rec: any) => {
                 const sNum = rec.sessions?.session_number;
                 if (sNum) {
                     if (!attendanceMap.has(rec.erp)) attendanceMap.set(rec.erp, {});
@@ -38,18 +39,24 @@ export default function ExportData() {
                     if (rec.status === 'absent') {
                         absenceCount.set(rec.erp, (absenceCount.get(rec.erp) || 0) + 1);
                     }
+                    if (rec.naming_penalty) {
+                        penaltyCount.set(rec.erp, (penaltyCount.get(rec.erp) || 0) + 1);
+                    }
                 }
             });
 
-            const header = ['Class No', 'Student Name', 'ERP', ...sessions.map(s => `S${s.session_number}`), 'Total Absences'];
+            const header = ['Class No', 'Student Name', 'ERP', 'Naming Penalties', ...sessions.map(s => `S${s.session_number}`), 'Total Absences'];
 
             const csvRows = [header.join(',')];
 
             roster.forEach(student => {
+                const totalPenalties = penaltyCount.get(student.erp) || 0;
+
                 const row = [
                     student.class_no,
                     `"${student.student_name}"`, // Quote name to handle spaces/commas
-                    student.erp
+                    student.erp,
+                    totalPenalties > 0 ? `-${totalPenalties}` : '-'
                 ];
 
                 sessions.forEach(s => {
