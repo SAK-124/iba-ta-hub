@@ -138,7 +138,8 @@ export default function SubmitIssue() {
       setQuery('');
 
     } catch (error: any) {
-      toast.error('Failed to submit ticket: ' + error.message);
+      console.error('Submit Ticket Error:', error);
+      toast.error('Failed to submit ticket: ' + (error.message || 'Unknown error'));
     } finally {
       setIsSubmitting(false);
     }
