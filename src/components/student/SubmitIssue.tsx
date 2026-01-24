@@ -65,7 +65,7 @@ export default function SubmitIssue() {
     if (!issueType) return;
     setIsSubmitting(true);
 
-    const { user } = useAuth();
+
 
     console.log('[SubmitIssue] Starting submission...');
     console.log('[SubmitIssue] User:', user);
