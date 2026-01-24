@@ -66,16 +66,32 @@ export default function SubmitIssue() {
 
     const { user } = useAuth();
 
-    // ... inside handleSubmit
+    console.log('[SubmitIssue] Starting submission...');
+    console.log('[SubmitIssue] User:', user);
+    console.log('[SubmitIssue] ERP Context:', { erp, studentName, classNo });
+
+    if (!user || !user.email) {
+      toast.error('User email not found. Please reload or sign in again.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!erp) {
+      toast.error('ERP not found. Please reload.');
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       const ticketData: any = {
         entered_erp: erp,
         roster_name: studentName,
         roster_class_no: classNo,
-        created_by_email: user?.email || 'unknown',
+        created_by_email: user.email,
         status: 'pending'
       };
+
+      console.log('[SubmitIssue] Payload:', ticketData);
 
       if (issueType === 'class') {
         ticketData.group_type = 'class_issue';
