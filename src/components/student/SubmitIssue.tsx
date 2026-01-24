@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 
 export default function SubmitIssue() {
   const { erp, studentName, classNo } = useERP();
+  const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [issueType, setIssueType] = useState<'class' | 'other' | null>(null);
   const [specificIssue, setSpecificIssue] = useState<string>('');
