@@ -77,12 +77,12 @@ export default function StudentPortal() {
             </CardDescription>
           </CardHeader>
         </Card>
-      ) : (
+      ) : isVerified ? (
         <Tabs defaultValue="submit" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="submit" disabled={!isVerified}>Submit Issue</TabsTrigger>
-            <TabsTrigger value="issues" disabled={!isVerified}>My Issues</TabsTrigger>
-            <TabsTrigger value="attendance" disabled={!isVerified}>Attendance</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3 h-auto">
+            <TabsTrigger value="submit">Submit Issue</TabsTrigger>
+            <TabsTrigger value="issues">My Issues</TabsTrigger>
+            <TabsTrigger value="attendance">Attendance</TabsTrigger>
           </TabsList>
 
           <TabsContent value="submit" className="mt-6">
@@ -97,6 +97,11 @@ export default function StudentPortal() {
             <AttendanceView />
           </TabsContent>
         </Tabs>
+      ) : (
+        <div className="text-center py-12 text-muted-foreground">
+          <Search className="h-12 w-12 mx-auto mb-4 opacity-20" />
+          <p>Please enter your ERP above to access the portal.</p>
+        </div>
       )}
     </div>
   );

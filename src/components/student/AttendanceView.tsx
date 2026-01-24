@@ -72,46 +72,48 @@ export default function AttendanceView() {
                     <CardDescription>Your attendance record by session</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Session #</TableHead>
-                                <TableHead>Date</TableHead>
-                                <TableHead>Day</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead className="text-right">Penalty</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {attendance.length === 0 ? (
+                    <div className="rounded-md border overflow-x-auto">
+                        <Table>
+                            <TableHeader>
                                 <TableRow>
-                                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                                        No attendance records found.
-                                    </TableCell>
+                                    <TableHead>Session #</TableHead>
+                                    <TableHead>Date</TableHead>
+                                    <TableHead>Day</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead className="text-right">Penalty</TableHead>
                                 </TableRow>
-                            ) : (
-                                attendance.map((record) => (
-                                    <TableRow key={record.session_number}>
-                                        <TableCell className="font-medium">{record.session_number}</TableCell>
-                                        <TableCell>{format(new Date(record.session_date), 'PPP')}</TableCell>
-                                        <TableCell>{record.day_of_week}</TableCell>
-                                        <TableCell>
-                                            <Badge className={getStatusColor(record.status)}>
-                                                {record.status.toUpperCase()}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            {record.naming_penalty && (
-                                                <Badge variant="destructive" className="ml-auto">
-                                                    -1
-                                                </Badge>
-                                            )}
+                            </TableHeader>
+                            <TableBody>
+                                {attendance.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                                            No attendance records found.
                                         </TableCell>
                                     </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
+                                ) : (
+                                    attendance.map((record) => (
+                                        <TableRow key={record.session_number}>
+                                            <TableCell className="font-medium">{record.session_number}</TableCell>
+                                            <TableCell>{format(new Date(record.session_date), 'PPP')}</TableCell>
+                                            <TableCell>{record.day_of_week}</TableCell>
+                                            <TableCell>
+                                                <Badge className={getStatusColor(record.status)}>
+                                                    {record.status.toUpperCase()}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                {record.naming_penalty && (
+                                                    <Badge variant="destructive" className="ml-auto">
+                                                        -1
+                                                    </Badge>
+                                                )}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </CardContent>
             </Card>
         </div>
