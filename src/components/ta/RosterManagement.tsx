@@ -144,7 +144,7 @@ export default function RosterManagement() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <div className="rounded-md border max-h-[500px] overflow-y-auto">
+                    <div className="rounded-md border max-h-[500px] overflow-auto">
                         <Table>
                             <TableHeader>
                                 <TableRow>

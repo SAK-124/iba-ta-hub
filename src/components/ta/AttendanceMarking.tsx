@@ -291,7 +291,7 @@ export default function AttendanceMarking() {
                     ) : attendanceData.length === 0 ? (
                         <div className="text-center text-muted-foreground py-8">No attendance marked for this session yet.</div>
                     ) : (
-                        <div className="rounded-md border">
+                        <div className="rounded-md border overflow-x-auto">
                             <Table>
                                 <TableHeader>
                                     <TableRow>
