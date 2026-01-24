@@ -6,6 +6,7 @@ import SessionManagement from './SessionManagement';
 import ListsSettings from './ListsSettings';
 import ExportData from './ExportData';
 import ConsolidatedView from './ConsolidatedView';
+import RuleExceptions from './RuleExceptions';
 
 export default function TAPortal() {
   return (
@@ -23,6 +24,7 @@ export default function TAPortal() {
           <TabsTrigger value="sessions">Sessions</TabsTrigger>
           <TabsTrigger value="consolidated">Consolidated</TabsTrigger>
           <TabsTrigger value="lists">Settings</TabsTrigger>
+          <TabsTrigger value="exceptions">Rule Exceptions</TabsTrigger>
           <TabsTrigger value="export">Export</TabsTrigger>
         </TabsList>
 
@@ -52,6 +54,10 @@ export default function TAPortal() {
 
         <TabsContent value="export" className="mt-6 space-y-4">
           <ExportData />
+        </TabsContent>
+
+        <TabsContent value="exceptions" className="mt-6 space-y-4">
+          <RuleExceptions />
         </TabsContent>
       </Tabs>
     </div>

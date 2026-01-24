@@ -14,6 +14,7 @@ import {
     SheetTitle,
     SheetTrigger,
 } from '@/components/ui/sheet';
+import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Search, Filter } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';

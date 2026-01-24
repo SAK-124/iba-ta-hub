@@ -24,6 +24,25 @@ export function ERPProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
+    // Check for logged in user and extract ERP
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.email) {
+        // Regex to extract 5 digits before @
+        // e.g. s.khan.26611@khi.iba.edu.pk -> 26611
+        const match = user.email.match(/(\d{5})@/);
+        if (match && match[1]) {
+          const autoErp = match[1];
+          if (autoErp !== erp) {
+            console.log('Auto-setting ERP from email:', autoErp);
+            setERP(autoErp);
+          }
+        }
+      }
+    };
+
+    checkUser();
+
     if (erp) {
       checkRoster(erp);
     }
