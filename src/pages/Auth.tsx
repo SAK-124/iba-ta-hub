@@ -37,8 +37,15 @@ export default function Auth() {
 
     // Test User Bypass (Only in standard mode)
     if (!isPasswordMode && trimmedEmail === '00000') {
-      loginAsTestUser();
-      navigate('/');
+      setIsLoading(true);
+      const { error } = await loginAsTestUser();
+      if (error) {
+        setError(error.message);
+        setIsLoading(false);
+      } else {
+        // Navigation handled by auth listener, but we can also nav here
+        navigate('/');
+      }
       return;
     }
 

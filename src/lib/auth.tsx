@@ -10,7 +10,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
   signInWithOtp: (email: string) => Promise<{ error: Error | null }>;
-  loginAsTestUser: () => void;
+  loginAsTestUser: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -81,18 +81,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error };
   }
 
-  const loginAsTestUser = () => {
-    const mockUser = {
-      id: '00000',
-      email: 'test.00000@khi.iba.edu.pk',
-      app_metadata: {},
-      user_metadata: {},
-      aud: 'authenticated',
-      created_at: new Date().toISOString()
-    } as User;
+  const loginAsTestUser = async () => {
+    const email = 'test.00000@khi.iba.edu.pk';
+    const password = 'iba-student-password-2024';
 
-    setUser(mockUser);
-    setIsLoading(false);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (error && error.message.includes('Invalid login credentials')) {
+      // Create the test user if it doesn't exist
+      const { error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: 'Test Student' },
+          emailRedirectTo: window.location.origin
+        }
+      });
+      if (signUpError) return { error: signUpError };
+    } else if (error) {
+      return { error };
+    }
+
+    return { error: null };
   };
 
   const signUp = async (email: string, password: string) => {
