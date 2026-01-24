@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginAsTestUser = () => {
     const mockUser = {
       id: '00000',
-      email: 'test@student.com',
+      email: 'test.00000@khi.iba.edu.pk',
       app_metadata: {},
       user_metadata: {},
       aud: 'authenticated',

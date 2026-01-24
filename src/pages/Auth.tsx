@@ -15,16 +15,18 @@ const passwordSchema = z.string().min(6, 'Password must be at least 6 characters
 
 export default function Auth() {
   const navigate = useNavigate();
-  const { signInWithOtp, loginAsTestUser, signIn } = useAuth(); // Keeping signIn for password fallback if needed
+  const { signIn, signUp, loginAsTestUser } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isPasswordMode, setIsPasswordMode] = useState(false);
+
+  const DEFAULT_PASSWORD = 'iba-student-password-2024';
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSuccessMessage(null);
 
     const trimmedEmail = email.trim();
 
@@ -33,34 +35,129 @@ export default function Auth() {
       return;
     }
 
-    // Test User Bypass
-    if (trimmedEmail === '00000') {
+    // Test User Bypass (Only in standard mode)
+    if (!isPasswordMode && trimmedEmail === '00000') {
       loginAsTestUser();
       navigate('/');
       return;
     }
 
-    // Email Validation
-    try {
-      emailSchema.parse(trimmedEmail);
-    } catch (err) {
-      setError('Please enter a valid email address.');
-      return;
-    }
-
     setIsLoading(true);
+
     try {
-      // Send Magic Link
-      const { error } = await signInWithOtp(trimmedEmail);
-      if (error) {
-        setError(error.message);
-      } else {
-        setSuccessMessage('Check your email for the login link!');
+      // ---------------------------------------------------------
+      // PASSWORD MODE: LOGIN AS TA
+      // ---------------------------------------------------------
+      if (isPasswordMode) {
+        if (!password) {
+          setError('Please enter your password.');
+          setIsLoading(false);
+          return;
+        }
+
+        // Try signing in
+        const { error: signInError } = await signIn(trimmedEmail, password);
+
+        if (signInError) {
+          if (signInError.message.includes('Invalid login credentials')) {
+            // If login fails, check if account exists. If not, maybe we need to "seed" it (SignUp)
+            // But normally TAs are pre-created. The user said "add user... with password".
+            // Since we can't seed auth.users easily, we'll try to SignUp if SignIn fails 
+            // to handle the "first time login" for this manually added admin.
+            const { error: signUpError } = await signUp(trimmedEmail, password);
+
+            if (signUpError) {
+              // If signup fails (maybe user exists but password wrong, or other issue)
+              if (signUpError.message.includes('already registered')) {
+                setError('Invalid password. Please try again.');
+              } else {
+                setError(signUpError.message);
+              }
+            } else {
+              // Signup success - auto login or check email
+              navigate('/');
+            }
+          } else {
+            setError(signInError.message);
+          }
+        } else {
+          // Sign in success
+          navigate('/');
+        }
+
+        setIsLoading(false);
+        return;
       }
+
+      // ---------------------------------------------------------
+      // STANDARD MODE: CHECK USER TYPE
+      // ---------------------------------------------------------
+
+      // 1. Check if TA
+      const { data: isAllowed, error: rpcError } = await supabase
+        .rpc('check_ta_allowlist', { check_email: trimmedEmail });
+
+      if (isAllowed) {
+        // User is a TA -> Switch to Password Mode
+        setIsPasswordMode(true);
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. If not TA -> Student Flow (Roster Check)
+
+      // Email Validation: Must be IBA email for students
+      if (!trimmedEmail.endsWith('@khi.iba.edu.pk')) {
+        setError('Please use your IBA email address.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Extract ERP
+      const match = trimmedEmail.match(/(\d{5})@/);
+      if (!match || !match[1]) {
+        setError('Could not extract ERP from email. Format should be: name.erp@khi.iba.edu.pk');
+        setIsLoading(false);
+        return;
+      }
+      const erp = match[1];
+
+      // Check Roster
+      const { data: rosterData, error: rosterError } = await supabase
+        .rpc('check_roster', { check_erp: erp });
+
+      if (rosterError) throw rosterError;
+
+      const rosterResult = rosterData as { found: boolean };
+
+      if (!rosterResult.found) {
+        setError('Your ERP was not found in the course roster.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Auto Login/Signup (Default Password)
+      const { error: signInError } = await signIn(trimmedEmail, DEFAULT_PASSWORD);
+
+      if (signInError) {
+        if (signInError.message.includes('Invalid login credentials')) {
+          const { error: signUpError } = await signUp(trimmedEmail, DEFAULT_PASSWORD);
+          if (signUpError) {
+            setError(signUpError.message);
+          } else {
+            navigate('/');
+          }
+        } else {
+          setError(signInError.message);
+        }
+      } else {
+        navigate('/');
+      }
+
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setIsLoading(false);
+      if (!isPasswordMode) setIsLoading(false);
     }
   };
 
@@ -81,19 +178,18 @@ export default function Auth() {
 
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle>Welcome</CardTitle>
-            <CardDescription>Enter your email to sign in (No password required).</CardDescription>
+            <CardTitle>{isPasswordMode ? 'Enter Password' : 'Welcome'}</CardTitle>
+            <CardDescription>
+              {isPasswordMode
+                ? `Logging in as ${email}`
+                : 'Enter your IBA email to access the portal.'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {error && (
               <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
                 <span>{error}</span>
-              </div>
-            )}
-            {successMessage && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-success/10 text-success text-sm">
-                <span>{successMessage}</span>
               </div>
             )}
 
@@ -105,19 +201,34 @@ export default function Auth() {
                   type="text"
                   placeholder="email@khi.iba.edu.pk"
                   value={email}
-                  onChange={e => setEmail(e.target.value)}
+                  onChange={e => {
+                    setEmail(e.target.value);
+                    if (isPasswordMode) setIsPasswordMode(false); // Reset mode on email change
+                  }}
                   required
                 />
               </div>
+
+              {isPasswordMode && (
+                <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                </div>
+              )}
+
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Continue
+                {isPasswordMode ? 'Sign In' : 'Continue'}
               </Button>
             </form>
           </CardContent>
-          <CardFooter className="justify-center text-xs text-muted-foreground">
-            TAs will be automatically recognized as admins.
-          </CardFooter>
         </Card>
       </div>
     </div>
