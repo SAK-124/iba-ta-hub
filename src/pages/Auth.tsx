@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertCircle, GraduationCap, Loader2 } from 'lucide-react';
 import { z } from 'zod';
+import { toast } from 'sonner';
 
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
@@ -67,22 +68,35 @@ export default function Auth() {
 
         if (signInError) {
           if (signInError.message.includes('Invalid login credentials')) {
-            // If login fails, check if account exists. If not, maybe we need to "seed" it (SignUp)
-            // But normally TAs are pre-created. The user said "add user... with password".
-            // Since we can't seed auth.users easily, we'll try to SignUp if SignIn fails 
-            // to handle the "first time login" for this manually added admin.
-            const { error: signUpError } = await signUp(trimmedEmail, password);
+            // Check if this is a first-time setup for a TA (Lazy Signup)
+            const { data: isValidSetup, error: verifyError } = await supabase
+              .rpc('verify_ta_setup', {
+                check_email: trimmedEmail,
+                check_password: password
+              });
 
-            if (signUpError) {
-              // If signup fails (maybe user exists but password wrong, or other issue)
-              if (signUpError.message.includes('already registered')) {
-                setError('Invalid password. Please try again.');
-              } else {
+            if (isValidSetup) {
+              // Initial password matched! Create the account now.
+              toast.info('First time login detected. Creating you account...');
+              const { error: signUpError } = await supabase.auth.signUp({
+                email: trimmedEmail,
+                password: password,
+                options: {
+                  data: { full_name: 'TA User' }
+                }
+              });
+
+              if (signUpError) {
+                console.error('Lazy Signup Error:', signUpError);
                 setError(signUpError.message);
+              } else {
+                // Signup success - usually auto logs in
+                toast.success('Account created successfully!');
+                navigate('/');
               }
             } else {
-              // Signup success - auto login or check email
-              navigate('/');
+              // Not a valid setup or wrong password
+              setError('Invalid login credentials. If this is your first time, ensure you are using the provided initial password.');
             }
           } else {
             setError(signInError.message);

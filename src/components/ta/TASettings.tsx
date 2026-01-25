@@ -12,10 +12,11 @@ import { toast } from 'sonner';
 
 export default function TASettings() {
   const [rosterVerification, setRosterVerification] = useState(true);
-  const [taEmails, setTaEmails] = useState<{ id: string; email: string; active: boolean }[]>([]);
+  const [taEmails, setTaEmails] = useState<{ id: string; email: string; active: boolean; initial_password?: string }[]>([]);
   const [submissions, setSubmissions] = useState<{ id: string; label: string; active: boolean; sort_order: number | null }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [newTaEmail, setNewTaEmail] = useState('');
+  const [newTaPassword, setNewTaPassword] = useState('');
   const [newSubmission, setNewSubmission] = useState('');
   const [isTaDialogOpen, setIsTaDialogOpen] = useState(false);
   const [isSubDialogOpen, setIsSubDialogOpen] = useState(false);
@@ -60,13 +61,14 @@ export default function TASettings() {
 
   const addTaEmail = async () => {
     if (!newTaEmail) return;
-    const { error } = await supabase.from('ta_allowlist').insert([{ email: newTaEmail }]);
+    const { error } = await supabase.from('ta_allowlist').insert([{ email: newTaEmail, initial_password: newTaPassword || null }]);
     if (error) {
       toast.error('Failed to add TA email');
       return;
     }
     toast.success('TA email added');
     setNewTaEmail('');
+    setNewTaPassword('');
     setIsTaDialogOpen(false);
     fetchSettings();
   };
@@ -133,9 +135,23 @@ export default function TASettings() {
             <DialogTrigger asChild><Button size="sm"><Plus className="w-4 h-4 mr-2" />Add TA</Button></DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>Add TA Email</DialogTitle></DialogHeader>
-              <div className="py-4">
-                <Label>Email</Label>
-                <Input value={newTaEmail} onChange={(e) => setNewTaEmail(e.target.value)} placeholder="ta@example.com" />
+              <div className="py-4 space-y-4">
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input value={newTaEmail} onChange={(e) => setNewTaEmail(e.target.value)} placeholder="ta@example.com" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Initial Password (Optional)</Label>
+                  <Input
+                    value={newTaPassword}
+                    onChange={(e) => setNewTaPassword(e.target.value)}
+                    placeholder="Set initial password for lazy signup"
+                    type="text"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    This password allows the TA to sign up automatically on their first login.
+                  </p>
+                </div>
               </div>
               <DialogFooter><Button onClick={addTaEmail}>Add</Button></DialogFooter>
             </DialogContent>
@@ -146,7 +162,16 @@ export default function TASettings() {
             <TableBody>
               {taEmails.map(ta => (
                 <TableRow key={ta.id}>
-                  <TableCell>{ta.email}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span>{ta.email}</span>
+                      {ta.initial_password && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          Key: {ta.initial_password}
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="sm" onClick={() => removeTaEmail(ta.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
                   </TableCell>
