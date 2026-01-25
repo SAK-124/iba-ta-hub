@@ -70,7 +70,7 @@ export default function Auth() {
           if (signInError.message.includes('Invalid login credentials')) {
             // Check if this is a first-time setup for a TA (Lazy Signup)
             const { data: isValidSetup, error: verifyError } = await supabase
-              .rpc('verify_ta_setup', {
+              .rpc('verify_ta_setup' as any, {
                 check_email: trimmedEmail,
                 check_password: password
               });
