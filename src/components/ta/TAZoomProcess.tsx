@@ -6,10 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FileSpreadsheet, Loader2, Upload, AlertCircle, CheckCircle2, Search, Filter } from 'lucide-react';
+import { FileSpreadsheet, Loader2, Upload, AlertCircle, CheckCircle2, Search, Filter, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import * as XLSX from 'xlsx';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface ProcessedData {
     attendance_rows: any[];
@@ -34,7 +35,7 @@ export default function TAZoomProcess() {
     // Input State
     const [zoomFile, setZoomFile] = useState<File | null>(null);
     const [rosterFile, setRosterFile] = useState<File | null>(null);
-    const [useSavedRoster, setUseSavedRoster] = useState(false);
+    const [useSavedRoster, setUseSavedRoster] = useState(true);
     const [manualDuration, setManualDuration] = useState('');
     const [namazBreak, setNamazBreak] = useState('');
 
@@ -43,20 +44,79 @@ export default function TAZoomProcess() {
     const [filterErp, setFilterErp] = useState('');
     const [filterClass, setFilterClass] = useState('');
 
+    // Ignored Keys State (for Absent tab) - uses Key field which is unique per student
+    const [ignoredKeys, setIgnoredKeys] = useState<Set<string>>(new Set());
+
+    const toggleIgnoreKey = (key: string) => {
+        setIgnoredKeys(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(key)) {
+                newSet.delete(key);
+            } else {
+                newSet.add(key);
+            }
+            return newSet;
+        });
+    };
+
+    const copyAbsentErps = () => {
+        if (!data?.absent_rows) return;
+        const erps = data.absent_rows
+            .filter(row => {
+                const key = String(row.Key || '');
+                const erp = String(row.ERP || '');
+                return erp && /^\d{5}$/.test(erp) && !ignoredKeys.has(key);
+            })
+            .map(row => row.ERP);
+
+        navigator.clipboard.writeText(erps.join('\n'));
+        toast.success(`Copied ${erps.length} ERPs to clipboard`);
+    };
+
     const fetchSavedRosterBlob = async (): Promise<Blob | null> => {
         try {
-            const { data: students, error } = await supabase
-                .from('students_roster')
-                .select('class_no, student_name, erp, email');
+            // First check if user is authenticated
+            const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
-            if (error) throw error;
-            if (!students || students.length === 0) {
-                toast.error("No students found in saved roster.");
-                return null;
+            if (sessionError) {
+                console.error("Session Error:", sessionError);
+                throw new Error("Authentication error: " + sessionError.message);
             }
 
+            if (!sessionData?.session) {
+                throw new Error("Not authenticated. Please log in again.");
+            }
+
+            console.log("Fetching roster for user:", sessionData.session.user.email);
+
+            const { data: students, error } = await supabase
+                .from('students_roster')
+                .select('class_no, student_name, erp');
+
+            if (error) {
+                console.error("Supabase Query Error:", error);
+                // Check for RLS/permission errors
+                if (error.code === 'PGRST301' || error.message.includes('permission')) {
+                    throw new Error("Permission denied. You may not have TA access.");
+                }
+                throw new Error("Database query failed: " + error.message);
+            }
+
+            console.log("Roster query result:", students?.length ?? 0, "students found");
+
+            if (!students || students.length === 0) {
+                throw new Error("No students found in saved roster. Please upload a roster first in Roster Management.");
+            }
+
+            // Map to standard headers expected by backend/core.py
+            const mappedStudents = students.map(s => ({
+                "Class No": s.class_no,
+                "Name": s.student_name,
+                "ERP": s.erp
+            }));
+
             // Create worksheet
-            const ws = XLSX.utils.json_to_sheet(students);
+            const ws = XLSX.utils.json_to_sheet(mappedStudents);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Roster");
 
@@ -65,7 +125,7 @@ export default function TAZoomProcess() {
             return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         } catch (err: any) {
             console.error("Error fetching roster:", err);
-            toast.error("Failed to fetch saved roster from database.");
+            toast.error("Failed to load saved roster", { description: err.message });
             return null;
         }
     };
@@ -99,17 +159,36 @@ export default function TAZoomProcess() {
                 formData.append('roster', rosterFile);
             }
 
+            // Use Vite proxy in dev, or env URL in production
             const apiUrl = import.meta.env.VITE_ZOOM_API_URL;
-            if (!apiUrl) throw new Error('API URL not configured (VITE_ZOOM_API_URL)');
+            const endpoint = import.meta.env.DEV ? '/api/process' : `${apiUrl}/api/process`;
 
-            const response = await fetch(`${apiUrl}/api/process`, {
-                method: 'POST',
-                body: formData,
-            });
+            console.log("=== API DEBUG ===");
+            console.log("Mode:", import.meta.env.DEV ? "Development (using Vite proxy)" : "Production");
+            console.log("API endpoint:", endpoint);
+            console.log("FormData entries:", [...formData.entries()].map(([k, v]) => `${k}: ${typeof v === 'object' ? (v as File).name : v}`));
 
-            if (!response.ok) throw new Error('Failed to process file on server');
+            let response: Response;
+            try {
+                response = await fetch(endpoint, {
+                    method: 'POST',
+                    body: formData,
+                });
+            } catch (fetchError: any) {
+                console.error("Network/CORS Error:", fetchError);
+                throw new Error(`Network error: ${fetchError.message}. Check if Flask server is running.`);
+            }
+
+            console.log("Response status:", response.status);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error("Server error response:", errorText);
+                throw new Error(`Server error (${response.status}): ${errorText}`);
+            }
 
             const result = await response.json();
+            console.log("API Result received:", Object.keys(result));
             setData(result);
             setStep(targetStep);
 
@@ -123,7 +202,7 @@ export default function TAZoomProcess() {
             toast.dismiss(loadingToast);
             toast.success(targetStep === 'review' ? 'Analysis Complete' : 'Attendance Generated');
         } catch (error: any) {
-            console.error(error);
+            console.error("=== PROCESSING ERROR ===", error);
             toast.dismiss(loadingToast);
             toast.error('Processing Failed', { description: error.message });
         } finally {
@@ -258,6 +337,122 @@ export default function TAZoomProcess() {
                                         ))}
                                     </TableRow>
                                 ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </div>
+                <div className="text-xs text-muted-foreground text-right">Showing {filteredRows.length} rows</div>
+            </div>
+        );
+    };
+
+    // Custom renderer for Absent tab with Ignore checkboxes
+    const renderAbsentTable = (rows: any[]) => {
+        if (!rows || rows.length === 0) {
+            return <div className="p-8 text-center text-muted-foreground">No absent students</div>;
+        }
+
+        let headers = Object.keys(rows[0] || {});
+        const front = ['ERP', 'Name', 'Class No', 'Zoom Names (raw)'];
+        const startCols: string[] = [];
+        const otherCols: string[] = [];
+        headers.forEach(h => {
+            if (front.includes(h)) startCols.push(h);
+            else otherCols.push(h);
+        });
+        startCols.sort((a, b) => front.indexOf(a) - front.indexOf(b));
+        headers = [...startCols, ...otherCols];
+
+        // Apply filters
+        let filteredRows = rows;
+        if (filterClass) {
+            filteredRows = filteredRows.filter(r => String(r['Class No'] || '').toLowerCase().includes(filterClass.toLowerCase()));
+        }
+        if (filterErp) {
+            filteredRows = filteredRows.filter(r => String(r.ERP || '').includes(filterErp));
+        }
+        if (filterName) {
+            filteredRows = filteredRows.filter(r => String(r.Name || '').toLowerCase().includes(filterName.toLowerCase()));
+        }
+
+        const nonIgnoredCount = filteredRows.filter(r => !ignoredKeys.has(String(r.Key || ''))).length;
+
+        return (
+            <div className="space-y-4">
+                {/* Action Bar */}
+                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-primary/5">
+                    <div className="flex items-center gap-4">
+                        <span className="text-sm font-medium">
+                            <span className="text-red-500">{filteredRows.length}</span> absent •
+                            <span className="text-yellow-500 ml-1">{ignoredKeys.size}</span> ignored •
+                            <span className="text-green-500 ml-1">{nonIgnoredCount}</span> to copy
+                        </span>
+                    </div>
+                    <Button onClick={copyAbsentErps} variant="outline" size="sm" className="gap-2">
+                        <Copy className="w-4 h-4" />
+                        Copy Absent ERPs
+                    </Button>
+                </div>
+
+                {/* Filter Bar */}
+                <div className="flex flex-wrap gap-4 items-center p-4 rounded-xl bg-muted/30 border border-primary/5">
+                    <div className="flex items-center gap-2">
+                        <Filter className="w-4 h-4 text-primary" />
+                        <span className="text-xs font-bold uppercase text-muted-foreground tracking-wider">Filters</span>
+                    </div>
+                    <div className="h-6 w-[1px] bg-border" />
+                    <div className="space-y-1">
+                        <Label className="text-[10px] uppercase text-muted-foreground">Class</Label>
+                        <Input className="h-8 w-20 text-xs" placeholder="All" value={filterClass} onChange={(e) => setFilterClass(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-[10px] uppercase text-muted-foreground">ERP</Label>
+                        <Input className="h-8 w-24 text-xs" placeholder="Search" value={filterErp} onChange={(e) => setFilterErp(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-[10px] uppercase text-muted-foreground">Name</Label>
+                        <Input className="h-8 w-32 text-xs" placeholder="Search" value={filterName} onChange={(e) => setFilterName(e.target.value)} />
+                    </div>
+                    {(filterClass || filterErp || filterName) && (
+                        <Button variant="ghost" size="sm" className="h-8 px-2 mt-5 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => { setFilterClass(''); setFilterErp(''); setFilterName(''); }}>Clear</Button>
+                    )}
+                </div>
+
+                {/* Table with Ignore Column */}
+                <div className="rounded-xl border border-border overflow-hidden">
+                    <div className="overflow-x-auto max-h-[600px]">
+                        <Table>
+                            <TableHeader className="bg-muted/50 sticky top-0 z-10 backdrop-blur-md">
+                                <TableRow>
+                                    <TableHead className="whitespace-nowrap font-bold text-foreground w-16">Ignore</TableHead>
+                                    {headers.map((header) => (
+                                        <TableHead key={header} className="whitespace-nowrap font-bold text-foreground">
+                                            {header}
+                                        </TableHead>
+                                    ))}
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {filteredRows.map((row, idx) => {
+                                    const key = String(row.Key || '');
+                                    const isIgnored = ignoredKeys.has(key);
+                                    return (
+                                        <TableRow key={idx} className={`hover:bg-muted/50 transition-colors ${isIgnored ? 'opacity-50 bg-muted/20' : ''}`}>
+                                            <TableCell className="w-16">
+                                                <Checkbox
+                                                    checked={isIgnored}
+                                                    onCheckedChange={() => toggleIgnoreKey(key)}
+                                                    className="data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500"
+                                                />
+                                            </TableCell>
+                                            {headers.map((header) => (
+                                                <TableCell key={`${idx}-${header}`} className={`whitespace-nowrap font-mono text-xs ${isIgnored ? 'line-through' : ''}`}>
+                                                    {String(row[header] ?? '')}
+                                                </TableCell>
+                                            ))}
+                                        </TableRow>
+                                    );
+                                })}
                             </TableBody>
                         </Table>
                     </div>
@@ -418,7 +613,7 @@ export default function TAZoomProcess() {
                             {step === 'results' && (
                                 <>
                                     <TabsContent value="attendance" className="animate-fade-in">{renderTable(data.attendance_rows)}</TabsContent>
-                                    <TabsContent value="absent" className="animate-fade-in">{renderTable(data.absent_rows)}</TabsContent>
+                                    <TabsContent value="absent" className="animate-fade-in">{renderAbsentTable(data.absent_rows)}</TabsContent>
                                     <TabsContent value="penalties" className="animate-fade-in">{renderTable(data.penalties_rows)}</TabsContent>
                                 </>
                             )}

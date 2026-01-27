@@ -27,6 +27,7 @@ export default function AttendanceMarking() {
     const [showOverwriteAlert, setShowOverwriteAlert] = useState(false);
 
     const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'absent' | 'excused'>('all');
 
     useEffect(() => {
         fetchSessions();
@@ -196,6 +197,9 @@ export default function AttendanceMarking() {
     };
 
     const filteredAttendance = attendanceData.filter(r => {
+        // First filter by status
+        if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+        // Then filter by search query
         if (!searchQuery) return true;
         const q = searchQuery.toLowerCase();
         return (
@@ -203,6 +207,11 @@ export default function AttendanceMarking() {
             (r.student_name && r.student_name.toLowerCase().includes(q))
         );
     });
+
+    // Compute counts
+    const presentCount = attendanceData.filter(r => r.status === 'present').length;
+    const absentCount = attendanceData.filter(r => r.status === 'absent').length;
+    const excusedCount = attendanceData.filter(r => r.status === 'excused').length;
 
     return (
         <div className="grid gap-6 md:grid-cols-3">
@@ -284,6 +293,57 @@ export default function AttendanceMarking() {
                     </div>
                 </CardHeader>
                 <CardContent>
+                    {/* Counts and Filter Buttons */}
+                    {selectedSessionId && attendanceData.length > 0 && (
+                        <div className="mb-4 space-y-3">
+                            {/* Counts */}
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">
+                                    {presentCount} Present
+                                </Badge>
+                                <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20">
+                                    {absentCount} Absent
+                                </Badge>
+                                <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
+                                    {excusedCount} Excused
+                                </Badge>
+                                <Badge variant="outline" className="bg-muted text-muted-foreground">
+                                    {attendanceData.length} / {roster.length} Total
+                                </Badge>
+                            </div>
+                            {/* Filter Buttons */}
+                            <div className="flex gap-2 flex-wrap">
+                                <Button
+                                    size="sm"
+                                    variant={statusFilter === 'all' ? 'default' : 'outline'}
+                                    onClick={() => setStatusFilter('all')}
+                                >
+                                    All ({attendanceData.length})
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant={statusFilter === 'present' ? 'default' : 'outline'}
+                                    onClick={() => setStatusFilter('present')}
+                                >
+                                    Present ({presentCount})
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant={statusFilter === 'absent' ? 'default' : 'outline'}
+                                    onClick={() => setStatusFilter('absent')}
+                                >
+                                    Absent ({absentCount})
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant={statusFilter === 'excused' ? 'default' : 'outline'}
+                                    onClick={() => setStatusFilter('excused')}
+                                >
+                                    Excused ({excusedCount})
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                     {!selectedSessionId ? (
                         <div className="text-center text-muted-foreground py-8">Select a session to view attendance.</div>
                     ) : isLoading ? (

@@ -47,6 +47,7 @@ export default function TAAttendance() {
   const [searchErp, setSearchErp] = useState('');
   const [searchResult, setSearchResult] = useState<AttendanceRecord | null>(null);
   const [roster, setRoster] = useState<Student[]>([]);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'absent' | 'excused'>('all');
 
   useEffect(() => {
     fetchSessions();
@@ -87,7 +88,7 @@ export default function TAAttendance() {
           id,
           erp,
           status,
-          students_roster!inner (
+          students_roster (
             student_name,
             class_no
           )
@@ -100,13 +101,13 @@ export default function TAAttendance() {
         id: string;
         erp: string;
         status: string;
-        students_roster: { student_name: string; class_no: string };
+        students_roster: { student_name: string; class_no: string } | null;
       }) => ({
         id: record.id,
         erp: record.erp,
         status: record.status,
-        student_name: record.students_roster.student_name,
-        class_no: record.students_roster.class_no
+        student_name: record.students_roster?.student_name || `Unknown (${record.erp})`,
+        class_no: record.students_roster?.class_no || '-'
       }));
 
       setExistingAttendance(formatted);
@@ -554,7 +555,49 @@ export default function TAAttendance() {
                 <Badge variant="outline" className="rounded-lg bg-destructive/10 text-destructive border-destructive/20">
                   {existingAttendance.filter(a => a.status === 'absent').length} Absent
                 </Badge>
+                <Badge variant="outline" className="rounded-lg bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
+                  {existingAttendance.filter(a => a.status === 'excused').length} Excused
+                </Badge>
+                <Badge variant="outline" className="rounded-lg bg-muted text-muted-foreground">
+                  {existingAttendance.length} / {roster.length} Total
+                </Badge>
               </div>
+            </div>
+
+            {/* Filter Buttons */}
+            <div className="flex gap-2 mb-4">
+              <Button
+                size="sm"
+                variant={statusFilter === 'all' ? 'default' : 'outline'}
+                onClick={() => setStatusFilter('all')}
+                className="rounded-lg text-xs"
+              >
+                All ({existingAttendance.length})
+              </Button>
+              <Button
+                size="sm"
+                variant={statusFilter === 'present' ? 'default' : 'outline'}
+                onClick={() => setStatusFilter('present')}
+                className="rounded-lg text-xs"
+              >
+                Present ({existingAttendance.filter(a => a.status === 'present').length})
+              </Button>
+              <Button
+                size="sm"
+                variant={statusFilter === 'absent' ? 'default' : 'outline'}
+                onClick={() => setStatusFilter('absent')}
+                className="rounded-lg text-xs"
+              >
+                Absent ({existingAttendance.filter(a => a.status === 'absent').length})
+              </Button>
+              <Button
+                size="sm"
+                variant={statusFilter === 'excused' ? 'default' : 'outline'}
+                onClick={() => setStatusFilter('excused')}
+                className="rounded-lg text-xs"
+              >
+                Excused ({existingAttendance.filter(a => a.status === 'excused').length})
+              </Button>
             </div>
 
             <div className="overflow-hidden rounded-xl border border-primary/10">
@@ -574,33 +617,35 @@ export default function TAAttendance() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {existingAttendance.map(record => (
-                        <TableRow key={record.id}>
-                          <TableCell className="font-mono">{record.erp}</TableCell>
-                          <TableCell>{record.student_name}</TableCell>
-                          <TableCell>{record.class_no}</TableCell>
-                          <TableCell>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span
-                                    className={`status-badge cursor-pointer hover:opacity-80 transition-opacity ${record.status === 'present' ? 'status-present' :
-                                      record.status === 'absent' ? 'status-absent' :
-                                        'status-excused'
-                                      }`}
-                                    onClick={() => updateStudentStatus(record.erp, getNextStatus(record.status))}
-                                  >
-                                    {record.status}
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Click to toggle status</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {existingAttendance
+                        .filter(record => statusFilter === 'all' || record.status === statusFilter)
+                        .map(record => (
+                          <TableRow key={record.id}>
+                            <TableCell className="font-mono">{record.erp}</TableCell>
+                            <TableCell>{record.student_name}</TableCell>
+                            <TableCell>{record.class_no}</TableCell>
+                            <TableCell>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span
+                                      className={`status-badge cursor-pointer hover:opacity-80 transition-opacity ${record.status === 'present' ? 'status-present' :
+                                        record.status === 'absent' ? 'status-absent' :
+                                          'status-excused'
+                                        }`}
+                                      onClick={() => updateStudentStatus(record.erp, getNextStatus(record.status))}
+                                    >
+                                      {record.status}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Click to toggle status</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </TableCell>
+                          </TableRow>
+                        ))}
                     </TableBody>
                   </Table>
                 </div>
