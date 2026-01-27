@@ -28,7 +28,8 @@ import {
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Upload, Pencil, Trash2, Plus } from 'lucide-react';
+import { Loader2, Upload, Pencil, Trash2, Plus, Search } from 'lucide-react';
+import { normalizeName } from '@/lib/utils';
 
 export default function RosterManagement() {
     const [rosterText, setRosterText] = useState('');
@@ -71,7 +72,8 @@ export default function RosterManagement() {
 
                 const class_no = parts[0];
                 const erp = parts[parts.length - 1];
-                const student_name = parts.slice(1, parts.length - 1).join(' ');
+                const rawName = parts.slice(1, parts.length - 1).join(' ');
+                const student_name = normalizeName(rawName);
 
                 parsedStudents.push({ class_no, student_name, erp });
             }
@@ -117,7 +119,7 @@ export default function RosterManagement() {
                 const { error } = await supabase
                     .from('students_roster')
                     .update({
-                        student_name: formData.student_name,
+                        student_name: normalizeName(formData.student_name),
                         erp: formData.erp,
                         class_no: formData.class_no
                     })
@@ -130,7 +132,7 @@ export default function RosterManagement() {
                 const { error } = await supabase
                     .from('students_roster')
                     .insert([{
-                        student_name: formData.student_name,
+                        student_name: normalizeName(formData.student_name),
                         erp: formData.erp,
                         class_no: formData.class_no
                     }]);
@@ -185,148 +187,177 @@ export default function RosterManagement() {
     );
 
     return (
-        <div className="grid gap-6 md:grid-cols-2">
-            <Card>
-                <CardHeader>
-                    <CardTitle>Import Roster</CardTitle>
-                    <CardDescription>
-                        Paste roster below. Format: ClassNo Name... ERP<br />
-                        Example: <code className="bg-muted px-1">2481 Muhammad Saboor 26611</code>
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <Textarea
-                        placeholder="Paste your roster data here..."
-                        className="min-h-[300px] font-mono text-sm"
-                        value={rosterText}
-                        onChange={(e) => setRosterText(e.target.value)}
-                    />
+        <div className="space-y-8 animate-fade-in">
+            <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
+                <div className="space-y-1">
+                    <h1 className="text-3xl font-extrabold tracking-tight text-foreground uppercase">
+                        Roster Management
+                    </h1>
+                    <p className="text-muted-foreground">Import and manage the student master list.</p>
+                </div>
 
-                    <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                            <Button className="w-full" disabled={!rosterText.trim() || isUploading}>
-                                {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-                                Replace Roster
-                            </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                    This will DELETE the entire existing roster and replace it with the new data.
-                                    Existing attendance records will refer to ERPs, so if ERPs change, attendance data might become orphaned or invalid.
-                                </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={parseAndUpload}>Continue</AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-                </CardContent>
-            </Card>
+                <div className="flex items-center gap-3">
+                    <Badge variant="outline" className="hidden sm:flex bg-primary/5 text-primary border-primary/20 h-9 px-4 rounded-lg font-bold">
+                        {count} Students Enrolled
+                    </Badge>
+                    <Button onClick={openAddDialog} className="h-11 px-6 rounded-xl bg-primary text-primary-foreground font-bold uppercase transition-all active:scale-95 shadow-lg shadow-primary/20">
+                        <Plus className="mr-2 h-4 w-4" /> Add Student
+                    </Button>
+                </div>
+            </div>
 
-            <Card>
-                <CardHeader>
-                    <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                            <CardTitle>Current Roster</CardTitle>
-                            <Badge variant="secondary" className="text-sm">
-                                {count} Students
-                            </Badge>
+            <div className="grid gap-8 lg:grid-cols-12">
+                <div className="lg:col-span-4 space-y-6">
+                    <div className="glass-card p-6 rounded-2xl border border-primary/10 shadow-xl">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                                <Upload className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold">Import Roster</h3>
+                                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Bulk CSV Paste</p>
+                            </div>
                         </div>
-                        <div className="flex gap-2">
-                            <Input
-                                placeholder="Search..."
-                                className="w-[120px]"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
+
+                        <div className="space-y-4">
+                            <Textarea
+                                placeholder="Example: 2481 Muhammad Saboor 26611"
+                                className="min-h-[400px] bg-background/50 border-primary/10 rounded-xl font-mono text-xs focus:ring-2 focus:ring-primary/20 transition-all resize-none"
+                                value={rosterText}
+                                onChange={(e) => setRosterText(e.target.value)}
                             />
-                            <Button size="icon" variant="outline" onClick={openAddDialog}>
-                                <Plus className="h-4 w-4" />
-                            </Button>
+
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="outline" className="w-full h-12 rounded-xl border-primary/20 hover:bg-primary/5 text-primary font-bold uppercase transition-all" disabled={!rosterText.trim() || isUploading}>
+                                        {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                                        Replace Entire Roster
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent className="glass-card border-primary/20">
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle className="text-2xl font-bold">Wipe and Replace?</AlertDialogTitle>
+                                        <AlertDialogDescription className="text-muted-foreground">
+                                            This action will <span className="text-destructive font-bold">PERMANENTLY DELETE</span> the current roster.
+                                            Attendance logs will remain but may reference non-existent ERPs if they aren't in the new list.
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel className="rounded-xl border-primary/10">Abort</AlertDialogCancel>
+                                        <AlertDialogAction onClick={parseAndUpload} className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90">Confirm Replacement</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
                         </div>
                     </div>
-                </CardHeader>
-                <CardContent>
-                    <div className="rounded-md border max-h-[500px] overflow-auto">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Class</TableHead>
-                                    <TableHead>Name</TableHead>
-                                    <TableHead>ERP</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {filteredStudents.map((s) => (
-                                    <TableRow key={s.id}>
-                                        <TableCell>{s.class_no}</TableCell>
-                                        <TableCell>{s.student_name}</TableCell>
-                                        <TableCell>{s.erp}</TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex justify-end gap-1">
-                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(s)}>
-                                                    <Pencil className="h-3.5 w-3.5" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteStudent(s.id)}>
-                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                </Button>
-                                            </div>
-                                        </TableCell>
+                </div>
+
+                <div className="lg:col-span-8 space-y-6">
+                    <div className="glass-card rounded-2xl border border-primary/10 shadow-xl overflow-hidden">
+                        <div className="p-6 border-b border-primary/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <div className="relative w-full sm:w-80 group">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                                <Input
+                                    placeholder="Search by ERP, Name or Class..."
+                                    className="pl-9 h-11 bg-background/50 border-primary/20 rounded-xl focus:ring-2 focus:ring-primary/20 transition-all"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto min-h-[500px]">
+                            <Table>
+                                <TableHeader className="bg-primary/5">
+                                    <TableRow className="border-primary/10 hover:bg-transparent">
+                                        <TableHead className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground py-4 px-6">Class</TableHead>
+                                        <TableHead className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground py-4 px-6">Student Identity</TableHead>
+                                        <TableHead className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground py-4 px-6">ERP ID</TableHead>
+                                        <TableHead className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground py-4 px-6 text-right">Actions</TableHead>
                                     </TableRow>
-                                ))}
-                                {filteredStudents.length === 0 && (
-                                    <TableRow>
-                                        <TableCell colSpan={4} className="text-center text-muted-foreground py-4">
-                                            No students found
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
-                        </Table>
+                                </TableHeader>
+                                <TableBody>
+                                    {filteredStudents.map((s) => (
+                                        <TableRow key={s.id} className="border-primary/5 hover:bg-primary/5 transition-colors group">
+                                            <TableCell className="py-4 px-6">
+                                                <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 font-mono text-[10px]">
+                                                    CL-{s.class_no}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="py-4 px-6">
+                                                <span className="font-bold text-sm group-hover:text-primary transition-colors">{s.student_name}</span>
+                                            </TableCell>
+                                            <TableCell className="py-4 px-6">
+                                                <span className="text-xs font-mono text-muted-foreground">{s.erp}</span>
+                                            </TableCell>
+                                            <TableCell className="py-4 px-6 text-right">
+                                                <div className="flex justify-end gap-1">
+                                                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg hover:bg-primary/10 hover:text-primary transition-all active:scale-90" onClick={() => openEditDialog(s)}>
+                                                        <Pencil className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-all active:scale-90" onClick={() => handleDeleteStudent(s.id)}>
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                    {filteredStudents.length === 0 && (
+                                        <TableRow>
+                                            <TableCell colSpan={4} className="text-center py-20">
+                                                <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                                                    <Search className="h-10 w-10 opacity-20" />
+                                                    <p className="text-sm font-medium">No students matched your search criteria.</p>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </div>
                     </div>
-                </CardContent>
-            </Card>
+                </div>
+            </div>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent>
+                <DialogContent className="glass-card border-primary/20 sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle>{currentStudent ? 'Edit Student' : 'Add Student'}</DialogTitle>
-                        <DialogDescription>
-                            {currentStudent ? 'Update student details.' : 'Add a new student to the roster manually.'}
+                        <DialogTitle className="text-2xl font-bold uppercase tracking-tight">{currentStudent ? 'Edit Student Profile' : 'Add New Entry'}</DialogTitle>
+                        <DialogDescription className="text-muted-foreground">
+                            {currentStudent ? 'Modify student identifying information.' : 'Introduce a new student to the master roster.'}
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label className="text-right">Name</Label>
+                    <div className="space-y-5 py-6">
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-bold uppercase tracking-widest text-primary">Full Name</Label>
                             <Input
-                                className="col-span-3"
+                                className="h-11 bg-background/50 border-primary/20 rounded-xl focus:ring-2 focus:ring-primary/20"
                                 value={formData.student_name}
                                 onChange={e => setFormData({ ...formData, student_name: e.target.value })}
                             />
                         </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label className="text-right">ERP</Label>
-                            <Input
-                                className="col-span-3"
-                                value={formData.erp}
-                                onChange={e => setFormData({ ...formData, erp: e.target.value })}
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label className="text-right">Class No</Label>
-                            <Input
-                                className="col-span-3"
-                                value={formData.class_no}
-                                onChange={e => setFormData({ ...formData, class_no: e.target.value })}
-                            />
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label className="text-[10px] font-bold uppercase tracking-widest text-primary">ERP ID</Label>
+                                <Input
+                                    className="h-11 bg-background/50 border-primary/20 rounded-xl font-mono focus:ring-2 focus:ring-primary/20"
+                                    value={formData.erp}
+                                    onChange={e => setFormData({ ...formData, erp: e.target.value })}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-[10px] font-bold uppercase tracking-widest text-primary">Class Code</Label>
+                                <Input
+                                    className="h-11 bg-background/50 border-primary/20 rounded-xl font-mono focus:ring-2 focus:ring-primary/20"
+                                    value={formData.class_no}
+                                    onChange={e => setFormData({ ...formData, class_no: e.target.value })}
+                                />
+                            </div>
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button onClick={handleSaveStudent} disabled={isSaving}>
-                            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save
+                        <Button onClick={handleSaveStudent} disabled={isSaving} className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold uppercase transition-all active:scale-95 shadow-lg shadow-primary/20">
+                            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} {currentStudent ? 'Confirm Updates' : 'Add to Roster'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

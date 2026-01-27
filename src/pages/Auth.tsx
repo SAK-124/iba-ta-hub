@@ -207,12 +207,14 @@ export default function Auth() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {error && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
+            <div className="min-h-[40px]">
+              {error && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm animate-in fade-in zoom-in-95 duration-200">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+            </div>
 
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
@@ -244,10 +246,27 @@ export default function Auth() {
                 </div>
               )}
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isPasswordMode ? 'Sign In' : 'Continue'}
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isPasswordMode ? 'Sign In' : 'Continue'}
+                </Button>
+                
+                {isPasswordMode && (
+                  <Button 
+                    type="button" 
+                    variant="ghost" 
+                    className="w-full text-xs" 
+                    onClick={() => {
+                      setIsPasswordMode(false);
+                      setPassword('');
+                    }}
+                    disabled={isLoading}
+                  >
+                    Back to Email
+                  </Button>
+                )}
+              </div>
             </form>
           </CardContent>
         </Card>
