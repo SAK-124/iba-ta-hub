@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { AlertCircle, Loader2, Plus, Save, Search, UserCheck, UserX } from 'lucide-react';
+import { AlertCircle, Loader2, Plus, Save, Search, UserCheck, UserX, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -251,6 +251,80 @@ export default function TAAttendance() {
     }
   };
 
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleZoomUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Reset input value to allow re-uploading the same file
+    e.target.value = '';
+
+    const loadingToast = toast.loading('Uploading and processing Zoom log...');
+    setIsUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      // Default threshold 0.8 (80%)
+      formData.append('threshold', '0.8');
+
+      // Use env var or fallback to a placeholder that the user must update
+      const apiUrl = import.meta.env.VITE_ZOOM_API_URL;
+
+      if (!apiUrl) {
+        toast.dismiss(loadingToast);
+        toast.error('API URL not configured', {
+          description: 'Please set VITE_ZOOM_API_URL in your .env file.'
+        });
+        return;
+      }
+
+      const response = await fetch(`${apiUrl}/api/process`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to process file');
+      }
+
+      const data = await response.json();
+
+      // Extract absent ERPs from the response
+      // Expecting data.absent_rows to be a list of dicts with 'ERP' key
+      const newAbsentErps: string[] = [];
+      let presentCount = 0;
+
+      if (data.absent_rows && Array.isArray(data.absent_rows)) {
+        data.absent_rows.forEach((row: any) => {
+          if (row.ERP) newAbsentErps.push(row.ERP.toString());
+        });
+      }
+
+      if (data.attendance_rows && Array.isArray(data.attendance_rows)) {
+        presentCount = data.attendance_rows.filter((r: any) => r['Attendance (>=80%)'] === 'Present' || r['Attendance (>=80%)']?.includes('Present')).length;
+      }
+
+      setAbsentErps(newAbsentErps.join(', '));
+
+      toast.dismiss(loadingToast);
+      toast.success('Zoom Log Processed', {
+        description: `Found ${presentCount} present, ${newAbsentErps.length} absent.`
+      });
+
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      toast.dismiss(loadingToast);
+      toast.error('Processing Failed', {
+        description: error.message
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const markAllUnmarkedAsPresent = async () => {
     if (!selectedSession) return;
 
@@ -326,22 +400,49 @@ export default function TAAttendance() {
               </div>
 
               {selectedSession && (
-                <div className="space-y-4 animate-fade-in">
+                <div className="space-y-4 animate-fade-in relative">
+                  {/* Overlay loading state */}
+                  {isUploading && (
+                    <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-10 flex flex-col items-center justify-center rounded-xl animate-in fade-in">
+                      <Loader2 className="w-8 h-8 animate-spin text-primary mb-2" />
+                      <p className="text-xs font-bold text-primary animate-pulse">Processing Zoom Log...</p>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
-                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Absent ERPs</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Absent ERPs</Label>
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept=".csv"
+                          className="hidden"
+                          id="zoom-upload"
+                          onChange={handleZoomUpload}
+                          disabled={isUploading || isSaving}
+                        />
+                        <Label
+                          htmlFor="zoom-upload"
+                          className={`text-[10px] font-bold uppercase tracking-wider text-primary hover:text-primary/80 cursor-pointer flex items-center gap-1 transition-colors ${isUploading ? 'pointer-events-none opacity-50' : ''}`}
+                        >
+                          <Upload className="w-3 h-3" /> Auto-Fill from Zoom
+                        </Label>
+                      </div>
+                    </div>
                     <Textarea
                       value={absentErps}
                       onChange={(e) => setAbsentErps(e.target.value)}
                       placeholder="Paste ERPs here (space or comma separated)..."
                       rows={4}
                       className="bg-background/50 border-primary/20 rounded-xl font-mono text-sm focus:ring-2 focus:ring-primary/20"
+                      disabled={isUploading}
                     />
                     <p className="text-[11px] text-muted-foreground italic">
                       All others will be marked as "Present" automatically.
                     </p>
                   </div>
 
-                  <Button onClick={handleSaveAttendance} disabled={isSaving} className="w-full h-11 rounded-xl shadow-lg shadow-primary/20 transition-all duration-300 hover:scale-[1.02]">
+                  <Button onClick={handleSaveAttendance} disabled={isSaving || isUploading} className="w-full h-11 rounded-xl shadow-lg shadow-primary/20 transition-all duration-300 hover:scale-[1.02]">
                     {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5 mr-2" />}
                     Save Bulk Attendance
                   </Button>
