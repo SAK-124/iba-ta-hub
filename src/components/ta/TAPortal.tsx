@@ -7,6 +7,7 @@ import ListsSettings from './ListsSettings';
 import ExportData from './ExportData';
 import ConsolidatedView from './ConsolidatedView';
 import RuleExceptions from './RuleExceptions';
+import TAZoomProcess from './TAZoomProcess';
 
 export default function TAPortal() {
   return (
@@ -26,6 +27,7 @@ export default function TAPortal() {
           <TabsTrigger value="lists">Settings</TabsTrigger>
           <TabsTrigger value="exceptions">Rule Exceptions</TabsTrigger>
           <TabsTrigger value="export">Export</TabsTrigger>
+          <TabsTrigger value="zoom">Zoom Process</TabsTrigger>
         </TabsList>
 
         <TabsContent value="issues" className="mt-6 space-y-4">
@@ -58,6 +60,10 @@ export default function TAPortal() {
 
         <TabsContent value="exceptions" className="mt-6 space-y-4">
           <RuleExceptions />
+        </TabsContent>
+
+        <TabsContent value="zoom" className="mt-6 space-y-4">
+          <TAZoomProcess />
         </TabsContent>
       </Tabs>
     </div>
