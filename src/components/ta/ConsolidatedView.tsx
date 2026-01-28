@@ -38,6 +38,9 @@ export default function ConsolidatedView() {
                 // Calculate naming penalties count
                 const namingPenaltyCount = studentAttendance.filter(a => a.naming_penalty).length;
 
+                // Calculate total absences (not counting excused)
+                const absenceCount = studentAttendance.filter(a => a.status === 'absent').length;
+
                 // Create session map
                 const sessionStatus: Record<string, string> = {};
                 studentAttendance.forEach(a => {
@@ -47,6 +50,7 @@ export default function ConsolidatedView() {
                 return {
                     ...student,
                     namingPenaltyCount,
+                    absenceCount,
                     sessionStatus
                 };
             });
@@ -92,38 +96,59 @@ export default function ConsolidatedView() {
                                     <TableHead className="sticky left-0 bg-background z-10 w-[100px]">Class</TableHead>
                                     <TableHead className="sticky left-[100px] bg-background z-10 w-[200px]">Name</TableHead>
                                     <TableHead className="w-[100px]">ERP</TableHead>
-                                    <TableHead className="w-[100px] text-center font-bold text-destructive">Penalties</TableHead>
+                                    <TableHead className="w-[80px] text-center font-bold text-destructive">Penalties</TableHead>
+                                    <TableHead className="w-[80px] text-center font-bold">Absences</TableHead>
                                     {sessions.map(s => (
                                         <TableHead key={s.id} className="text-center w-[60px]">S{s.session_number}</TableHead>
                                     ))}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {filteredData.map((student) => (
-                                    <TableRow key={student.id}>
-                                        <TableCell className="sticky left-0 bg-background font-medium">{student.class_no}</TableCell>
-                                        <TableCell className="sticky left-[100px] bg-background">{student.student_name}</TableCell>
-                                        <TableCell>{student.erp}</TableCell>
-                                        <TableCell className="text-center font-bold">
-                                            {student.namingPenaltyCount > 0 ? `-${student.namingPenaltyCount}` : '-'}
-                                        </TableCell>
-                                        {sessions.map(s => {
-                                            const status = student.sessionStatus[s.id];
-                                            let symbol = '-';
-                                            let color = '';
+                                {filteredData.map((student) => {
+                                    // Color code absences: 0 = green, 1-2 = default, 3-4 = yellow, 5+ = red
+                                    const getAbsenceColor = (count: number) => {
+                                        if (count === 0) return 'text-green-500';
+                                        if (count <= 2) return 'text-muted-foreground';
+                                        if (count <= 4) return 'text-yellow-500';
+                                        return 'text-red-500';
+                                    };
 
-                                            if (status === 'present') { symbol = 'P'; color = 'text-green-600 font-bold'; }
-                                            else if (status === 'absent') { symbol = 'A'; color = 'text-red-600 font-bold'; }
-                                            else if (status === 'excused') { symbol = 'E'; color = 'text-yellow-600 font-bold'; }
+                                    const getAbsenceBg = (count: number) => {
+                                        if (count === 0) return '';
+                                        if (count <= 2) return '';
+                                        if (count <= 4) return 'bg-yellow-500/10';
+                                        return 'bg-red-500/10';
+                                    };
 
-                                            return (
-                                                <TableCell key={s.id} className={`text-center ${color}`}>
-                                                    {symbol}
-                                                </TableCell>
-                                            );
-                                        })}
-                                    </TableRow>
-                                ))}
+                                    return (
+                                        <TableRow key={student.id}>
+                                            <TableCell className="sticky left-0 bg-background font-medium">{student.class_no}</TableCell>
+                                            <TableCell className="sticky left-[100px] bg-background">{student.student_name}</TableCell>
+                                            <TableCell>{student.erp}</TableCell>
+                                            <TableCell className="text-center font-bold">
+                                                {student.namingPenaltyCount > 0 ? `-${student.namingPenaltyCount}` : '-'}
+                                            </TableCell>
+                                            <TableCell className={`text-center font-bold ${getAbsenceColor(student.absenceCount)} ${getAbsenceBg(student.absenceCount)}`}>
+                                                {student.absenceCount}
+                                            </TableCell>
+                                            {sessions.map(s => {
+                                                const status = student.sessionStatus[s.id];
+                                                let symbol = '-';
+                                                let color = '';
+
+                                                if (status === 'present') { symbol = 'P'; color = 'text-green-600 font-bold'; }
+                                                else if (status === 'absent') { symbol = 'A'; color = 'text-red-600 font-bold'; }
+                                                else if (status === 'excused') { symbol = 'E'; color = 'text-yellow-600 font-bold'; }
+
+                                                return (
+                                                    <TableCell key={s.id} className={`text-center ${color}`}>
+                                                        {symbol}
+                                                    </TableCell>
+                                                );
+                                            })}
+                                        </TableRow>
+                                    );
+                                })}
                             </TableBody>
                         </Table>
                     </div>
