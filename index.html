@@ -1,26 +1,30 @@
 <!doctype html>
 <html lang="en" class="dark">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- TODO: Set the document title to the name of your application -->
-    <title>AAMD Portal</title>
-    <meta name="description" content="Lovable Generated Project" />
-    <meta name="author" content="Lovable" />
 
-    <!-- TODO: Update og:title to match your application name -->
-    <meta property="og:title" content="Lovable App" />
-    <meta property="og:description" content="Lovable Generated Project" />
-    <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+<head>
+  <meta charset="UTF-8" />
+  <!-- Force desktop view on mobile by setting a minimum width -->
+  <meta name="viewport" content="width=1200, initial-scale=0.5, maximum-scale=2.0, user-scalable=yes" />
+  <title>AAMD Portal</title>
+  <meta name="description" content="AAMD Portal - Teaching Assistant Dashboard for Attendance Management" />
+  <meta name="author" content="SAK" />
 
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@Lovable" />
-    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
-  </head>
+  <meta property="og:title" content="AAMD Portal" />
+  <meta property="og:description" content="Teaching Assistant Dashboard for Attendance Management" />
+  <meta property="og:type" content="website" />
 
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+  <meta name="twitter:card" content="summary" />
+
+  <!-- Preconnect to Supabase for faster loading -->
+  <link rel="preconnect" href="https://xkpjdgcvdfnfletygweo.supabase.co" crossorigin />
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
 </html>
