@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { toast } from 'sonner';
-import { Loader2, Plus, Trash2, CalendarIcon } from 'lucide-react';
+import { Loader2, Plus, Trash2, CalendarIcon, Clock } from 'lucide-react';
 import { format, getDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -190,11 +190,15 @@ export default function SessionManagement() {
                     {/* End Time */}
                     <div className="space-y-1.5">
                         <label className="text-sm font-medium text-muted-foreground">End Time (Optional)</label>
-                        <Input
-                            type="time"
-                            value={endTime}
-                            onChange={e => setEndTime(e.target.value)}
-                        />
+                        <div className="relative">
+                            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                type="time"
+                                value={endTime}
+                                onChange={e => setEndTime(e.target.value)}
+                                className="pl-10"
+                            />
+                        </div>
                     </div>
 
                     <Button className="w-full" onClick={handleCreate} disabled={isCreating || !sessionNum || !selectedDate}>
