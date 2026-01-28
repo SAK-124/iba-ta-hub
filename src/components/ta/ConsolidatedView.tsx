@@ -105,18 +105,16 @@ export default function ConsolidatedView() {
                             </TableHeader>
                             <TableBody>
                                 {filteredData.map((student) => {
-                                    // Color code absences: 0 = green, 1-2 = default, 3-4 = yellow, 5+ = red
+                                    // Color code absences: 0-4 = green, 5 = yellow warning, 6+ = red danger
                                     const getAbsenceColor = (count: number) => {
-                                        if (count === 0) return 'text-green-500';
-                                        if (count <= 2) return 'text-muted-foreground';
-                                        if (count <= 4) return 'text-yellow-500';
+                                        if (count <= 4) return 'text-green-500';
+                                        if (count === 5) return 'text-yellow-500';
                                         return 'text-red-500';
                                     };
 
                                     const getAbsenceBg = (count: number) => {
-                                        if (count === 0) return '';
-                                        if (count <= 2) return '';
-                                        if (count <= 4) return 'bg-yellow-500/10';
+                                        if (count <= 4) return '';
+                                        if (count === 5) return 'bg-yellow-500/10';
                                         return 'bg-red-500/10';
                                     };
 

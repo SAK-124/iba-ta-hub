@@ -53,7 +53,17 @@ export default function AttendanceView() {
                         <CardTitle className="text-lg">Total Absences</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-4xl font-bold">{totalAbsences}</div>
+                        <div className={`text-4xl font-bold ${totalAbsences <= 4 ? 'text-foreground' :
+                                totalAbsences === 5 ? 'text-yellow-500' :
+                                    'text-red-500'
+                            }`}>
+                            {totalAbsences}
+                        </div>
+                        {totalAbsences >= 5 && (
+                            <p className={`text-sm mt-1 ${totalAbsences === 5 ? 'text-yellow-500' : 'text-red-500'}`}>
+                                {totalAbsences === 5 ? '⚠️ Warning threshold reached' : '🚨 Critical - contact TA'}
+                            </p>
+                        )}
                     </CardContent>
                 </Card>
                 <Card>
