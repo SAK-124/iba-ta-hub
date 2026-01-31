@@ -7,15 +7,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Loader2, Plus, Trash2, CalendarIcon, Clock } from 'lucide-react';
-import { format, getDay } from 'date-fns';
+import { Loader2, Plus, Trash2, CalendarIcon, Clock, Pencil } from 'lucide-react';
+import { format, getDay, parse } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+interface Session {
+    id: string;
+    session_number: number;
+    session_date: string;
+    day_of_week: string;
+    start_time?: string | null;
+    end_time?: string | null;
+}
+
 export default function SessionManagement() {
-    const [sessions, setSessions] = useState<any[]>([]);
+    const [sessions, setSessions] = useState<Session[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     // New session form
@@ -24,27 +34,44 @@ export default function SessionManagement() {
     const [day, setDay] = useState<string>('');
     const [customDay, setCustomDay] = useState('');
     const [useCustomDay, setUseCustomDay] = useState(false);
+    const [startTime, setStartTime] = useState('');
     const [endTime, setEndTime] = useState('');
     const [isCreating, setIsCreating] = useState(false);
+
+    // Edit dialog state
+    const [editingSession, setEditingSession] = useState<Session | null>(null);
+    const [editSessionNum, setEditSessionNum] = useState('');
+    const [editDate, setEditDate] = useState<Date | undefined>(undefined);
+    const [editDay, setEditDay] = useState('');
+    const [editStartTime, setEditStartTime] = useState('');
+    const [editEndTime, setEditEndTime] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
         fetchSessions();
     }, []);
 
-    // Auto-detect day of week when date changes
+    // Auto-detect day of week when date changes (for new session)
     useEffect(() => {
         if (selectedDate) {
             const dayIndex = getDay(selectedDate);
-            const detectedDay = DAYS_OF_WEEK[dayIndex];
-            setDay(detectedDay);
+            setDay(DAYS_OF_WEEK[dayIndex]);
             setUseCustomDay(false);
         }
     }, [selectedDate]);
 
+    // Auto-detect day of week when edit date changes
+    useEffect(() => {
+        if (editDate) {
+            const dayIndex = getDay(editDate);
+            setEditDay(DAYS_OF_WEEK[dayIndex]);
+        }
+    }, [editDate]);
+
     const fetchSessions = async () => {
         setIsLoading(true);
         const { data } = await supabase.from('sessions').select('*').order('session_number', { ascending: false });
-        if (data) setSessions(data);
+        if (data) setSessions(data as Session[]);
         setIsLoading(false);
     };
 
@@ -59,22 +86,22 @@ export default function SessionManagement() {
 
         setIsCreating(true);
         try {
-            const { error } = await supabase.from('sessions').insert({
+            const insertData: any = {
                 session_number: parseInt(sessionNum),
                 session_date: format(selectedDate, 'yyyy-MM-dd'),
                 day_of_week: finalDay,
-                end_time: endTime || null
-            });
+            };
+
+            // Only add times if they have values
+            if (startTime) insertData.start_time = startTime;
+            if (endTime) insertData.end_time = endTime;
+
+            const { error } = await supabase.from('sessions').insert(insertData);
 
             if (error) throw error;
 
             toast.success('Session created');
-            setSessionNum('');
-            setSelectedDate(undefined);
-            setDay('');
-            setCustomDay('');
-            setUseCustomDay(false);
-            setEndTime('');
+            resetForm();
             fetchSessions();
         } catch (error: any) {
             toast.error('Failed to create session: ' + error.message);
@@ -83,14 +110,74 @@ export default function SessionManagement() {
         }
     };
 
+    const resetForm = () => {
+        setSessionNum('');
+        setSelectedDate(undefined);
+        setDay('');
+        setCustomDay('');
+        setUseCustomDay(false);
+        setStartTime('');
+        setEndTime('');
+    };
+
     const handleDelete = async (id: string) => {
-        if (!confirm('Are you sure? This will delete all attendance for this session.')) return;
+        if (!confirm('Are you sure? This will delete the session. Attendance data will remain but become orphaned.')) return;
         const { error } = await supabase.from('sessions').delete().eq('id', id);
         if (error) {
             toast.error('Failed to delete');
         } else {
             toast.success('Session deleted');
             fetchSessions();
+        }
+    };
+
+    const openEditDialog = (session: Session) => {
+        setEditingSession(session);
+        setEditSessionNum(session.session_number.toString());
+        setEditDate(new Date(session.session_date));
+        setEditDay(session.day_of_week);
+        setEditStartTime(session.start_time || '');
+        setEditEndTime(session.end_time || '');
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editingSession || !editSessionNum || !editDate || !editDay) return;
+
+        setIsSaving(true);
+        try {
+            const updateData: any = {
+                session_number: parseInt(editSessionNum),
+                session_date: format(editDate, 'yyyy-MM-dd'),
+                day_of_week: editDay,
+                start_time: editStartTime || null,
+                end_time: editEndTime || null,
+            };
+
+            const { error } = await supabase
+                .from('sessions')
+                .update(updateData)
+                .eq('id', editingSession.id);
+
+            if (error) throw error;
+
+            toast.success('Session updated (attendance data preserved)');
+            setEditingSession(null);
+            fetchSessions();
+        } catch (error: any) {
+            toast.error('Failed to update: ' + error.message);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const formatTime = (time: string | null | undefined) => {
+        if (!time) return '-';
+        try {
+            // Parse HH:mm format and display nicely
+            const parsed = parse(time, 'HH:mm', new Date());
+            return format(parsed, 'h:mm a');
+        } catch {
+            return time;
         }
     };
 
@@ -140,14 +227,12 @@ export default function SessionManagement() {
                         </Popover>
                     </div>
 
-                    {/* Day of Week - Auto-detected or Custom */}
+                    {/* Day of Week */}
                     <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
                             <label className="text-sm font-medium text-muted-foreground">Day of Week</label>
-                            {selectedDate && day && (
-                                <span className="text-xs text-muted-foreground">
-                                    Auto-detected: <span className="font-medium text-primary">{day}</span>
-                                </span>
+                            {selectedDate && day && !useCustomDay && (
+                                <span className="text-xs text-primary">Auto: {day}</span>
                             )}
                         </div>
                         <Select
@@ -165,21 +250,15 @@ export default function SessionManagement() {
                                 <SelectValue placeholder="Select day" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="Friday">Friday</SelectItem>
-                                <SelectItem value="Saturday">Saturday</SelectItem>
-                                <SelectItem value="Sunday">Sunday</SelectItem>
-                                <SelectItem value="Monday">Monday</SelectItem>
-                                <SelectItem value="Tuesday">Tuesday</SelectItem>
-                                <SelectItem value="Wednesday">Wednesday</SelectItem>
-                                <SelectItem value="Thursday">Thursday</SelectItem>
+                                {DAYS_OF_WEEK.map(d => (
+                                    <SelectItem key={d} value={d}>{d}</SelectItem>
+                                ))}
                                 <SelectItem value="custom">Custom...</SelectItem>
                             </SelectContent>
                         </Select>
-
-                        {/* Custom Day Input */}
                         {useCustomDay && (
                             <Input
-                                placeholder="Enter custom day (e.g. Holiday Makeup)"
+                                placeholder="e.g. Holiday Makeup"
                                 value={customDay}
                                 onChange={e => setCustomDay(e.target.value)}
                                 className="mt-2"
@@ -187,17 +266,31 @@ export default function SessionManagement() {
                         )}
                     </div>
 
-                    {/* End Time */}
-                    <div className="space-y-1.5">
-                        <label className="text-sm font-medium text-muted-foreground">End Time (Optional)</label>
-                        <div className="relative">
-                            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                type="time"
-                                value={endTime}
-                                onChange={e => setEndTime(e.target.value)}
-                                className="pl-10"
-                            />
+                    {/* Time Inputs */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium text-muted-foreground">Start Time</label>
+                            <div className="relative">
+                                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                                <Input
+                                    type="time"
+                                    value={startTime}
+                                    onChange={e => setStartTime(e.target.value)}
+                                    className="pl-10"
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium text-muted-foreground">End Time</label>
+                            <div className="relative">
+                                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                                <Input
+                                    type="time"
+                                    value={endTime}
+                                    onChange={e => setEndTime(e.target.value)}
+                                    className="pl-10"
+                                />
+                            </div>
                         </div>
                     </div>
 
@@ -211,7 +304,7 @@ export default function SessionManagement() {
             <Card className="md:col-span-2">
                 <CardHeader>
                     <CardTitle>Sessions List</CardTitle>
-                    <CardDescription>All class sessions</CardDescription>
+                    <CardDescription>Click edit to modify session details (attendance data is preserved)</CardDescription>
                 </CardHeader>
                 <CardContent>
                     {isLoading ? (
@@ -226,8 +319,8 @@ export default function SessionManagement() {
                                         <TableHead className="w-16">#</TableHead>
                                         <TableHead>Date</TableHead>
                                         <TableHead>Day</TableHead>
-                                        <TableHead>End Time</TableHead>
-                                        <TableHead className="text-right w-20">Actions</TableHead>
+                                        <TableHead>Time</TableHead>
+                                        <TableHead className="text-right w-28">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -236,8 +329,17 @@ export default function SessionManagement() {
                                             <TableCell className="font-bold text-primary">{s.session_number}</TableCell>
                                             <TableCell>{format(new Date(s.session_date), 'PPP')}</TableCell>
                                             <TableCell>{s.day_of_week}</TableCell>
-                                            <TableCell>{s.end_time || '-'}</TableCell>
-                                            <TableCell className="text-right">
+                                            <TableCell className="text-sm text-muted-foreground">
+                                                {s.start_time || s.end_time ? (
+                                                    <>
+                                                        {formatTime(s.start_time)} - {formatTime(s.end_time)}
+                                                    </>
+                                                ) : '-'}
+                                            </TableCell>
+                                            <TableCell className="text-right space-x-1">
+                                                <Button variant="ghost" size="icon" onClick={() => openEditDialog(s)} className="hover:bg-primary/10">
+                                                    <Pencil className="h-4 w-4 text-primary" />
+                                                </Button>
                                                 <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)} className="hover:bg-destructive/10">
                                                     <Trash2 className="h-4 w-4 text-destructive" />
                                                 </Button>
@@ -250,6 +352,88 @@ export default function SessionManagement() {
                     )}
                 </CardContent>
             </Card>
+
+            {/* Edit Dialog */}
+            <Dialog open={!!editingSession} onOpenChange={(open) => !open && setEditingSession(null)}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Edit Session</DialogTitle>
+                        <DialogDescription>
+                            Modify session details. Attendance data will not be affected.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium">Session Number</label>
+                            <Input
+                                type="number"
+                                value={editSessionNum}
+                                onChange={e => setEditSessionNum(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium">Date</label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-start">
+                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                        {editDate ? format(editDate, 'PPP') : 'Pick a date'}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                    <Calendar
+                                        mode="single"
+                                        selected={editDate}
+                                        onSelect={setEditDate}
+                                        initialFocus
+                                    />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium">Day of Week</label>
+                            <Select value={editDay} onValueChange={setEditDay}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {DAYS_OF_WEEK.map(d => (
+                                        <SelectItem key={d} value={d}>{d}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <label className="text-sm font-medium">Start Time</label>
+                                <Input
+                                    type="time"
+                                    value={editStartTime}
+                                    onChange={e => setEditStartTime(e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-sm font-medium">End Time</label>
+                                <Input
+                                    type="time"
+                                    value={editEndTime}
+                                    onChange={e => setEditEndTime(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditingSession(null)}>Cancel</Button>
+                        <Button onClick={handleSaveEdit} disabled={isSaving}>
+                            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Save Changes
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
