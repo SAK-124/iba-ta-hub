@@ -88,7 +88,7 @@ export default function TAPortal() {
         </TabsList>
 
         {/* Tab Contents */}
-        <TabsContent value="zoom" className="mt-6" forceMount>
+        <TabsContent value="zoom" className="mt-6">
           <TAZoomProcess />
         </TabsContent>
 
