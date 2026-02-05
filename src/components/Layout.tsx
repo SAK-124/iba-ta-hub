@@ -17,7 +17,7 @@ export default function Layout({
   const navigate = useNavigate();
   const handleSignOut = async () => {
     await signOut();
-    navigate('/auth');
+    navigate('/');
   };
   return <div className="min-h-screen bg-background transition-colors duration-300">
     <header className="sticky top-0 z-50 w-full glass-morphism border-b border-primary/10">
