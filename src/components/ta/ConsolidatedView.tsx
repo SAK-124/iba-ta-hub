@@ -3,12 +3,41 @@ import { supabase } from '@/integrations/supabase/client';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { saveToGoogleSheet } from '@/lib/google-sheets';
+import { toast } from 'sonner';
+import { Loader2, Upload } from 'lucide-react';
+
+interface Session {
+    id: string;
+    session_number: number;
+}
+
+interface RosterStudent {
+    id: string;
+    class_no: string;
+    student_name: string;
+    erp: string;
+}
+
+interface AttendanceRecord {
+    erp: string;
+    session_id: string;
+    status: string;
+    naming_penalty?: boolean;
+}
+
+interface ConsolidatedStudent extends RosterStudent {
+    namingPenaltyCount: number;
+    absenceCount: number;
+    sessionStatus: Record<string, string>;
+}
 
 export default function ConsolidatedView() {
-    const [data, setData] = useState<any[]>([]);
-    const [sessions, setSessions] = useState<any[]>([]);
+    const [data, setData] = useState<ConsolidatedStudent[]>([]);
+    const [sessions, setSessions] = useState<Session[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSyncing, setIsSyncing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
@@ -25,15 +54,15 @@ export default function ConsolidatedView() {
                 supabase.from('attendance').select('*')
             ]);
 
-            const roster = rosterRes.data || [];
-            const fetchedSessions = sessionsRes.data || [];
-            const attendance = attendanceRes.data || [];
+            const roster: RosterStudent[] = (rosterRes.data || []) as RosterStudent[];
+            const fetchedSessions: Session[] = (sessionsRes.data || []) as Session[];
+            const attendance: AttendanceRecord[] = (attendanceRes.data || []) as AttendanceRecord[];
 
             setSessions(fetchedSessions);
 
             // Process data
-            const processed = roster.map(student => {
-                const studentAttendance = attendance.filter((a: any) => a.erp === student.erp);
+            const processed = roster.map((student) => {
+                const studentAttendance = attendance.filter((a) => a.erp === student.erp);
 
                 // Calculate naming penalties count
                 const namingPenaltyCount = studentAttendance.filter(a => a.naming_penalty).length;
@@ -69,20 +98,85 @@ export default function ConsolidatedView() {
         s.class_no.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+    const handleSyncPublicAttendanceToSheet = async () => {
+        setIsSyncing(true);
+        try {
+            const headers = [
+                'Class',
+                'Name',
+                'ERP',
+                'Penalties',
+                'Absences',
+                ...sessions.map((s) => `S${s.session_number}`)
+            ];
+
+            const rows = data.map((student) => [
+                student.class_no,
+                student.student_name,
+                student.erp,
+                student.namingPenaltyCount,
+                student.absenceCount,
+                ...sessions.map((s) => {
+                    const status = student.sessionStatus[s.id];
+                    if (status === 'present') return 'P';
+                    if (status === 'absent') return 'A';
+                    if (status === 'excused') return 'E';
+                    return '-';
+                })
+            ]);
+
+            const payload = {
+                type: 'public_attendance_snapshot',
+                generated_at: new Date().toISOString(),
+                headers,
+                rows,
+                metadata: {
+                    students: data.length,
+                    sessions: sessions.length
+                }
+            };
+
+            toast.info('Syncing public attendance snapshot to Google Sheet...');
+            const success = await saveToGoogleSheet(payload);
+
+            if (!success) {
+                toast.error('Failed to sync to Google Sheet');
+                return;
+            }
+
+            toast.success('Public attendance snapshot synced to Google Sheet');
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            toast.error(`Failed to sync: ${message}`);
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
     return (
         <Card className="h-full">
             <CardHeader>
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center">
                     <div>
                         <CardTitle>Consolidated View</CardTitle>
                         <CardDescription>Full attendance sheet with penalties</CardDescription>
                     </div>
-                    <Input
-                        placeholder="Search..."
-                        className="w-[200px]"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
+                    <div className="flex gap-2">
+                        <Input
+                            placeholder="Search..."
+                            className="w-[220px]"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                        <Button
+                            onClick={handleSyncPublicAttendanceToSheet}
+                            disabled={isLoading || isSyncing || data.length === 0}
+                            variant="outline"
+                        >
+                            {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                            Sync Sheet
+                        </Button>
+                    </div>
                 </div>
             </CardHeader>
             <CardContent>
