@@ -84,7 +84,26 @@ interface ZoomDiagnostics {
   integrityWarnings: string[];
 }
 
+interface ZoomWorkspaceCache {
+  data: ProcessedData | null;
+  activeTab: string;
+  step: 'upload' | 'review' | 'results';
+  zoomFile: File | null;
+  rosterFile: File | null;
+  useSavedRoster: boolean;
+  manualDuration: string;
+  namazBreak: string;
+  filterName: string;
+  filterErp: string;
+  filterClass: string;
+  ignoredKeys: string[];
+  penaltySessionId: string;
+  selectedPenaltyKeys: string[];
+  missingAttendanceErps: string[];
+}
+
 const ERP_REGEX = /(\d{5})/;
+let zoomWorkspaceCache: ZoomWorkspaceCache | null = null;
 
 const toText = (value: unknown) => (value == null ? '' : String(value).trim());
 
@@ -212,30 +231,34 @@ const downloadJson = (filename: string, data: unknown) => {
 };
 
 export default function TAZoomProcess() {
-  const [data, setData] = useState<ProcessedData | null>(null);
+  const cached = zoomWorkspaceCache;
+
+  const [data, setData] = useState<ProcessedData | null>(() => cached?.data ?? null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [activeTab, setActiveTab] = useState('matches');
+  const [activeTab, setActiveTab] = useState(() => cached?.activeTab ?? 'matches');
 
-  const [step, setStep] = useState<'upload' | 'review' | 'results'>('upload');
+  const [step, setStep] = useState<'upload' | 'review' | 'results'>(() => cached?.step ?? 'upload');
 
-  const [zoomFile, setZoomFile] = useState<File | null>(null);
-  const [rosterFile, setRosterFile] = useState<File | null>(null);
-  const [useSavedRoster, setUseSavedRoster] = useState(true);
-  const [manualDuration, setManualDuration] = useState('');
-  const [namazBreak, setNamazBreak] = useState('');
+  const [zoomFile, setZoomFile] = useState<File | null>(() => cached?.zoomFile ?? null);
+  const [rosterFile, setRosterFile] = useState<File | null>(() => cached?.rosterFile ?? null);
+  const [useSavedRoster, setUseSavedRoster] = useState(() => cached?.useSavedRoster ?? true);
+  const [manualDuration, setManualDuration] = useState(() => cached?.manualDuration ?? '');
+  const [namazBreak, setNamazBreak] = useState(() => cached?.namazBreak ?? '');
 
-  const [filterName, setFilterName] = useState('');
-  const [filterErp, setFilterErp] = useState('');
-  const [filterClass, setFilterClass] = useState('');
+  const [filterName, setFilterName] = useState(() => cached?.filterName ?? '');
+  const [filterErp, setFilterErp] = useState(() => cached?.filterErp ?? '');
+  const [filterClass, setFilterClass] = useState(() => cached?.filterClass ?? '');
 
-  const [ignoredKeys, setIgnoredKeys] = useState<Set<string>>(new Set());
+  const [ignoredKeys, setIgnoredKeys] = useState<Set<string>>(() => new Set(cached?.ignoredKeys ?? []));
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [rosterReference, setRosterReference] = useState<Record<string, RosterReference>>({});
 
-  const [penaltySessionId, setPenaltySessionId] = useState('');
-  const [selectedPenaltyKeys, setSelectedPenaltyKeys] = useState<Set<string>>(new Set());
+  const [penaltySessionId, setPenaltySessionId] = useState(() => cached?.penaltySessionId ?? '');
+  const [selectedPenaltyKeys, setSelectedPenaltyKeys] = useState<Set<string>>(
+    () => new Set(cached?.selectedPenaltyKeys ?? [])
+  );
   const [isApplyingPenalties, setIsApplyingPenalties] = useState(false);
-  const [missingAttendanceErps, setMissingAttendanceErps] = useState<string[]>([]);
+  const [missingAttendanceErps, setMissingAttendanceErps] = useState<string[]>(() => cached?.missingAttendanceErps ?? []);
 
   const toggleIgnoreKey = (key: string) => {
     setIgnoredKeys((prev) => {
@@ -277,6 +300,42 @@ export default function TAZoomProcess() {
 
     void loadReferenceData();
   }, []);
+
+  useEffect(() => {
+    zoomWorkspaceCache = {
+      data,
+      activeTab,
+      step,
+      zoomFile,
+      rosterFile,
+      useSavedRoster,
+      manualDuration,
+      namazBreak,
+      filterName,
+      filterErp,
+      filterClass,
+      ignoredKeys: Array.from(ignoredKeys),
+      penaltySessionId,
+      selectedPenaltyKeys: Array.from(selectedPenaltyKeys),
+      missingAttendanceErps,
+    };
+  }, [
+    data,
+    activeTab,
+    step,
+    zoomFile,
+    rosterFile,
+    useSavedRoster,
+    manualDuration,
+    namazBreak,
+    filterName,
+    filterErp,
+    filterClass,
+    ignoredKeys,
+    penaltySessionId,
+    selectedPenaltyKeys,
+    missingAttendanceErps,
+  ]);
 
   useEffect(() => {
     setIgnoredKeys(new Set());
