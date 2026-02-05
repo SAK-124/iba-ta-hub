@@ -22,7 +22,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isTA, setIsTA] = useState(false);
 
-  const checkTAStatus = async (email: string) => {
+  const checkTAStatus = async (email: string): Promise<boolean> => {
     try {
       const { data } = await supabase
         .from('ta_allowlist')
@@ -31,40 +31,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .eq('active', true)
         .maybeSingle();
 
-      setIsTA(!!data);
+      return !!data;
     } catch {
-      setIsTA(false);
+      return false;
     }
   };
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setIsLoading(false);
+    let isMounted = true;
 
-        if (session?.user?.email) {
-          setTimeout(() => {
-            checkTAStatus(session.user.email!);
-          }, 0);
-        } else {
-          setIsTA(false);
-        }
+    const syncSessionState = async (nextSession: Session | null) => {
+      if (!isMounted) return;
+
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+
+      if (!nextSession?.user?.email) {
+        setIsTA(false);
+        setIsLoading(false);
+        return;
       }
-    );
+
+      setIsLoading(true);
+      const taStatus = await checkTAStatus(nextSession.user.email);
+      if (!isMounted) return;
+
+      setIsTA(taStatus);
+      setIsLoading(false);
+    };
+
+    setIsLoading(true);
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setIsLoading(false);
-
-      if (session?.user?.email) {
-        checkTAStatus(session.user.email);
-      }
+      void syncSessionState(session);
     });
 
-    return () => subscription.unsubscribe();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      void syncSessionState(nextSession);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {

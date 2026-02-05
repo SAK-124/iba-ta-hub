@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -8,397 +9,464 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { saveToGoogleSheet } from '@/lib/google-sheets';
+import { syncPublicAttendanceSnapshot } from '@/lib/public-attendance-sync';
 import { Loader2, Save } from 'lucide-react';
-import { format } from 'date-fns';
+
+type AttendanceStatus = 'present' | 'absent' | 'excused';
+
+interface SessionRow {
+  id: string;
+  session_number: number;
+  session_date: string;
+}
+
+interface RosterRow {
+  id: string;
+  class_no: string;
+  student_name: string;
+  erp: string;
+}
+
+interface AttendanceRow {
+  id: string;
+  session_id: string;
+  erp: string;
+  status: AttendanceStatus;
+  naming_penalty: boolean;
+  student_name?: string;
+  class_no?: string;
+  students_roster?: {
+    student_name?: string;
+    class_no?: string;
+  } | null;
+}
+
+const AUTO_SYNC_DELAY_MS = 1200;
 
 export default function AttendanceMarking() {
-    const [sessions, setSessions] = useState<any[]>([]);
-    const [selectedSessionId, setSelectedSessionId] = useState('');
-    const [absentErps, setAbsentErps] = useState('');
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState('');
+  const [absentErps, setAbsentErps] = useState('');
 
-    const [attendanceData, setAttendanceData] = useState<any[]>([]);
-    const [roster, setRoster] = useState<any[]>([]);
+  const [attendanceData, setAttendanceData] = useState<AttendanceRow[]>([]);
+  const [roster, setRoster] = useState<RosterRow[]>([]);
 
-    const [isLoading, setIsLoading] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
-    const [showOverwriteAlert, setShowOverwriteAlert] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [showOverwriteAlert, setShowOverwriteAlert] = useState(false);
 
-    const [searchQuery, setSearchQuery] = useState('');
-    const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'absent' | 'excused'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | AttendanceStatus>('all');
 
-    useEffect(() => {
-        fetchSessions();
-        fetchRoster();
-    }, []);
+  const autoSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    useEffect(() => {
-        if (selectedSessionId) {
-            fetchAttendance(selectedSessionId);
-        } else {
-            setAttendanceData([]);
-        }
-    }, [selectedSessionId]);
+  useEffect(() => {
+    void fetchSessions();
+    void fetchRoster();
 
-    const fetchSessions = async () => {
-        const { data } = await supabase.from('sessions').select('*').order('session_number', { ascending: false });
-        if (data) setSessions(data);
+    return () => {
+      if (autoSyncTimerRef.current) {
+        clearTimeout(autoSyncTimerRef.current);
+      }
     };
+  }, []);
 
-    const fetchRoster = async () => {
-        const { data } = await supabase.from('students_roster').select('*');
-        if (data) setRoster(data);
-    };
+  useEffect(() => {
+    if (selectedSessionId) {
+      void fetchAttendance(selectedSessionId);
+      return;
+    }
 
-    const fetchAttendance = async (sessionId: string) => {
-        setIsLoading(true);
-        const { data } = await supabase.from('attendance').select('*, students_roster(student_name, class_no)').eq('session_id', sessionId);
+    setAttendanceData([]);
+  }, [selectedSessionId]);
 
-        if (data && data.length > 0) {
-            // Map joined data to flat structure for easier display
-            const flatData = data.map(d => ({
-                ...d,
-                student_name: d.students_roster?.student_name,
-                class_no: d.students_roster?.class_no
-            }));
-            setAttendanceData(flatData);
-        } else {
-            setAttendanceData([]);
+  const fetchSessions = async () => {
+    const { data, error } = await supabase
+      .from('sessions')
+      .select('*')
+      .order('session_number', { ascending: false });
+
+    if (error) {
+      toast.error(`Failed to load sessions: ${error.message}`);
+      return;
+    }
+
+    setSessions((data || []) as SessionRow[]);
+  };
+
+  const fetchRoster = async () => {
+    const { data, error } = await supabase.from('students_roster').select('*');
+
+    if (error) {
+      toast.error(`Failed to load roster: ${error.message}`);
+      return;
+    }
+
+    setRoster((data || []) as RosterRow[]);
+  };
+
+  const fetchAttendance = async (sessionId: string) => {
+    setIsLoading(true);
+
+    const { data, error } = await supabase
+      .from('attendance')
+      .select('*, students_roster(student_name, class_no)')
+      .eq('session_id', sessionId);
+
+    if (error) {
+      toast.error(`Failed to load attendance: ${error.message}`);
+      setAttendanceData([]);
+      setIsLoading(false);
+      return;
+    }
+
+    const flatData = ((data || []) as AttendanceRow[]).map((row) => ({
+      ...row,
+      student_name: row.students_roster?.student_name,
+      class_no: row.students_roster?.class_no,
+    }));
+
+    setAttendanceData(flatData);
+    setIsLoading(false);
+  };
+
+  const scheduleCanonicalSync = (source: string) => {
+    if (autoSyncTimerRef.current) {
+      clearTimeout(autoSyncTimerRef.current);
+    }
+
+    autoSyncTimerRef.current = setTimeout(async () => {
+      try {
+        const { ok } = await syncPublicAttendanceSnapshot({ source });
+
+        if (!ok) {
+          toast.error('Auto-sync to Google Sheet failed. Use Sync to Sheet to retry.');
         }
-        setIsLoading(false);
-    };
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown sync error';
+        toast.error(`Auto-sync failed: ${message}`);
+      }
+    }, AUTO_SYNC_DELAY_MS);
+  };
 
-    const handleMarkSubmit = async (forceOverwrite = false) => {
-        if (!selectedSessionId) return;
+  const handleManualSync = async () => {
+    setIsSyncing(true);
 
-        if (attendanceData.length > 0 && !forceOverwrite) {
-            setShowOverwriteAlert(true);
-            return;
-        }
+    try {
+      const { ok } = await syncPublicAttendanceSnapshot({ source: 'attendance_marking_manual' });
 
-        setIsSaving(true);
-        try {
-            // 1. Parse absent ERPs
-            const absentList = absentErps.toLowerCase().split(/[\s,]+/).filter(Boolean);
-            const absentSet = new Set(absentList);
+      if (!ok) {
+        toast.error('Failed to sync to Google Sheet');
+        return;
+      }
 
-            // 2. Prepare all records
-            const newRecords = roster.map(student => ({
-                session_id: selectedSessionId,
-                erp: student.erp,
-                status: absentSet.has(student.erp.toLowerCase()) ? 'absent' : 'present',
-                naming_penalty: false // Default to false
-            }));
+      toast.success('Public attendance snapshot synced to Google Sheet');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown sync error';
+      toast.error(`Failed to sync: ${message}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
-            // 3. Delete existing for this session (if overwrite)
-            if (forceOverwrite || attendanceData.length > 0) {
-                await supabase.from('attendance').delete().eq('session_id', selectedSessionId);
-            }
+  const handleMarkSubmit = async (forceOverwrite = false) => {
+    if (!selectedSessionId) {
+      return;
+    }
 
-            // 4. Insert new
-            const { error } = await supabase.from('attendance').insert(newRecords);
-            if (error) throw error;
+    if (attendanceData.length > 0 && !forceOverwrite) {
+      setShowOverwriteAlert(true);
+      return;
+    }
 
-            toast.success('Attendance marked successfully');
+    setIsSaving(true);
 
-            // Note: We only auto-sync summary on initial submit. Full sync is manual or separate.
-            // But user wants "entire proper attendance" on update.
-            // Let's trigger a full sync here too? 
-            // Better: keep submit as summary, add a "Sync" button for full detail, 
-            // OR just send full detail always.
-            // Let's send full detail always if it's not too huge. 150 students is fine.
+    try {
+      const absentList = absentErps
+        .toLowerCase()
+        .split(/[\s,]+/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+      const absentSet = new Set(absentList);
 
-            await handleSyncToGoogleSheet(selectedSessionId, newRecords);
+      const newRecords = roster.map((student) => ({
+        session_id: selectedSessionId,
+        erp: student.erp,
+        status: absentSet.has(student.erp.toLowerCase()) ? 'absent' : 'present',
+        naming_penalty: false,
+      }));
 
-            setAbsentErps('');
-            setShowOverwriteAlert(false);
-            fetchAttendance(selectedSessionId);
+      if (forceOverwrite || attendanceData.length > 0) {
+        const { error: deleteError } = await supabase.from('attendance').delete().eq('session_id', selectedSessionId);
+        if (deleteError) throw deleteError;
+      }
 
-        } catch (error: any) {
-            toast.error('Failed to mark attendance: ' + error.message);
-        } finally {
-            setIsSaving(false);
-        }
-    };
+      const { error: insertError } = await supabase.from('attendance').insert(newRecords);
+      if (insertError) throw insertError;
 
-    const handleSyncToGoogleSheet = async (sessionId: string, records: any[]) => {
-        const session = sessions.find(s => s.id === sessionId);
-        const sessionLabel = session ? `Session ${session.session_number} (${format(new Date(session.session_date), 'MMM d')})` : 'Unknown Session';
+      toast.success('Attendance marked successfully');
+      scheduleCanonicalSync('attendance_marking_submit');
 
-        // Prepare detailed payload
-        // We need student names. If records come from 'roster.map', they have erp but maybe not name directly if not joined.
-        // But 'newRecords' in handleMarkSubmit uses 'roster' state which has student_name.
-        // Wait, 'newRecords' constructed in handleMarkSubmit maps from 'roster', so we can access roster there.
-        // But if we call this from a button, we might use 'attendanceData'.
+      setAbsentErps('');
+      setShowOverwriteAlert(false);
+      await fetchAttendance(selectedSessionId);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to mark attendance: ${message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
-        let payloadRecords = [];
-        if (records.length > 0 && records[0].student_name) {
-            // Already has name (from specific flow)
-            payloadRecords = records.map(r => ({
-                name: r.student_name || 'Unknown',
-                erp: r.erp,
-                status: r.status,
-                naming_penalty: r.naming_penalty ? -1 : 0
-            }));
-        } else {
-            // Join with roster
-            payloadRecords = records.map(r => {
-                const student = roster.find(s => s.erp === r.erp);
-                return {
-                    name: student?.student_name || 'Unknown',
-                    erp: r.erp,
-                    status: r.status,
-                    naming_penalty: r.naming_penalty ? -1 : 0
-                };
-            });
-        }
+  const toggleStatus = async (record: AttendanceRow) => {
+    const statuses: AttendanceStatus[] = ['present', 'absent', 'excused'];
+    const currentIndex = statuses.indexOf(record.status);
+    const nextStatus = statuses[(currentIndex + 1) % statuses.length];
 
-        const payload = {
-            type: 'full_sync',
-            session: sessionLabel,
-            date: new Date().toISOString(),
-            data: payloadRecords
-        };
+    setAttendanceData((prev) => prev.map((row) => (row.id === record.id ? { ...row, status: nextStatus } : row)));
 
-        toast.info('Syncing to Google Sheet...');
-        const success = await saveToGoogleSheet(payload as any);
-        if (success) toast.success('Synced to Google Sheet');
-        else toast.error('Failed to sync to Google Sheet');
-    };
+    const { error } = await supabase.from('attendance').update({ status: nextStatus }).eq('id', record.id);
 
-    const toggleStatus = async (record: any) => {
-        const statuses = ['present', 'absent', 'excused'];
-        const currentIndex = statuses.indexOf(record.status);
-        const nextStatus = statuses[(currentIndex + 1) % statuses.length];
+    if (error) {
+      toast.error('Failed to update status');
+      setAttendanceData((prev) => prev.map((row) => (row.id === record.id ? { ...row, status: record.status } : row)));
+      return;
+    }
 
-        // Optimistic update
-        setAttendanceData(prev => prev.map(r => r.id === record.id ? { ...r, status: nextStatus } : r));
+    scheduleCanonicalSync('attendance_marking_status_toggle');
+  };
 
-        const { error } = await supabase.from('attendance').update({ status: nextStatus }).eq('id', record.id);
-        if (error) {
-            toast.error('Failed to update status');
-            // Revert
-            setAttendanceData(prev => prev.map(r => r.id === record.id ? { ...r, status: record.status } : r));
-        }
-    };
+  const toggleNamingPenalty = async (record: AttendanceRow, checked: boolean) => {
+    setAttendanceData((prev) => prev.map((row) => (row.id === record.id ? { ...row, naming_penalty: checked } : row)));
 
-    const toggleNamingPenalty = async (record: any, checked: boolean) => {
-        // Optimistic update
-        setAttendanceData(prev => prev.map(r => r.id === record.id ? { ...r, naming_penalty: checked } : r));
+    const { error } = await supabase
+      .from('attendance')
+      .update({ naming_penalty: checked } as never)
+      .eq('id', record.id);
 
-        const { error } = await supabase.from('attendance').update({ naming_penalty: checked } as any).eq('id', record.id);
-        if (error) {
-            toast.error('Failed to update naming penalty');
-            // Revert
-            setAttendanceData(prev => prev.map(r => r.id === record.id ? { ...r, naming_penalty: !checked } : r));
-        }
-    };
+    if (error) {
+      toast.error('Failed to update naming penalty');
+      setAttendanceData((prev) => prev.map((row) => (row.id === record.id ? { ...row, naming_penalty: !checked } : row)));
+      return;
+    }
 
-    const filteredAttendance = attendanceData.filter(r => {
-        // First filter by status
-        if (statusFilter !== 'all' && r.status !== statusFilter) return false;
-        // Then filter by search query
-        if (!searchQuery) return true;
-        const q = searchQuery.toLowerCase();
-        return (
-            r.erp.toLowerCase().includes(q) ||
-            (r.student_name && r.student_name.toLowerCase().includes(q))
-        );
-    });
+    scheduleCanonicalSync('attendance_marking_penalty_toggle');
+  };
 
-    // Compute counts
-    const presentCount = attendanceData.filter(r => r.status === 'present').length;
-    const absentCount = attendanceData.filter(r => r.status === 'absent').length;
-    const excusedCount = attendanceData.filter(r => r.status === 'excused').length;
+  const filteredAttendance = attendanceData.filter((record) => {
+    if (statusFilter !== 'all' && record.status !== statusFilter) {
+      return false;
+    }
 
-    return (
-        <div className="grid gap-6 md:grid-cols-3">
-            <Card className="md:col-span-1 h-fit">
-                <CardHeader>
-                    <CardTitle>Mark Attendance</CardTitle>
-                    <CardDescription>Select a session and paste absent ERPs</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
-                        <SelectTrigger><SelectValue placeholder="Select Session" /></SelectTrigger>
-                        <SelectContent>
-                            {sessions.map(s => (
-                                <SelectItem key={s.id} value={s.id}>
-                                    #{s.session_number} - {format(new Date(s.session_date), 'MMM d')}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+    if (!searchQuery) {
+      return true;
+    }
 
-                    <div className="space-y-2">
-                        <span className="text-sm font-medium">Absent ERPs</span>
-                        <Textarea
-                            placeholder="Paste ERPs here (space or newline separated)..."
-                            className="min-h-[200px] font-mono"
-                            value={absentErps}
-                            onChange={e => setAbsentErps(e.target.value)}
-                        />
-                    </div>
+    const query = searchQuery.toLowerCase();
+    return record.erp.toLowerCase().includes(query) || record.student_name?.toLowerCase().includes(query);
+  });
 
-                    <Button className="w-full" onClick={() => handleMarkSubmit(false)} disabled={!selectedSessionId || isSaving}>
-                        {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                        Submit Attendance
-                    </Button>
+  const presentCount = attendanceData.filter((record) => record.status === 'present').length;
+  const absentCount = attendanceData.filter((record) => record.status === 'absent').length;
+  const excusedCount = attendanceData.filter((record) => record.status === 'excused').length;
 
-                    <AlertDialog open={showOverwriteAlert} onOpenChange={setShowOverwriteAlert}>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>Overwrite existing attendance?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                    Attendance has already been marked for this session. Proceeding will overwrite all statuses based on the current roster and your input.
-                                </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleMarkSubmit(true)}>Overwrite</AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-                </CardContent>
-            </Card>
+  return (
+    <div className="grid gap-6 md:grid-cols-3">
+      <Card className="h-fit md:col-span-1">
+        <CardHeader>
+          <CardTitle>Mark Attendance</CardTitle>
+          <CardDescription>Select a session and paste absent ERPs</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select Session" />
+            </SelectTrigger>
+            <SelectContent>
+              {sessions.map((session) => (
+                <SelectItem key={session.id} value={session.id}>
+                  #{session.session_number} - {format(new Date(session.session_date), 'MMM d')}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-            <Card className="md:col-span-2">
-                <CardHeader>
-                    <div className="flex justify-between items-center space-x-2">
-                        <div>
-                            <CardTitle>Attendance List</CardTitle>
-                            <CardDescription className="text-xs text-muted-foreground mt-1">
-                                Changes to status and penalties save automatically
-                            </CardDescription>
+          <div className="space-y-2">
+            <span className="text-sm font-medium">Absent ERPs</span>
+            <Textarea
+              placeholder="Paste ERPs here (space or newline separated)..."
+              className="min-h-[200px] font-mono"
+              value={absentErps}
+              onChange={(event) => setAbsentErps(event.target.value)}
+            />
+          </div>
+
+          <Button className="w-full" onClick={() => handleMarkSubmit(false)} disabled={!selectedSessionId || isSaving}>
+            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            Submit Attendance
+          </Button>
+
+          <AlertDialog open={showOverwriteAlert} onOpenChange={setShowOverwriteAlert}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Overwrite existing attendance?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Attendance has already been marked for this session. Proceeding will overwrite all statuses based on
+                  the current roster and your input.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => handleMarkSubmit(true)}>Overwrite</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </CardContent>
+      </Card>
+
+      <Card className="md:col-span-2">
+        <CardHeader>
+          <div className="flex items-center justify-between space-x-2">
+            <div>
+              <CardTitle>Attendance List</CardTitle>
+              <CardDescription className="mt-1 text-xs text-muted-foreground">
+                Changes to status and penalties save automatically
+              </CardDescription>
+            </div>
+            <div className="flex space-x-2">
+              <Button variant="outline" size="sm" onClick={handleManualSync} disabled={isSyncing || isSaving}>
+                {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Sync to Sheet
+              </Button>
+              <Input
+                placeholder="Search Name or ERP"
+                className="w-[150px]"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {selectedSessionId && attendanceData.length > 0 && (
+            <div className="mb-4 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="border-green-500/20 bg-green-500/10 text-green-500">
+                  {presentCount} Present
+                </Badge>
+                <Badge variant="outline" className="border-red-500/20 bg-red-500/10 text-red-500">
+                  {absentCount} Absent
+                </Badge>
+                <Badge variant="outline" className="border-yellow-500/20 bg-yellow-500/10 text-yellow-500">
+                  {excusedCount} Excused
+                </Badge>
+                <Badge variant="outline" className="bg-muted text-muted-foreground">
+                  {attendanceData.length} / {roster.length} Total
+                </Badge>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant={statusFilter === 'all' ? 'default' : 'outline'} onClick={() => setStatusFilter('all')}>
+                  All ({attendanceData.length})
+                </Button>
+                <Button
+                  size="sm"
+                  variant={statusFilter === 'present' ? 'default' : 'outline'}
+                  onClick={() => setStatusFilter('present')}
+                >
+                  Present ({presentCount})
+                </Button>
+                <Button
+                  size="sm"
+                  variant={statusFilter === 'absent' ? 'default' : 'outline'}
+                  onClick={() => setStatusFilter('absent')}
+                >
+                  Absent ({absentCount})
+                </Button>
+                <Button
+                  size="sm"
+                  variant={statusFilter === 'excused' ? 'default' : 'outline'}
+                  onClick={() => setStatusFilter('excused')}
+                >
+                  Excused ({excusedCount})
+                </Button>
+              </div>
+            </div>
+          )}
+          {!selectedSessionId ? (
+            <div className="py-8 text-center text-muted-foreground">Select a session to view attendance.</div>
+          ) : isLoading ? (
+            <div className="flex justify-center p-8">
+              <Loader2 className="animate-spin" />
+            </div>
+          ) : attendanceData.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">No attendance marked for this session yet.</div>
+          ) : (
+            <div className="overflow-x-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Class</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>ERP</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Naming Penalty</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredAttendance.slice(0, 100).map((record) => (
+                    <TableRow key={record.id}>
+                      <TableCell>{record.class_no}</TableCell>
+                      <TableCell>{record.student_name}</TableCell>
+                      <TableCell>{record.erp}</TableCell>
+                      <TableCell>
+                        <Badge
+                          className={`cursor-pointer select-none ${
+                            record.status === 'present'
+                              ? 'bg-green-500 hover:bg-green-600'
+                              : record.status === 'absent'
+                                ? 'bg-red-500 hover:bg-red-600'
+                                : 'bg-yellow-500 hover:bg-yellow-600'
+                          }`}
+                          onClick={() => toggleStatus(record)}
+                        >
+                          {record.status.toUpperCase()}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`np-${record.id}`}
+                            checked={record.naming_penalty}
+                            onCheckedChange={(checked) => toggleNamingPenalty(record, checked as boolean)}
+                          />
+                          <label
+                            htmlFor={`np-${record.id}`}
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                          >
+                            -1
+                          </label>
                         </div>
-                        <div className="flex space-x-2">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleSyncToGoogleSheet(selectedSessionId, attendanceData)}
-                                disabled={!selectedSessionId || attendanceData.length === 0}
-                            >
-                                <Save className="mr-2 h-4 w-4" />
-                                Sync to Sheet
-                            </Button>
-                            <Input
-                                placeholder="Search Name or ERP"
-                                className="w-[150px]"
-                                value={searchQuery}
-                                onChange={e => setSearchQuery(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    {/* Counts and Filter Buttons */}
-                    {selectedSessionId && attendanceData.length > 0 && (
-                        <div className="mb-4 space-y-3">
-                            {/* Counts */}
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">
-                                    {presentCount} Present
-                                </Badge>
-                                <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20">
-                                    {absentCount} Absent
-                                </Badge>
-                                <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
-                                    {excusedCount} Excused
-                                </Badge>
-                                <Badge variant="outline" className="bg-muted text-muted-foreground">
-                                    {attendanceData.length} / {roster.length} Total
-                                </Badge>
-                            </div>
-                            {/* Filter Buttons */}
-                            <div className="flex gap-2 flex-wrap">
-                                <Button
-                                    size="sm"
-                                    variant={statusFilter === 'all' ? 'default' : 'outline'}
-                                    onClick={() => setStatusFilter('all')}
-                                >
-                                    All ({attendanceData.length})
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant={statusFilter === 'present' ? 'default' : 'outline'}
-                                    onClick={() => setStatusFilter('present')}
-                                >
-                                    Present ({presentCount})
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant={statusFilter === 'absent' ? 'default' : 'outline'}
-                                    onClick={() => setStatusFilter('absent')}
-                                >
-                                    Absent ({absentCount})
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant={statusFilter === 'excused' ? 'default' : 'outline'}
-                                    onClick={() => setStatusFilter('excused')}
-                                >
-                                    Excused ({excusedCount})
-                                </Button>
-                            </div>
-                        </div>
-                    )}
-                    {!selectedSessionId ? (
-                        <div className="text-center text-muted-foreground py-8">Select a session to view attendance.</div>
-                    ) : isLoading ? (
-                        <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>
-                    ) : attendanceData.length === 0 ? (
-                        <div className="text-center text-muted-foreground py-8">No attendance marked for this session yet.</div>
-                    ) : (
-                        <div className="rounded-md border overflow-x-auto">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Class</TableHead>
-                                        <TableHead>Name</TableHead>
-                                        <TableHead>ERP</TableHead>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead>Naming Penalty</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {filteredAttendance.slice(0, 100).map((record) => (
-                                        <TableRow key={record.id}>
-                                            <TableCell>{record.class_no}</TableCell>
-                                            <TableCell>{record.student_name}</TableCell>
-                                            <TableCell>{record.erp}</TableCell>
-                                            <TableCell>
-                                                <Badge
-                                                    className={`cursor-pointer select-none ${record.status === 'present' ? 'bg-green-500 hover:bg-green-600' :
-                                                        record.status === 'absent' ? 'bg-red-500 hover:bg-red-600' :
-                                                            'bg-yellow-500 hover:bg-yellow-600'
-                                                        }`}
-                                                    onClick={() => toggleStatus(record)}
-                                                >
-                                                    {record.status.toUpperCase()}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center space-x-2">
-                                                    <Checkbox
-                                                        id={`np-${record.id}`}
-                                                        checked={record.naming_penalty}
-                                                        onCheckedChange={(checked) => toggleNamingPenalty(record, checked as boolean)}
-                                                    />
-                                                    <label htmlFor={`np-${record.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                                        -1
-                                                    </label>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-        </div>
-    );
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
 }

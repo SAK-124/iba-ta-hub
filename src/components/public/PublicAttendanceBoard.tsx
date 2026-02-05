@@ -1,35 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import {
+  fetchPublicAttendanceBoard,
+  type PublicAttendanceSession,
+  type PublicAttendanceStudent,
+} from '@/lib/public-attendance-sync';
 import { AlertCircle, Loader2, Search } from 'lucide-react';
 
-interface SessionRecord {
-  id: string;
-  session_number: number;
-  session_date: string;
-  day_of_week: string;
-}
-
-interface StudentAttendanceRecord {
-  class_no: string;
-  student_name: string;
-  erp: string;
-  total_penalties: number;
-  total_absences: number;
-  session_status: Record<string, string>;
-}
-
-interface PublicAttendanceResponse {
-  sessions: SessionRecord[];
-  students: StudentAttendanceRecord[];
-}
-
 export default function PublicAttendanceBoard() {
-  const [sessions, setSessions] = useState<SessionRecord[]>([]);
-  const [students, setStudents] = useState<StudentAttendanceRecord[]>([]);
+  const [sessions, setSessions] = useState<PublicAttendanceSession[]>([]);
+  const [students, setStudents] = useState<PublicAttendanceStudent[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,18 +26,9 @@ export default function PublicAttendanceBoard() {
     setError(null);
 
     try {
-      const { data, error: rpcError } = await supabase.rpc('get_public_attendance_board' as never);
-
-      if (rpcError) {
-        throw rpcError;
-      }
-
-      const response = (data ?? {}) as PublicAttendanceResponse;
-      const nextSessions = Array.isArray(response.sessions) ? response.sessions : [];
-      const nextStudents = Array.isArray(response.students) ? response.students : [];
-
-      setSessions(nextSessions);
-      setStudents(nextStudents);
+      const board = await fetchPublicAttendanceBoard();
+      setSessions(board.sessions);
+      setStudents(board.students);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load attendance board.';
       setError(message);

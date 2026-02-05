@@ -4,6 +4,7 @@ import path from 'node:path';
 
 const DEFAULT_GOOGLE_SCRIPT_URL =
   'https://script.google.com/macros/s/AKfycby4L98xHkIIRBZt6SbAnNnpbibNhaGRpePc-35tFXso-fFhWGVXn7eGo9OEq9aqQeFkRg/exec';
+const PUBLIC_ATTENDANCE_SHEET_NAME = 'Public Attendance Snapshot';
 
 function loadDotEnvFile() {
   const envPath = path.resolve(process.cwd(), '.env');
@@ -118,6 +119,7 @@ async function main() {
 
   const payload = {
     type: 'public_attendance_snapshot',
+    target_sheet: PUBLIC_ATTENDANCE_SHEET_NAME,
     generated_at: new Date().toISOString(),
     headers,
     rows,

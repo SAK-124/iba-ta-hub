@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import IssueManagement from './IssueManagement';
 import AttendanceMarking from './AttendanceMarking';
@@ -21,6 +22,8 @@ import {
 } from 'lucide-react';
 
 export default function TAPortal() {
+  const [activeTab, setActiveTab] = useState('zoom');
+
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6 animate-fade-in">
       {/* Header */}
@@ -35,7 +38,7 @@ export default function TAPortal() {
       </div>
 
       {/* Tabs - Ordered by workflow: Setup → Daily Use → Review → Admin */}
-      <Tabs defaultValue="zoom" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="flex w-full overflow-x-auto justify-start h-auto p-1.5 gap-1 bg-muted/50 rounded-xl">
           {/* Primary: Daily Workflow */}
           <TabsTrigger value="zoom" className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
@@ -85,7 +88,7 @@ export default function TAPortal() {
         </TabsList>
 
         {/* Tab Contents */}
-        <TabsContent value="zoom" className="mt-6">
+        <TabsContent value="zoom" className="mt-6" forceMount>
           <TAZoomProcess />
         </TabsContent>
 
