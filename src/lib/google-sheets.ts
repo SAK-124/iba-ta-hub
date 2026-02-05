@@ -1,5 +1,5 @@
 
-const DEFAULT_GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxBpSICCjqzMNDesr6zkV5-F3qQn4Jo41uRzaoQpLM-8ShGPLEQd7d6TaNSv46DlyQHnQ/exec";
+const DEFAULT_GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby4L98xHkIIRBZt6SbAnNnpbibNhaGRpePc-35tFXso-fFhWGVXn7eGo9OEq9aqQeFkRg/exec";
 
 export const GOOGLE_SCRIPT_URL =
   import.meta.env.VITE_GOOGLE_SCRIPT_URL || DEFAULT_GOOGLE_SCRIPT_URL;

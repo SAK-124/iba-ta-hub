@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const DEFAULT_GOOGLE_SCRIPT_URL =
-  'https://script.google.com/macros/s/AKfycbxBpSICCjqzMNDesr6zkV5-F3qQn4Jo41uRzaoQpLM-8ShGPLEQd7d6TaNSv46DlyQHnQ/exec';
+  'https://script.google.com/macros/s/AKfycby4L98xHkIIRBZt6SbAnNnpbibNhaGRpePc-35tFXso-fFhWGVXn7eGo9OEq9aqQeFkRg/exec';
 
 function loadDotEnvFile() {
   const envPath = path.resolve(process.cwd(), '.env');
