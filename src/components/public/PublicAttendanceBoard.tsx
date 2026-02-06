@@ -163,7 +163,11 @@ export default function PublicAttendanceBoard() {
                       <TableCell className="sticky left-0 z-10 bg-background font-medium">{student.class_no}</TableCell>
                       <TableCell className="sticky left-[90px] z-10 bg-background">{student.student_name}</TableCell>
                       <TableCell className="sticky left-[310px] z-10 bg-background font-mono text-xs">{student.erp}</TableCell>
-                      <TableCell className="text-center font-semibold text-destructive">
+                      <TableCell
+                        className={`text-center font-semibold ${
+                          student.total_penalties > 0 ? 'text-destructive' : 'text-muted-foreground'
+                        }`}
+                      >
                         {student.total_penalties}
                       </TableCell>
                       <TableCell className={`text-center font-semibold ${getAbsenceColor(student.total_absences)}`}>
