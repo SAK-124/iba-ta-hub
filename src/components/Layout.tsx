@@ -28,8 +28,7 @@ export default function Layout({
           </div>
           <div>
             <h1 className="text-lg font-semibold text-foreground my-0 text-center">AAMD Portal</h1>
-            <p className="text-xs text-muted-foreground">
-            </p>
+            <p className="text-xs text-muted-foreground">{isTA ? 'TA Dashboard' : 'Student Portal'}</p>
           </div>
         </div>
 

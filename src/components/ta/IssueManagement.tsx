@@ -121,6 +121,14 @@ export default function IssueManagement() {
         return true;
     });
 
+    const hasActiveFilters = Boolean(searchErp.trim()) || filterStatus !== 'all' || filterGroup !== 'all';
+
+    const clearFilters = () => {
+        setSearchErp('');
+        setFilterStatus('all');
+        setFilterGroup('all');
+    };
+
     return (
         <div className="space-y-8 animate-fade-in">
             <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
@@ -188,38 +196,54 @@ export default function IssueManagement() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {filteredTickets.map((ticket) => (
-                                    <TableRow key={ticket.id} className="border-primary/5 hover:bg-primary/5 transition-colors group">
-                                        <TableCell className="py-4 px-6 whitespace-nowrap">
-                                            <span className="text-xs font-semibold text-muted-foreground uppercase">{format(new Date(ticket.created_at), 'MMM d, h:mm a')}</span>
-                                        </TableCell>
-                                        <TableCell className="py-4 px-6">
-                                            <div className="flex flex-col">
-                                                <span className="font-bold text-sm group-hover:text-primary transition-colors">{ticket.real_name}</span>
-                                                <span className="text-[10px] font-mono tracking-tighter text-muted-foreground uppercase">{ticket.entered_erp}</span>
+                                {filteredTickets.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={5} className="py-16">
+                                            <div className="flex flex-col items-center gap-3 text-center">
+                                                <p className="text-sm font-semibold text-foreground">
+                                                    {hasActiveFilters ? 'No tickets match your filters.' : 'No tickets found yet.'}
+                                                </p>
+                                                {hasActiveFilters && (
+                                                    <Button variant="outline" size="sm" onClick={clearFilters}>
+                                                        Clear filters
+                                                    </Button>
+                                                )}
                                             </div>
                                         </TableCell>
-                                        <TableCell className="py-4 px-6">
-                                            <div className="flex flex-col">
-                                                <span className="text-sm font-semibold">{ticket.category}</span>
-                                                {ticket.subcategory && <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-tight">{ticket.subcategory}</span>}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="py-4 px-6">
-                                            <Badge variant="outline" className={`rounded-full px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider ${ticket.status === 'resolved' ? 'bg-success/10 text-success border-success/20' : 'bg-warning/10 text-warning border-warning/20'}`}>
-                                                {ticket.status}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="py-4 px-6 text-right flex items-center justify-end gap-2">
-                                            <Sheet>
-                                                <SheetTrigger asChild>
-                                                    <Button variant="ghost" size="sm" className="rounded-lg hover:bg-primary/10 hover:text-primary font-bold text-xs uppercase transition-all active:scale-95">Inspect</Button>
-                                                </SheetTrigger>
-                                                <SheetContent className="w-full sm:max-w-xl glass-card border-l border-primary/20 overflow-y-auto pt-10">
-                                                    <SheetHeader className="mb-8">
-                                                        <SheetTitle className="text-2xl font-extrabold tracking-tight uppercase">Ticket Details</SheetTitle>
-                                                        <SheetDescription className="text-muted-foreground font-medium">Submitted on {format(new Date(ticket.created_at), 'PPP p')}</SheetDescription>
-                                                    </SheetHeader>
+                                    </TableRow>
+                                ) : (
+                                    filteredTickets.map((ticket) => (
+                                        <TableRow key={ticket.id} className="border-primary/5 hover:bg-primary/5 transition-colors group">
+                                            <TableCell className="py-4 px-6 whitespace-nowrap">
+                                                <span className="text-xs font-semibold text-muted-foreground uppercase">{format(new Date(ticket.created_at), 'MMM d, h:mm a')}</span>
+                                            </TableCell>
+                                            <TableCell className="py-4 px-6">
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold text-sm group-hover:text-primary transition-colors">{ticket.real_name}</span>
+                                                    <span className="text-[10px] font-mono tracking-tighter text-muted-foreground uppercase">{ticket.entered_erp}</span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="py-4 px-6">
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm font-semibold">{ticket.category}</span>
+                                                    {ticket.subcategory && <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-tight">{ticket.subcategory}</span>}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="py-4 px-6">
+                                                <Badge variant="outline" className={`rounded-full px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider ${ticket.status === 'resolved' ? 'bg-success/10 text-success border-success/20' : 'bg-warning/10 text-warning border-warning/20'}`}>
+                                                    {ticket.status}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="py-4 px-6 text-right flex items-center justify-end gap-2">
+                                                <Sheet>
+                                                    <SheetTrigger asChild>
+                                                        <Button variant="ghost" size="sm" className="rounded-lg hover:bg-primary/10 hover:text-primary font-bold text-xs uppercase transition-all active:scale-95">Inspect</Button>
+                                                    </SheetTrigger>
+                                                    <SheetContent className="w-full sm:max-w-xl glass-card border-l border-primary/20 overflow-y-auto pt-10">
+                                                        <SheetHeader className="mb-8">
+                                                            <SheetTitle className="text-2xl font-extrabold tracking-tight uppercase">Ticket Details</SheetTitle>
+                                                            <SheetDescription className="text-muted-foreground font-medium">Submitted on {format(new Date(ticket.created_at), 'PPP p')}</SheetDescription>
+                                                        </SheetHeader>
 
                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                         <div className="space-y-1">
@@ -264,7 +288,7 @@ export default function IssueManagement() {
                                                         <p className="text-[9px] text-muted-foreground italic text-right">Drafting is auto-saved on blur.</p>
                                                     </div>
 
-                                                    <div className="pt-6 border-t border-primary/10 grid grid-cols-1 gap-3">
+                                                        <div className="pt-6 border-t border-primary/10 grid grid-cols-1 gap-3">
                                                         <Button
                                                             className={`w-full h-12 rounded-xl font-bold uppercase transition-all active:scale-95 ${ticket.status === 'pending' ? 'bg-success hover:bg-success/90 text-white shadow-lg shadow-success/20' : 'bg-background border border-primary/20 hover:bg-primary/5 text-primary'}`}
                                                             onClick={() => toggleStatus(ticket)}
@@ -318,15 +342,16 @@ export default function IssueManagement() {
                                                                 Exit Details
                                                             </Button>
                                                         </SheetClose>
-                                                    </div>
-                                                </SheetContent>
-                                            </Sheet>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10 rounded-lg" onClick={(e) => { e.stopPropagation(); deleteTicket(ticket.id); }}>
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
+                                                        </div>
+                                                    </SheetContent>
+                                                </Sheet>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10 rounded-lg" onClick={(e) => { e.stopPropagation(); deleteTicket(ticket.id); }}>
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
                             </TableBody>
                         </Table>
                     </div>

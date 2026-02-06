@@ -215,7 +215,7 @@ export default function RosterManagement() {
                             </div>
                             <div>
                                 <h3 className="text-lg font-bold">Import Roster</h3>
-                                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Bulk CSV Paste</p>
+                                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Past Roster Details</p>
                             </div>
                         </div>
 

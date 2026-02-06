@@ -75,6 +75,15 @@ export default function PublicAttendanceBoard() {
     return { symbol: '-', className: 'text-muted-foreground' };
   };
 
+  const formatSessionHint = (session: PublicAttendanceSession) => {
+    if (!session.session_date) return `Session ${session.session_number}`;
+
+    const parsedDate = new Date(session.session_date);
+    if (Number.isNaN(parsedDate.getTime())) return `Session ${session.session_number}`;
+
+    return `${session.day_of_week || ''} ${parsedDate.toLocaleDateString()}`.trim();
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -93,6 +102,12 @@ export default function PublicAttendanceBoard() {
               className="pl-9"
             />
           </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <span className="font-semibold text-foreground">Legend:</span>
+          <span><span className="font-semibold text-green-600">P</span> Present</span>
+          <span><span className="font-semibold text-red-600">A</span> Absent</span>
+          <span><span className="font-semibold text-yellow-600">E</span> Excused</span>
         </div>
       </CardHeader>
 
@@ -124,7 +139,11 @@ export default function PublicAttendanceBoard() {
                   <TableHead className="w-[110px] text-center">Penalties</TableHead>
                   <TableHead className="w-[100px] text-center">Absences</TableHead>
                   {sessions.map((session) => (
-                    <TableHead key={session.id} className="w-[70px] text-center">
+                    <TableHead
+                      key={session.id}
+                      className="w-[70px] text-center"
+                      title={formatSessionHint(session)}
+                    >
                       S{session.session_number}
                     </TableHead>
                   ))}

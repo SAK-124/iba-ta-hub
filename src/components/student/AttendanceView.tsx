@@ -90,7 +90,7 @@ export default function AttendanceView() {
                                     <TableHead>Date</TableHead>
                                     <TableHead>Day</TableHead>
                                     <TableHead>Status</TableHead>
-                                    <TableHead className="text-right">Penalty</TableHead>
+                                    <TableHead className="text-right">Naming Penalty</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -114,7 +114,7 @@ export default function AttendanceView() {
                                             <TableCell className="text-right">
                                                 {record.naming_penalty && (
                                                     <Badge variant="destructive" className="ml-auto">
-                                                        -1
+                                                        Naming penalty (-1)
                                                     </Badge>
                                                 )}
                                             </TableCell>
