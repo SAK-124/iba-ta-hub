@@ -8,14 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { toast } from 'sonner';
 import { Loader2, Trash2 } from 'lucide-react';
 
-type AppSettings = {
-    id: string;
-    roster_verification_enabled: boolean;
-    tickets_enabled: boolean;
-};
-
 export default function ListsSettings() {
-    const [settings, setSettings] = useState<AppSettings | null>(null);
+    const [settings, setSettings] = useState<any>(null);
     const [taEmails, setTaEmails] = useState<any[]>([]);
     const [newTaEmail, setNewTaEmail] = useState('');
 
@@ -30,12 +24,7 @@ export default function ListsSettings() {
 
     const fetchSettings = async () => {
         const { data } = await supabase.from('app_settings').select('*').single();
-        if (data) {
-            setSettings({
-                ...data,
-                tickets_enabled: data.tickets_enabled ?? true
-            });
-        }
+        setSettings(data);
     };
 
     const fetchTaList = async () => {
@@ -56,17 +45,6 @@ export default function ListsSettings() {
         } else {
             setSettings({ ...settings, roster_verification_enabled: checked });
             toast.success('Roster verification ' + (checked ? 'enabled' : 'disabled'));
-        }
-    };
-
-    const toggleStudentTickets = async (checked: boolean) => {
-        if (!settings) return;
-        const { error } = await supabase.from('app_settings').update({ tickets_enabled: checked }).eq('id', settings.id);
-        if (error) {
-            toast.error('Failed to update settings');
-        } else {
-            setSettings({ ...settings, tickets_enabled: checked });
-            toast.success('Student ticketing ' + (checked ? 'enabled' : 'disabled'));
         }
     };
 
@@ -138,20 +116,6 @@ export default function ListsSettings() {
                             id="roster-verification"
                             checked={settings.roster_verification_enabled}
                             onCheckedChange={toggleRosterVerification}
-                        />
-                    </div>
-
-                    <div className="flex items-center justify-between space-x-2">
-                        <Label htmlFor="student-tickets" className="flex flex-col space-y-1">
-                            <span>Student Complaints / Tickets</span>
-                            <span className="font-normal text-xs text-muted-foreground">
-                                Controls whether students can submit and view ticket complaints in the portal.
-                            </span>
-                        </Label>
-                        <Switch
-                            id="student-tickets"
-                            checked={settings.tickets_enabled}
-                            onCheckedChange={toggleStudentTickets}
                         />
                     </div>
                 </CardContent>

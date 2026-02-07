@@ -84,20 +84,6 @@ export default function SubmitIssue() {
     }
 
     try {
-      const { data: settings, error: settingsError } = await supabase
-        .from('app_settings')
-        .select('tickets_enabled')
-        .single();
-
-      if (settingsError) {
-        throw settingsError;
-      }
-
-      if (settings?.tickets_enabled === false) {
-        toast.error('Ticket submissions are currently disabled. Please email the TAs directly.');
-        return;
-      }
-
       const ticketData: any = {
         entered_erp: erp,
         roster_name: studentName,
@@ -352,9 +338,6 @@ export default function SubmitIssue() {
       <CardHeader>
         <CardTitle>Submit a New Issue</CardTitle>
         <CardDescription>Select the category that best describes your problem.</CardDescription>
-        <div className="mt-2 rounded-md border border-amber-300/60 bg-amber-50/60 p-3 text-sm text-amber-900">
-          Important: After creating a ticket, also email the TAs with your ERP and issue summary so your case is tracked without delay.
-        </div>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
