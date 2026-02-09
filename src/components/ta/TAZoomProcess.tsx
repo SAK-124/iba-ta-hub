@@ -7,7 +7,6 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import {
   FileSpreadsheet,
@@ -20,11 +19,9 @@ import {
   Copy,
   Download,
   AlertTriangle,
-  ListChecks,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { syncPublicAttendanceSnapshot } from '@/lib/public-attendance-sync';
 import * as XLSX from 'xlsx';
 
 type GenericRow = Record<string, unknown>;
@@ -41,12 +38,6 @@ interface ProcessedData {
   rows?: number;
 }
 
-interface SessionRow {
-  id: string;
-  session_number: number;
-  session_date: string;
-}
-
 interface RosterReference {
   erp: string;
   student_name: string;
@@ -60,16 +51,6 @@ interface NormalizedIssue {
   reason: string;
   notInRoster: boolean;
   unidentified: boolean;
-  raw: GenericRow;
-}
-
-interface PenaltyCandidate {
-  key: string;
-  erp: string;
-  name: string;
-  classNo: string;
-  reason: string;
-  canApply: boolean;
   raw: GenericRow;
 }
 
@@ -93,13 +74,12 @@ interface ZoomWorkspaceCache {
   useSavedRoster: boolean;
   manualDuration: string;
   namazBreak: string;
-  filterName: string;
-  filterErp: string;
+  filterQuery: string;
   filterClass: string;
+  penaltiesMinusOneOnly: boolean;
   ignoredKeys: string[];
-  penaltySessionId: string;
-  selectedPenaltyKeys: string[];
-  missingAttendanceErps: string[];
+  filterName?: string;
+  filterErp?: string;
 }
 
 const ERP_REGEX = /(\d{5})/;
@@ -218,8 +198,6 @@ const isNotInRosterReason = (reason: string) => /not\s+in\s+roster|outside\s+ros
 const isUnidentifiedReason = (reason: string) =>
   /unidentified|unable\s+to\s+identify|unmatched|ambiguous|could\s+not\s+match|no\s+erp|missing\s+erp|unknown/i.test(reason);
 
-const isNamingPenaltyReason = (reason: string) => /naming|name\s*format|display\s*name|rename/i.test(reason);
-
 const downloadJson = (filename: string, data: unknown) => {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -229,6 +207,48 @@ const downloadJson = (filename: string, data: unknown) => {
   link.click();
   URL.revokeObjectURL(url);
 };
+
+const normalizeHeaderKey = (key: string) => key.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const extractPenaltyAppliedValue = (row: GenericRow): unknown => {
+  const direct = pickFirst(row, [
+    'Penalty Applied',
+    'penalty applied',
+    'penalty_applied',
+    'PenaltyApplied',
+    'Penalty Applied (naming)',
+    'Naming Penalty',
+  ]);
+
+  if (toText(direct) !== '') {
+    return direct;
+  }
+
+  for (const [key, value] of Object.entries(row)) {
+    const normalized = normalizeHeaderKey(key);
+    if (normalized === 'penaltyapplied' || (normalized.includes('penalty') && normalized.includes('applied'))) {
+      if (toText(value) !== '') return value;
+    }
+  }
+
+  return undefined;
+};
+
+const hasMinusOnePenaltyApplied = (row: GenericRow) => {
+  const value = extractPenaltyAppliedValue(row);
+  const text = toText(value);
+  if (!text) return false;
+
+  if (text.replace(/\s+/g, '') === '-1') return true;
+  const numeric = Number(text);
+  return Number.isFinite(numeric) && numeric === -1;
+};
+
+const rowToSearchText = (row: GenericRow) =>
+  Object.values(row)
+    .map((value) => toText(value))
+    .join(' ')
+    .toLowerCase();
 
 export default function TAZoomProcess() {
   const cached = zoomWorkspaceCache;
@@ -245,20 +265,23 @@ export default function TAZoomProcess() {
   const [manualDuration, setManualDuration] = useState(() => cached?.manualDuration ?? '');
   const [namazBreak, setNamazBreak] = useState(() => cached?.namazBreak ?? '');
 
-  const [filterName, setFilterName] = useState(() => cached?.filterName ?? '');
-  const [filterErp, setFilterErp] = useState(() => cached?.filterErp ?? '');
+  const [filterQuery, setFilterQuery] = useState(() => {
+    const cachedQuery = cached?.filterQuery?.trim();
+    if (cachedQuery) return cachedQuery;
+
+    const legacyQuery = [cached?.filterErp, cached?.filterName]
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value))
+      .join(' ')
+      .trim();
+
+    return legacyQuery;
+  });
   const [filterClass, setFilterClass] = useState(() => cached?.filterClass ?? '');
+  const [penaltiesMinusOneOnly, setPenaltiesMinusOneOnly] = useState(() => cached?.penaltiesMinusOneOnly ?? false);
 
   const [ignoredKeys, setIgnoredKeys] = useState<Set<string>>(() => new Set(cached?.ignoredKeys ?? []));
-  const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [rosterReference, setRosterReference] = useState<Record<string, RosterReference>>({});
-
-  const [penaltySessionId, setPenaltySessionId] = useState(() => cached?.penaltySessionId ?? '');
-  const [selectedPenaltyKeys, setSelectedPenaltyKeys] = useState<Set<string>>(
-    () => new Set(cached?.selectedPenaltyKeys ?? [])
-  );
-  const [isApplyingPenalties, setIsApplyingPenalties] = useState(false);
-  const [missingAttendanceErps, setMissingAttendanceErps] = useState<string[]>(() => cached?.missingAttendanceErps ?? []);
 
   const toggleIgnoreKey = (key: string) => {
     setIgnoredKeys((prev) => {
@@ -274,18 +297,7 @@ export default function TAZoomProcess() {
 
   useEffect(() => {
     const loadReferenceData = async () => {
-      const [sessionsRes, rosterRes] = await Promise.all([
-        supabase.from('sessions').select('id, session_number, session_date').order('session_number', { ascending: false }),
-        supabase.from('students_roster').select('erp, student_name, class_no'),
-      ]);
-
-      if (sessionsRes.error) {
-        toast.error(`Failed to load sessions: ${sessionsRes.error.message}`);
-      } else {
-        const nextSessions = (sessionsRes.data || []) as SessionRow[];
-        setSessions(nextSessions);
-        setPenaltySessionId((current) => current || nextSessions[0]?.id || '');
-      }
+      const rosterRes = await supabase.from('students_roster').select('erp, student_name, class_no');
 
       if (rosterRes.error) {
         toast.error(`Failed to load roster reference: ${rosterRes.error.message}`);
@@ -311,13 +323,10 @@ export default function TAZoomProcess() {
       useSavedRoster,
       manualDuration,
       namazBreak,
-      filterName,
-      filterErp,
+      filterQuery,
       filterClass,
+      penaltiesMinusOneOnly,
       ignoredKeys: Array.from(ignoredKeys),
-      penaltySessionId,
-      selectedPenaltyKeys: Array.from(selectedPenaltyKeys),
-      missingAttendanceErps,
     };
   }, [
     data,
@@ -328,13 +337,10 @@ export default function TAZoomProcess() {
     useSavedRoster,
     manualDuration,
     namazBreak,
-    filterName,
-    filterErp,
+    filterQuery,
     filterClass,
+    penaltiesMinusOneOnly,
     ignoredKeys,
-    penaltySessionId,
-    selectedPenaltyKeys,
-    missingAttendanceErps,
   ]);
 
   useEffect(() => {
@@ -376,36 +382,6 @@ export default function TAZoomProcess() {
       };
     });
 
-    const fallbackPenaltyIssues = issues.filter((issue) => isNamingPenaltyReason(issue.reason));
-
-    const penaltyCandidates: PenaltyCandidate[] =
-      penaltiesRows.length > 0
-        ? penaltiesRows.map((row, idx) => {
-            const erp = extractERP(row);
-            const name = extractName(row) || rosterReference[erp]?.student_name || '';
-            const classNo = extractClassNo(row) || rosterReference[erp]?.class_no || '';
-            const reason = extractReason(row);
-
-            return {
-              key: getRowKey(row, idx),
-              erp,
-              name,
-              classNo,
-              reason,
-              canApply: !!erp,
-              raw: row,
-            };
-          })
-        : fallbackPenaltyIssues.map((issue, idx) => ({
-            key: `${issue.id}:penalty:${idx}`,
-            erp: issue.erpCandidate,
-            name: issue.name || rosterReference[issue.erpCandidate]?.student_name || '',
-            classNo: rosterReference[issue.erpCandidate]?.class_no || '',
-            reason: issue.reason,
-            canApply: !!issue.erpCandidate,
-            raw: issue.raw,
-          }));
-
     return {
       attendanceRows,
       issuesRows,
@@ -414,19 +390,10 @@ export default function TAZoomProcess() {
       matchesRows,
       rawRows,
       issues,
-      penaltyCandidates,
       unidentifiedIssues: issues.filter((issue) => issue.unidentified),
       notInRosterIssues: issues.filter((issue) => issue.notInRoster),
     };
-  }, [data, rosterErpSet, rosterReference]);
-
-  useEffect(() => {
-    const defaults = normalizedRows.penaltyCandidates
-      .filter((candidate) => candidate.canApply)
-      .map((candidate) => candidate.key);
-
-    setSelectedPenaltyKeys(new Set(defaults));
-  }, [normalizedRows.penaltyCandidates]);
+  }, [data, rosterErpSet]);
 
   const diagnostics = useMemo<ZoomDiagnostics>(() => {
     const matchedErps = normalizedRows.matchesRows.map((row) => extractERP(row)).filter(Boolean);
@@ -666,7 +633,6 @@ export default function TAZoomProcess() {
 
       setStep(targetStep);
       setActiveTab(targetStep === 'review' ? 'matches' : 'attendance');
-      setMissingAttendanceErps([]);
 
       toast.dismiss(loadingToast);
       toast.success(targetStep === 'review' ? 'Match analysis complete' : 'Attendance generated');
@@ -687,10 +653,16 @@ export default function TAZoomProcess() {
     event.target.value = '';
     setStep('upload');
     setData(null);
-    setMissingAttendanceErps([]);
   };
 
-  const renderTable = (rows: GenericRow[], isRaw = false) => {
+  const renderTable = (
+    rows: GenericRow[],
+    options?: { isRaw?: boolean; searchMode?: 'erp_and_name' | 'full_row'; showMinusOneOnly?: boolean }
+  ) => {
+    const isRaw = options?.isRaw ?? false;
+    const searchMode = options?.searchMode ?? 'erp_and_name';
+    const showMinusOneOnly = options?.showMinusOneOnly ?? false;
+
     if (rows.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
@@ -701,25 +673,17 @@ export default function TAZoomProcess() {
     }
 
     const filteredRows = rows.filter((row) => {
-      const name = extractName(row).toLowerCase();
-      const erp = extractERP(row);
       const classNo = extractClassNo(row).toLowerCase();
+      const query = filterQuery.trim().toLowerCase();
+      const searchableText =
+        searchMode === 'full_row' ? rowToSearchText(row) : `${extractERP(row)} ${extractName(row)}`.toLowerCase();
 
-      const nameMatch = filterName ? name.includes(filterName.toLowerCase()) : true;
-      const erpMatch = filterErp ? erp.includes(filterErp) : true;
+      const queryMatch = query ? searchableText.includes(query) : true;
       const classMatch = filterClass ? classNo.includes(filterClass.toLowerCase()) : true;
+      const minusOneMatch = showMinusOneOnly && penaltiesMinusOneOnly ? hasMinusOnePenaltyApplied(row) : true;
 
-      return nameMatch && erpMatch && classMatch;
+      return queryMatch && classMatch && minusOneMatch;
     });
-
-    if (filteredRows.length === 0) {
-      return (
-        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-          <Filter className="mb-4 h-12 w-12 opacity-20" />
-          <p>No rows match filters.</p>
-        </div>
-      );
-    }
 
     const headers = [...Object.keys(rows[0])];
     if (!isRaw) {
@@ -734,43 +698,53 @@ export default function TAZoomProcess() {
       });
     }
 
+    const hasActiveFilters = Boolean(filterClass.trim() || filterQuery.trim() || (showMinusOneOnly && penaltiesMinusOneOnly));
+
     return (
       <div className="space-y-4">
-        {!isRaw && (
-          <div className="flex flex-wrap items-center gap-4 rounded-xl border border-primary/5 bg-muted/30 p-4">
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-primary" />
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Filters</span>
-            </div>
-            <div className="h-6 w-[1px] bg-border" />
-            <div className="space-y-1">
-              <Label className="text-[10px] uppercase text-muted-foreground">Class</Label>
-              <Input className="h-8 w-20 text-xs" placeholder="All" value={filterClass} onChange={(event) => setFilterClass(event.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] uppercase text-muted-foreground">ERP</Label>
-              <Input className="h-8 w-24 text-xs" placeholder="Search" value={filterErp} onChange={(event) => setFilterErp(event.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] uppercase text-muted-foreground">Name</Label>
-              <Input className="h-8 w-32 text-xs" placeholder="Search" value={filterName} onChange={(event) => setFilterName(event.target.value)} />
-            </div>
-            {(filterClass || filterErp || filterName) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="mt-5 h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                onClick={() => {
-                  setFilterClass('');
-                  setFilterErp('');
-                  setFilterName('');
-                }}
-              >
-                Clear
-              </Button>
-            )}
+        <div className="flex flex-wrap items-center gap-4 rounded-xl border border-primary/5 bg-muted/30 p-4">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-primary" />
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Filters</span>
           </div>
-        )}
+          <div className="h-6 w-[1px] bg-border" />
+          <div className="space-y-1">
+            <Label className="text-[10px] uppercase text-muted-foreground">Class</Label>
+            <Input className="h-8 w-20 text-xs" placeholder="All" value={filterClass} onChange={(event) => setFilterClass(event.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-[10px] uppercase text-muted-foreground">Search</Label>
+            <Input
+              className="h-8 w-40 text-xs"
+              placeholder="Search ERP or Name"
+              value={filterQuery}
+              onChange={(event) => setFilterQuery(event.target.value)}
+            />
+          </div>
+          {showMinusOneOnly && (
+            <label className="mt-5 flex h-8 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-3 text-xs">
+              <Checkbox
+                checked={penaltiesMinusOneOnly}
+                onCheckedChange={(checked) => setPenaltiesMinusOneOnly(Boolean(checked))}
+              />
+              <span>Only -1 applied</span>
+            </label>
+          )}
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-5 h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => {
+                setFilterClass('');
+                setFilterQuery('');
+                if (showMinusOneOnly) setPenaltiesMinusOneOnly(false);
+              }}
+            >
+              Clear
+            </Button>
+          )}
+        </div>
 
         <div className="overflow-hidden rounded-xl border border-border">
           <div className="max-h-[600px] overflow-x-auto">
@@ -785,15 +759,26 @@ export default function TAZoomProcess() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredRows.map((row, idx) => (
-                  <TableRow key={idx} className="transition-colors hover:bg-muted/50">
-                    {headers.map((header) => (
-                      <TableCell key={`${idx}-${header}`} className="whitespace-nowrap font-mono text-xs">
-                        {String(row[header] ?? '')}
-                      </TableCell>
-                    ))}
+                {filteredRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={headers.length} className="h-40">
+                      <div className="flex flex-col items-center justify-center text-muted-foreground">
+                        <Filter className="mb-3 h-8 w-8 opacity-20" />
+                        <p>No rows match filters.</p>
+                      </div>
+                    </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  filteredRows.map((row, idx) => (
+                    <TableRow key={getRowKey(row, idx)} className="transition-colors hover:bg-muted/50">
+                      {headers.map((header) => (
+                        <TableCell key={`${idx}-${header}`} className="whitespace-nowrap font-mono text-xs">
+                          {String(row[header] ?? '')}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>
@@ -812,12 +797,13 @@ export default function TAZoomProcess() {
 
     const filteredRows = rows.filter((row) => {
       const classMatch = filterClass ? extractClassNo(row).toLowerCase().includes(filterClass.toLowerCase()) : true;
-      const erpMatch = filterErp ? extractERP(row).includes(filterErp) : true;
-      const nameMatch = filterName ? extractName(row).toLowerCase().includes(filterName.toLowerCase()) : true;
-      return classMatch && erpMatch && nameMatch;
+      const query = filterQuery.trim().toLowerCase();
+      const searchMatch = query ? `${extractERP(row)} ${extractName(row)}`.toLowerCase().includes(query) : true;
+      return classMatch && searchMatch;
     });
 
     const nonIgnoredCount = filteredRows.filter((row, idx) => !ignoredKeys.has(getRowKey(row, idx))).length;
+    const hasActiveFilters = Boolean(filterClass.trim() || filterQuery.trim());
 
     return (
       <div className="space-y-4">
@@ -850,22 +836,22 @@ export default function TAZoomProcess() {
             <Input className="h-8 w-20 text-xs" placeholder="All" value={filterClass} onChange={(event) => setFilterClass(event.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label className="text-[10px] uppercase text-muted-foreground">ERP</Label>
-            <Input className="h-8 w-24 text-xs" placeholder="Search" value={filterErp} onChange={(event) => setFilterErp(event.target.value)} />
+            <Label className="text-[10px] uppercase text-muted-foreground">Search</Label>
+            <Input
+              className="h-8 w-40 text-xs"
+              placeholder="Search ERP or Name"
+              value={filterQuery}
+              onChange={(event) => setFilterQuery(event.target.value)}
+            />
           </div>
-          <div className="space-y-1">
-            <Label className="text-[10px] uppercase text-muted-foreground">Name</Label>
-            <Input className="h-8 w-32 text-xs" placeholder="Search" value={filterName} onChange={(event) => setFilterName(event.target.value)} />
-          </div>
-          {(filterClass || filterErp || filterName) && (
+          {hasActiveFilters && (
             <Button
               variant="ghost"
               size="sm"
               className="mt-5 h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
               onClick={() => {
                 setFilterClass('');
-                setFilterErp('');
-                setFilterName('');
+                setFilterQuery('');
               }}
             >
               Clear
@@ -887,34 +873,42 @@ export default function TAZoomProcess() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredRows.map((row, idx) => {
-                  const key = getRowKey(row, idx);
-                  const isIgnored = ignoredKeys.has(key);
+                {filteredRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={headers.length + 1} className="h-32 text-center text-muted-foreground">
+                      No rows match filters.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredRows.map((row, idx) => {
+                    const key = getRowKey(row, idx);
+                    const isIgnored = ignoredKeys.has(key);
 
-                  return (
-                    <TableRow key={key} className={`transition-colors hover:bg-muted/50 ${isIgnored ? 'bg-muted/20 opacity-50' : ''}`}>
-                      <TableCell className="w-16">
-                        <Checkbox
-                          checked={isIgnored}
-                          onCheckedChange={() => toggleIgnoreKey(key)}
-                          className="data-[state=checked]:border-yellow-500 data-[state=checked]:bg-yellow-500"
-                        />
-                      </TableCell>
-                      <TableCell className={`whitespace-nowrap font-mono text-xs ${isIgnored ? 'line-through' : ''}`}>
-                        {extractERP(row)}
-                      </TableCell>
-                      <TableCell className={`whitespace-nowrap font-mono text-xs ${isIgnored ? 'line-through' : ''}`}>
-                        {extractName(row)}
-                      </TableCell>
-                      <TableCell className={`whitespace-nowrap font-mono text-xs ${isIgnored ? 'line-through' : ''}`}>
-                        {extractClassNo(row)}
-                      </TableCell>
-                      <TableCell className={`whitespace-nowrap font-mono text-xs ${isIgnored ? 'line-through' : ''}`}>
-                        {extractReason(row)}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                    return (
+                      <TableRow key={key} className={`transition-colors hover:bg-muted/50 ${isIgnored ? 'bg-muted/20 opacity-50' : ''}`}>
+                        <TableCell className="w-16">
+                          <Checkbox
+                            checked={isIgnored}
+                            onCheckedChange={() => toggleIgnoreKey(key)}
+                            className="data-[state=checked]:border-yellow-500 data-[state=checked]:bg-yellow-500"
+                          />
+                        </TableCell>
+                        <TableCell className={`whitespace-nowrap font-mono text-xs ${isIgnored ? 'line-through' : ''}`}>
+                          {extractERP(row)}
+                        </TableCell>
+                        <TableCell className={`whitespace-nowrap font-mono text-xs ${isIgnored ? 'line-through' : ''}`}>
+                          {extractName(row)}
+                        </TableCell>
+                        <TableCell className={`whitespace-nowrap font-mono text-xs ${isIgnored ? 'line-through' : ''}`}>
+                          {extractClassNo(row)}
+                        </TableCell>
+                        <TableCell className={`whitespace-nowrap font-mono text-xs ${isIgnored ? 'line-through' : ''}`}>
+                          {extractReason(row)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
               </TableBody>
             </Table>
           </div>
@@ -979,122 +973,6 @@ export default function TAZoomProcess() {
       </div>
     );
   };
-
-  const togglePenaltyCandidate = (key: string, checked: boolean) => {
-    setSelectedPenaltyKeys((prev) => {
-      const next = new Set(prev);
-      if (checked) {
-        next.add(key);
-      } else {
-        next.delete(key);
-      }
-      return next;
-    });
-  };
-
-  const selectAllPenaltyCandidates = () => {
-    setSelectedPenaltyKeys(
-      new Set(normalizedRows.penaltyCandidates.filter((candidate) => candidate.canApply).map((candidate) => candidate.key))
-    );
-  };
-
-  const clearAllPenaltyCandidates = () => {
-    setSelectedPenaltyKeys(new Set());
-  };
-
-  const handleApplySelectedPenalties = async () => {
-    if (!penaltySessionId) {
-      toast.error('Select a session before applying penalties.');
-      return;
-    }
-
-    const applicableCandidates = normalizedRows.penaltyCandidates.filter((candidate) => candidate.canApply);
-    if (applicableCandidates.length === 0) {
-      toast.error('No penalty candidates with valid ERP were found.');
-      return;
-    }
-
-    const selectedCandidates = applicableCandidates.filter((candidate) => selectedPenaltyKeys.has(candidate.key));
-    if (selectedCandidates.length === 0) {
-      toast.error('Select at least one student to apply penalty.');
-      return;
-    }
-
-    const selectedErps = Array.from(new Set(selectedCandidates.map((candidate) => candidate.erp)));
-    const allCandidateErps = Array.from(new Set(applicableCandidates.map((candidate) => candidate.erp)));
-
-    setIsApplyingPenalties(true);
-
-    try {
-      const { data: attendanceRows, error: attendanceError } = await supabase
-        .from('attendance')
-        .select('erp')
-        .eq('session_id', penaltySessionId)
-        .in('erp', allCandidateErps);
-
-      if (attendanceError) {
-        throw new Error(attendanceError.message);
-      }
-
-      const existingSet = new Set((attendanceRows || []).map((row) => toText((row as { erp?: string }).erp)));
-      const missingSelectedErps = selectedErps.filter((erp) => !existingSet.has(erp));
-
-      if (missingSelectedErps.length > 0) {
-        setMissingAttendanceErps(missingSelectedErps);
-        toast.error('Attendance missing for selected students in this session. Mark attendance first, then retry.');
-        return;
-      }
-
-      setMissingAttendanceErps([]);
-
-      const selectedExistingErps = selectedErps.filter((erp) => existingSet.has(erp));
-      const unselectedExistingErps = allCandidateErps.filter(
-        (erp) => !selectedExistingErps.includes(erp) && existingSet.has(erp)
-      );
-      const skippedErps = allCandidateErps.filter((erp) => !existingSet.has(erp));
-
-      if (selectedExistingErps.length > 0) {
-        const { error: applyError } = await supabase
-          .from('attendance')
-          .update({ naming_penalty: true } as never)
-          .eq('session_id', penaltySessionId)
-          .in('erp', selectedExistingErps);
-
-        if (applyError) {
-          throw new Error(applyError.message);
-        }
-      }
-
-      if (unselectedExistingErps.length > 0) {
-        const { error: clearError } = await supabase
-          .from('attendance')
-          .update({ naming_penalty: false } as never)
-          .eq('session_id', penaltySessionId)
-          .in('erp', unselectedExistingErps);
-
-        if (clearError) {
-          throw new Error(clearError.message);
-        }
-      }
-
-      const { ok } = await syncPublicAttendanceSnapshot({ source: 'ta_zoom_penalty_apply' });
-
-      toast.success(
-        `Penalties updated. Applied: ${selectedExistingErps.length}, Cleared: ${unselectedExistingErps.length}, Skipped: ${skippedErps.length}`
-      );
-
-      if (!ok) {
-        toast.error('Penalties saved, but Google Sheet sync failed.');
-      }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      toast.error(`Failed to apply penalties: ${message}`);
-    } finally {
-      setIsApplyingPenalties(false);
-    }
-  };
-
-  const selectedPenaltyCount = normalizedRows.penaltyCandidates.filter((candidate) => selectedPenaltyKeys.has(candidate.key)).length;
 
   return (
     <div className="animate-fade-in space-y-6 pb-20">
@@ -1334,7 +1212,7 @@ export default function TAZoomProcess() {
                 {renderUnidentifiedRows()}
               </TabsContent>
               <TabsContent value="raw" className="animate-fade-in">
-                {renderTable(normalizedRows.rawRows, true)}
+                {renderTable(normalizedRows.rawRows, { isRaw: true, searchMode: 'full_row' })}
               </TabsContent>
 
               {step === 'results' && (
@@ -1346,107 +1224,12 @@ export default function TAZoomProcess() {
                     {renderAbsentTable(normalizedRows.absentRows)}
                   </TabsContent>
                   <TabsContent value="penalties" className="animate-fade-in">
-                    <div className="space-y-4">
-                      <div className="grid gap-3 rounded-xl border border-primary/10 bg-muted/20 p-4 md:grid-cols-[220px_1fr_auto] md:items-end">
-                        <div className="space-y-2">
-                          <Label>Session for Penalty Apply</Label>
-                          <Select value={penaltySessionId} onValueChange={setPenaltySessionId}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select session" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {sessions.map((session) => (
-                                <SelectItem key={session.id} value={session.id}>
-                                  Session {session.session_number}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button type="button" variant="outline" size="sm" onClick={selectAllPenaltyCandidates}>
-                            Select all
-                          </Button>
-                          <Button type="button" variant="outline" size="sm" onClick={clearAllPenaltyCandidates}>
-                            Clear all
-                          </Button>
-                          <Badge variant="outline" className="bg-primary/10 text-primary">
-                            Selected: {selectedPenaltyCount}
-                          </Badge>
-                        </div>
-
-                        <Button
-                          type="button"
-                          onClick={handleApplySelectedPenalties}
-                          disabled={isApplyingPenalties || normalizedRows.penaltyCandidates.length === 0}
-                          className="gap-2"
-                        >
-                          {isApplyingPenalties ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListChecks className="h-4 w-4" />}
-                          Apply Selected Penalties
-                        </Button>
-                      </div>
-
-                      {missingAttendanceErps.length > 0 && (
-                        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-700">
-                          <p className="font-semibold">Attendance is missing for selected ERP(s)</p>
-                          <p className="mt-1">Mark attendance for this session first, then retry penalty apply.</p>
-                          <div className="mt-2 max-h-24 overflow-auto font-mono text-xs">{missingAttendanceErps.join(', ')}</div>
-                        </div>
-                      )}
-
-                      {normalizedRows.penaltyCandidates.length === 0 ? (
-                        <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">
-                          No penalty candidates found.
-                        </div>
-                      ) : (
-                        <div className="overflow-hidden rounded-xl border border-border">
-                          <div className="max-h-[560px] overflow-x-auto">
-                            <Table>
-                              <TableHeader className="sticky top-0 z-10 bg-muted/50 backdrop-blur-md">
-                                <TableRow>
-                                  <TableHead className="w-14">Pick</TableHead>
-                                  <TableHead>ERP</TableHead>
-                                  <TableHead>Name</TableHead>
-                                  <TableHead>Class</TableHead>
-                                  <TableHead>Reason</TableHead>
-                                  <TableHead>Raw</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {normalizedRows.penaltyCandidates.map((candidate) => (
-                                  <TableRow key={candidate.key} className={!candidate.canApply ? 'opacity-60' : ''}>
-                                    <TableCell>
-                                      <Checkbox
-                                        checked={selectedPenaltyKeys.has(candidate.key)}
-                                        onCheckedChange={(checked) => togglePenaltyCandidate(candidate.key, checked as boolean)}
-                                        disabled={!candidate.canApply}
-                                      />
-                                    </TableCell>
-                                    <TableCell className="font-mono text-xs">{candidate.erp || 'N/A'}</TableCell>
-                                    <TableCell>{candidate.name || 'Unknown'}</TableCell>
-                                    <TableCell>{candidate.classNo || '-'}</TableCell>
-                                    <TableCell className="text-xs">{candidate.reason}</TableCell>
-                                    <TableCell>
-                                      <details>
-                                        <summary className="cursor-pointer text-xs text-primary">View</summary>
-                                        <pre className="mt-2 max-h-40 overflow-auto rounded bg-muted p-2 text-xs">{JSON.stringify(candidate.raw, null, 2)}</pre>
-                                      </details>
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </div>
-                        </div>
-                      )}
-
-                      {normalizedRows.penaltiesRows.length > 0 && (
-                        <div className="rounded-lg border border-border p-3">
-                          <p className="mb-2 text-sm font-semibold">Original penalties output (raw table)</p>
-                          {renderTable(normalizedRows.penaltiesRows)}
-                        </div>
-                      )}
+                    <div className="space-y-3">
+                      <p className="text-sm font-semibold">Original penalties output (raw table)</p>
+                      {renderTable(normalizedRows.penaltiesRows, {
+                        isRaw: true,
+                        showMinusOneOnly: true,
+                      })}
                     </div>
                   </TabsContent>
                 </>
