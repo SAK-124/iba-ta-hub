@@ -108,6 +108,10 @@ export default function PublicAttendanceBoard() {
           <span><span className="font-semibold text-green-600">P</span> Present</span>
           <span><span className="font-semibold text-red-600">A</span> Absent</span>
           <span><span className="font-semibold text-yellow-600">E</span> Excused</span>
+          <span className="w-full">
+            <span className="font-semibold text-destructive">Naming Penalty:</span>{' '}
+            Naming penalties apply when you have the wrong formatted name during your Zoom meeting.
+          </span>
         </div>
       </CardHeader>
 
@@ -136,7 +140,7 @@ export default function PublicAttendanceBoard() {
                   <TableHead className="sticky left-0 z-20 w-[90px] bg-background">Class</TableHead>
                   <TableHead className="sticky left-[90px] z-20 w-[220px] bg-background">Name</TableHead>
                   <TableHead className="sticky left-[310px] z-20 w-[110px] bg-background">ERP</TableHead>
-                  <TableHead className="w-[110px] text-center">Penalties</TableHead>
+                  <TableHead className="w-[110px] text-center">Naming Penalty</TableHead>
                   <TableHead className="w-[100px] text-center">Absences</TableHead>
                   {sessions.map((session) => (
                     <TableHead
