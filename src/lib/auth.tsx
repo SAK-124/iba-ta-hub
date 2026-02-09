@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
 
@@ -21,6 +21,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isTA, setIsTA] = useState(false);
+  const hasBootstrappedSessionRef = useRef(false);
 
   const checkTAStatus = async (email: string): Promise<boolean> => {
     try {
@@ -43,21 +44,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const syncSessionState = async (nextSession: Session | null) => {
       if (!isMounted) return;
 
+      if (!hasBootstrappedSessionRef.current) {
+        setIsLoading(true);
+      }
+
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
 
       if (!nextSession?.user?.email) {
         setIsTA(false);
         setIsLoading(false);
+        hasBootstrappedSessionRef.current = true;
         return;
       }
 
-      setIsLoading(true);
       const taStatus = await checkTAStatus(nextSession.user.email);
       if (!isMounted) return;
 
       setIsTA(taStatus);
       setIsLoading(false);
+      hasBootstrappedSessionRef.current = true;
     };
 
     setIsLoading(true);
@@ -129,6 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user?.id === '00000') {
       setUser(null);
       setSession(null);
+      setIsTA(false);
       return;
     }
     await supabase.auth.signOut();

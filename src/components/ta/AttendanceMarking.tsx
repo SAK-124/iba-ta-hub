@@ -24,6 +24,7 @@ import { syncPublicAttendanceSnapshot } from '@/lib/public-attendance-sync';
 import { Loader2, Save } from 'lucide-react';
 
 type AttendanceStatus = 'present' | 'absent' | 'excused';
+type AttendanceFilterToken = 'present' | 'absent' | 'penalized';
 
 interface SessionRow {
   id: string;
@@ -68,7 +69,7 @@ export default function AttendanceMarking() {
   const [showOverwriteAlert, setShowOverwriteAlert] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | AttendanceStatus>('all');
+  const [activeFilters, setActiveFilters] = useState<Set<AttendanceFilterToken>>(new Set());
 
   const autoSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -265,8 +266,28 @@ export default function AttendanceMarking() {
     scheduleCanonicalSync('attendance_marking_penalty_toggle');
   };
 
+  const toggleActiveFilter = (token: AttendanceFilterToken) => {
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(token)) {
+        next.delete(token);
+      } else {
+        next.add(token);
+      }
+      return next;
+    });
+  };
+
   const filteredAttendance = attendanceData.filter((record) => {
-    if (statusFilter !== 'all' && record.status !== statusFilter) {
+    if (activeFilters.has('present') && record.status !== 'present') {
+      return false;
+    }
+
+    if (activeFilters.has('absent') && record.status !== 'absent') {
+      return false;
+    }
+
+    if (activeFilters.has('penalized') && !record.naming_penalty) {
       return false;
     }
 
@@ -281,6 +302,7 @@ export default function AttendanceMarking() {
   const presentCount = attendanceData.filter((record) => record.status === 'present').length;
   const absentCount = attendanceData.filter((record) => record.status === 'absent').length;
   const excusedCount = attendanceData.filter((record) => record.status === 'excused').length;
+  const penalizedCount = attendanceData.filter((record) => record.naming_penalty).length;
 
   return (
     <div className="grid gap-6 md:grid-cols-3">
@@ -372,34 +394,41 @@ export default function AttendanceMarking() {
                 <Badge variant="outline" className="border-yellow-500/20 bg-yellow-500/10 text-yellow-500">
                   {excusedCount} Excused
                 </Badge>
+                <Badge variant="outline" className="border-blue-500/20 bg-blue-500/10 text-blue-500">
+                  {penalizedCount} Penalized
+                </Badge>
                 <Badge variant="outline" className="bg-muted text-muted-foreground">
                   {attendanceData.length} / {roster.length} Total
                 </Badge>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant={statusFilter === 'all' ? 'default' : 'outline'} onClick={() => setStatusFilter('all')}>
+                <Button
+                  size="sm"
+                  variant={activeFilters.size === 0 ? 'default' : 'outline'}
+                  onClick={() => setActiveFilters(new Set())}
+                >
                   All ({attendanceData.length})
                 </Button>
                 <Button
                   size="sm"
-                  variant={statusFilter === 'present' ? 'default' : 'outline'}
-                  onClick={() => setStatusFilter('present')}
+                  variant={activeFilters.has('present') ? 'default' : 'outline'}
+                  onClick={() => toggleActiveFilter('present')}
                 >
                   Present ({presentCount})
                 </Button>
                 <Button
                   size="sm"
-                  variant={statusFilter === 'absent' ? 'default' : 'outline'}
-                  onClick={() => setStatusFilter('absent')}
+                  variant={activeFilters.has('absent') ? 'default' : 'outline'}
+                  onClick={() => toggleActiveFilter('absent')}
                 >
                   Absent ({absentCount})
                 </Button>
                 <Button
                   size="sm"
-                  variant={statusFilter === 'excused' ? 'default' : 'outline'}
-                  onClick={() => setStatusFilter('excused')}
+                  variant={activeFilters.has('penalized') ? 'default' : 'outline'}
+                  onClick={() => toggleActiveFilter('penalized')}
                 >
-                  Excused ({excusedCount})
+                  Penalized ({penalizedCount})
                 </Button>
               </div>
             </div>
