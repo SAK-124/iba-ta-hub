@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { syncPublicAttendanceSnapshot } from '@/lib/public-attendance-sync';
+import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { Loader2, Save } from 'lucide-react';
 
 type AttendanceStatus = 'present' | 'absent' | 'excused';
@@ -47,6 +48,13 @@ interface AttendanceRow {
   naming_penalty: boolean;
   student_name?: string;
   class_no?: string;
+  students_roster?: {
+    student_name?: string;
+    class_no?: string;
+  } | null;
+}
+
+interface AttendanceRowWithRoster extends AttendanceRow {
   students_roster?: {
     student_name?: string;
     class_no?: string;
@@ -93,6 +101,20 @@ export default function AttendanceMarking() {
     setAttendanceData([]);
   }, [selectedSessionId]);
 
+  useEffect(() => {
+    const unsubscribe = subscribeRosterDataUpdated(() => {
+      void (async () => {
+        await fetchRoster();
+
+        if (selectedSessionId) {
+          await fetchAttendance(selectedSessionId);
+        }
+      })();
+    });
+
+    return unsubscribe;
+  }, [selectedSessionId]);
+
   const fetchSessions = async () => {
     const { data, error } = await supabase
       .from('sessions')
@@ -118,29 +140,83 @@ export default function AttendanceMarking() {
     setRoster((data || []) as RosterRow[]);
   };
 
-  const fetchAttendance = async (sessionId: string) => {
-    setIsLoading(true);
-
+  const loadSessionAttendanceRows = async (sessionId: string) => {
     const { data, error } = await supabase
       .from('attendance')
       .select('*, students_roster(student_name, class_no)')
       .eq('session_id', sessionId);
 
     if (error) {
-      toast.error(`Failed to load attendance: ${error.message}`);
-      setAttendanceData([]);
-      setIsLoading(false);
-      return;
+      return { rows: [] as AttendanceRow[], error };
     }
 
-    const flatData = ((data || []) as AttendanceRow[]).map((row) => ({
+    const rows = ((data || []) as AttendanceRowWithRoster[]).map((row) => ({
       ...row,
       student_name: row.students_roster?.student_name,
       class_no: row.students_roster?.class_no,
     }));
 
-    setAttendanceData(flatData);
-    setIsLoading(false);
+    return { rows, error: null };
+  };
+
+  const backfillMissingRosterRowsForSession = async (sessionId: string, rows: AttendanceRow[]) => {
+    // Preserve "marked sessions only" behavior: skip empty sessions.
+    if (rows.length === 0 || roster.length === 0) {
+      return false;
+    }
+
+    const existingErps = new Set(rows.map((row) => row.erp));
+    const missingStudents = roster.filter((student) => !existingErps.has(student.erp));
+
+    if (missingStudents.length === 0) {
+      return false;
+    }
+
+    const payload = missingStudents.map((student) => ({
+      session_id: sessionId,
+      erp: student.erp,
+      status: 'absent',
+      naming_penalty: false,
+    }));
+
+    const { error } = await supabase
+      .from('attendance')
+      .upsert(payload as never, { onConflict: 'session_id,erp', ignoreDuplicates: true });
+
+    if (error) {
+      toast.error(`Failed to backfill missing students: ${error.message}`);
+      return false;
+    }
+
+    return true;
+  };
+
+  const fetchAttendance = async (sessionId: string) => {
+    setIsLoading(true);
+    try {
+      const initialResult = await loadSessionAttendanceRows(sessionId);
+      if (initialResult.error) {
+        toast.error(`Failed to load attendance: ${initialResult.error.message}`);
+        setAttendanceData([]);
+        return;
+      }
+
+      let nextRows = initialResult.rows;
+      const didBackfill = await backfillMissingRosterRowsForSession(sessionId, nextRows);
+
+      if (didBackfill) {
+        const refreshedResult = await loadSessionAttendanceRows(sessionId);
+        if (refreshedResult.error) {
+          toast.error(`Failed to refresh attendance: ${refreshedResult.error.message}`);
+        } else {
+          nextRows = refreshedResult.rows;
+        }
+      }
+
+      setAttendanceData(nextRows);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const scheduleCanonicalSync = (source: string) => {

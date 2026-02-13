@@ -9,6 +9,7 @@ import {
   type PublicAttendanceSession,
   type PublicAttendanceStudent,
 } from '@/lib/public-attendance-sync';
+import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { toast } from 'sonner';
 import { Loader2, Upload } from 'lucide-react';
 
@@ -21,6 +22,14 @@ export default function ConsolidatedView() {
 
   useEffect(() => {
     void fetchData();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeRosterDataUpdated(() => {
+      void fetchData();
+    });
+
+    return unsubscribe;
   }, []);
 
   const fetchData = async () => {

@@ -11,6 +11,7 @@ import { Loader2, Search, Trash2, Plus } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 
 interface RuleExceptionRow {
     id: string;
@@ -65,6 +66,14 @@ export default function RuleExceptions() {
     useEffect(() => {
         fetchExceptions();
         fetchRosterStudents();
+    }, []);
+
+    useEffect(() => {
+        const unsubscribe = subscribeRosterDataUpdated(() => {
+            void fetchRosterStudents();
+        });
+
+        return unsubscribe;
     }, []);
 
     useEffect(() => {
