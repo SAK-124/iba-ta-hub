@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { syncPublicAttendanceSnapshot } from '@/lib/public-attendance-sync';
-import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
+import { emitAttendanceDataUpdated, subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { Loader2, Save } from 'lucide-react';
 
 type AttendanceStatus = 'present' | 'absent' | 'excused';
@@ -94,7 +94,10 @@ export default function AttendanceMarking() {
 
   useEffect(() => {
     if (selectedSessionId) {
-      void fetchAttendance(selectedSessionId);
+      void (async () => {
+        const latestRoster = roster.length > 0 ? roster : await fetchRoster();
+        await fetchAttendance(selectedSessionId, latestRoster);
+      })();
       return;
     }
 
@@ -104,10 +107,10 @@ export default function AttendanceMarking() {
   useEffect(() => {
     const unsubscribe = subscribeRosterDataUpdated(() => {
       void (async () => {
-        await fetchRoster();
+        const latestRoster = await fetchRoster();
 
         if (selectedSessionId) {
-          await fetchAttendance(selectedSessionId);
+          await fetchAttendance(selectedSessionId, latestRoster);
         }
       })();
     });
@@ -129,15 +132,17 @@ export default function AttendanceMarking() {
     setSessions((data || []) as SessionRow[]);
   };
 
-  const fetchRoster = async () => {
+  const fetchRoster = async (): Promise<RosterRow[]> => {
     const { data, error } = await supabase.from('students_roster').select('*');
 
     if (error) {
       toast.error(`Failed to load roster: ${error.message}`);
-      return;
+      return [];
     }
 
-    setRoster((data || []) as RosterRow[]);
+    const nextRoster = (data || []) as RosterRow[];
+    setRoster(nextRoster);
+    return nextRoster;
   };
 
   const loadSessionAttendanceRows = async (sessionId: string) => {
@@ -159,14 +164,18 @@ export default function AttendanceMarking() {
     return { rows, error: null };
   };
 
-  const backfillMissingRosterRowsForSession = async (sessionId: string, rows: AttendanceRow[]) => {
+  const backfillMissingRosterRowsForSession = async (
+    sessionId: string,
+    rows: AttendanceRow[],
+    rosterRows: RosterRow[]
+  ) => {
     // Preserve "marked sessions only" behavior: skip empty sessions.
-    if (rows.length === 0 || roster.length === 0) {
+    if (rows.length === 0 || rosterRows.length === 0) {
       return false;
     }
 
     const existingErps = new Set(rows.map((row) => row.erp));
-    const missingStudents = roster.filter((student) => !existingErps.has(student.erp));
+    const missingStudents = rosterRows.filter((student) => !existingErps.has(student.erp));
 
     if (missingStudents.length === 0) {
       return false;
@@ -191,9 +200,16 @@ export default function AttendanceMarking() {
     return true;
   };
 
-  const fetchAttendance = async (sessionId: string) => {
+  const fetchAttendance = async (sessionId: string, rosterOverride?: RosterRow[]) => {
     setIsLoading(true);
     try {
+      const rosterRows =
+        rosterOverride && rosterOverride.length > 0
+          ? rosterOverride
+          : roster.length > 0
+            ? roster
+            : await fetchRoster();
+
       const initialResult = await loadSessionAttendanceRows(sessionId);
       if (initialResult.error) {
         toast.error(`Failed to load attendance: ${initialResult.error.message}`);
@@ -202,9 +218,12 @@ export default function AttendanceMarking() {
       }
 
       let nextRows = initialResult.rows;
-      const didBackfill = await backfillMissingRosterRowsForSession(sessionId, nextRows);
+      const didBackfill = await backfillMissingRosterRowsForSession(sessionId, nextRows, rosterRows);
 
       if (didBackfill) {
+        emitAttendanceDataUpdated('attendance_marking_auto_backfill');
+        scheduleCanonicalSync('attendance_marking_auto_backfill');
+
         const refreshedResult = await loadSessionAttendanceRows(sessionId);
         if (refreshedResult.error) {
           toast.error(`Failed to refresh attendance: ${refreshedResult.error.message}`);
@@ -294,6 +313,7 @@ export default function AttendanceMarking() {
       if (insertError) throw insertError;
 
       toast.success('Attendance marked successfully');
+      emitAttendanceDataUpdated('attendance_marking_submit');
       scheduleCanonicalSync('attendance_marking_submit');
 
       setAbsentErps('');
@@ -322,6 +342,7 @@ export default function AttendanceMarking() {
       return;
     }
 
+    emitAttendanceDataUpdated('attendance_marking_status_toggle');
     scheduleCanonicalSync('attendance_marking_status_toggle');
   };
 
@@ -339,6 +360,7 @@ export default function AttendanceMarking() {
       return;
     }
 
+    emitAttendanceDataUpdated('attendance_marking_penalty_toggle');
     scheduleCanonicalSync('attendance_marking_penalty_toggle');
   };
 

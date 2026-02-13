@@ -8,6 +8,7 @@ import {
   type PublicAttendanceSession,
   type PublicAttendanceStudent,
 } from '@/lib/public-attendance-sync';
+import { subscribeAttendanceDataUpdated, subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { AlertCircle, Loader2, Search } from 'lucide-react';
 
 export default function PublicAttendanceBoard() {
@@ -18,7 +19,23 @@ export default function PublicAttendanceBoard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchBoardData();
+    void fetchBoardData();
+
+    const unsubscribeRoster = subscribeRosterDataUpdated(() => {
+      void fetchBoardData();
+    });
+    const unsubscribeAttendance = subscribeAttendanceDataUpdated(() => {
+      void fetchBoardData();
+    });
+    const intervalId = window.setInterval(() => {
+      void fetchBoardData();
+    }, 15000);
+
+    return () => {
+      unsubscribeRoster();
+      unsubscribeAttendance();
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   const fetchBoardData = async () => {
