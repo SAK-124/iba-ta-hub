@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 
 export default function IssueManagement() {
     const [tickets, setTickets] = useState<any[]>([]);
@@ -40,7 +41,7 @@ export default function IssueManagement() {
 
     // Realtime subscription
     useEffect(() => {
-        fetchTickets();
+        void fetchTickets();
 
         const channel = supabase
             .channel('ta-tickets')
@@ -57,7 +58,12 @@ export default function IssueManagement() {
             )
             .subscribe();
 
+        const unsubscribeRoster = subscribeRosterDataUpdated(() => {
+            void fetchTickets();
+        });
+
         return () => {
+            unsubscribeRoster();
             supabase.removeChannel(channel);
         };
     }, []);

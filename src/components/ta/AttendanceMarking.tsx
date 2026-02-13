@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { syncPublicAttendanceSnapshot } from '@/lib/public-attendance-sync';
+import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { Loader2, Save } from 'lucide-react';
 
 type AttendanceStatus = 'present' | 'absent' | 'excused';
@@ -91,6 +92,18 @@ export default function AttendanceMarking() {
     }
 
     setAttendanceData([]);
+  }, [selectedSessionId]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeRosterDataUpdated(() => {
+      void fetchRoster();
+
+      if (selectedSessionId) {
+        void fetchAttendance(selectedSessionId);
+      }
+    });
+
+    return unsubscribe;
   }, [selectedSessionId]);
 
   const fetchSessions = async () => {

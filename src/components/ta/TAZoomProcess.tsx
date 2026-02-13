@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import * as XLSX from 'xlsx';
 
 type GenericRow = Record<string, unknown>;
@@ -295,22 +296,31 @@ export default function TAZoomProcess() {
     });
   };
 
+  const loadReferenceData = async () => {
+    const rosterRes = await supabase.from('students_roster').select('erp, student_name, class_no');
+
+    if (rosterRes.error) {
+      toast.error(`Failed to load roster reference: ${rosterRes.error.message}`);
+      return;
+    }
+
+    const map: Record<string, RosterReference> = {};
+    for (const row of (rosterRes.data || []) as RosterReference[]) {
+      map[row.erp] = row;
+    }
+    setRosterReference(map);
+  };
+
   useEffect(() => {
-    const loadReferenceData = async () => {
-      const rosterRes = await supabase.from('students_roster').select('erp, student_name, class_no');
-
-      if (rosterRes.error) {
-        toast.error(`Failed to load roster reference: ${rosterRes.error.message}`);
-      } else {
-        const map: Record<string, RosterReference> = {};
-        for (const row of (rosterRes.data || []) as RosterReference[]) {
-          map[row.erp] = row;
-        }
-        setRosterReference(map);
-      }
-    };
-
     void loadReferenceData();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeRosterDataUpdated(() => {
+      void loadReferenceData();
+    });
+
+    return unsubscribe;
   }, []);
 
   useEffect(() => {

@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Upload, Pencil, Trash2, Plus, Search } from 'lucide-react';
 import { normalizeName } from '@/lib/utils';
+import { emitRosterDataUpdated } from '@/lib/data-sync-events';
 
 export default function RosterManagement() {
     const [rosterText, setRosterText] = useState('');
@@ -97,7 +98,8 @@ export default function RosterManagement() {
             }
 
             setRosterText('');
-            fetchRoster();
+            await fetchRoster();
+            emitRosterDataUpdated('roster_management_replace');
 
         } catch (error: any) {
             toast.error('Failed to upload roster: ' + error.message);
@@ -142,7 +144,8 @@ export default function RosterManagement() {
             }
 
             setIsDialogOpen(false);
-            fetchRoster();
+            await fetchRoster();
+            emitRosterDataUpdated(currentStudent ? 'roster_management_edit' : 'roster_management_add');
 
         } catch (error: any) {
             toast.error('Failed to save: ' + error.message);
@@ -158,7 +161,8 @@ export default function RosterManagement() {
             const { error } = await supabase.from('students_roster').delete().eq('id', id);
             if (error) throw error;
             toast.success('Student deleted');
-            setStudents(prev => prev.filter(s => s.id !== id));
+            await fetchRoster();
+            emitRosterDataUpdated('roster_management_delete');
         } catch (error: any) {
             toast.error('Failed to delete: ' + error.message);
         }
