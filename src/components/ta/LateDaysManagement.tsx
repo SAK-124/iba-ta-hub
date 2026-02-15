@@ -21,6 +21,17 @@ interface GrantRpcResult {
   remaining_late_days?: number;
 }
 
+interface ClaimGroup {
+  key: string;
+  assignment_id: string;
+  student_email: string;
+  student_erp: string;
+  total_days_used: number;
+  latest_claimed_at: string;
+  current_due_at: string;
+  events: LateDayClaim[];
+}
+
 const toLocalDateTimeInput = (isoValue: string | null) => {
   if (!isoValue) return '';
   const date = new Date(isoValue);
@@ -55,6 +66,7 @@ export default function LateDaysManagement() {
   const [grantDays, setGrantDays] = useState('1');
   const [grantReason, setGrantReason] = useState('');
   const [isGranting, setIsGranting] = useState(false);
+  const [selectedClaimGroupKey, setSelectedClaimGroupKey] = useState<string | null>(null);
 
   const assignmentById = useMemo(
     () =>
@@ -63,6 +75,54 @@ export default function LateDaysManagement() {
         return acc;
       }, {}),
     [assignments]
+  );
+
+  const claimGroups = useMemo(() => {
+    const groups: Record<string, ClaimGroup> = {};
+
+    for (const claim of claims) {
+      const key = `${claim.student_email}::${claim.student_erp}::${claim.assignment_id}`;
+      const existing = groups[key];
+
+      if (!existing) {
+        groups[key] = {
+          key,
+          assignment_id: claim.assignment_id,
+          student_email: claim.student_email,
+          student_erp: claim.student_erp,
+          total_days_used: claim.days_used,
+          latest_claimed_at: claim.claimed_at,
+          current_due_at: claim.due_at_after_claim,
+          events: [claim],
+        };
+        continue;
+      }
+
+      existing.total_days_used += claim.days_used;
+      if (new Date(claim.claimed_at).getTime() > new Date(existing.latest_claimed_at).getTime()) {
+        existing.latest_claimed_at = claim.claimed_at;
+      }
+      if (new Date(claim.due_at_after_claim).getTime() > new Date(existing.current_due_at).getTime()) {
+        existing.current_due_at = claim.due_at_after_claim;
+      }
+      existing.events.push(claim);
+    }
+
+    return Object.values(groups)
+      .map((group) => ({
+        ...group,
+        events: group.events.sort(
+          (a, b) => new Date(b.claimed_at).getTime() - new Date(a.claimed_at).getTime()
+        ),
+      }))
+      .sort(
+        (a, b) => new Date(b.latest_claimed_at).getTime() - new Date(a.latest_claimed_at).getTime()
+      );
+  }, [claims]);
+
+  const selectedClaimGroup = useMemo(
+    () => claimGroups.find((group) => group.key === selectedClaimGroupKey) ?? null,
+    [claimGroups, selectedClaimGroupKey]
   );
 
   const usedByErp = useMemo(() => {
@@ -166,6 +226,12 @@ export default function LateDaysManagement() {
   useEffect(() => {
     void fetchLateDaysData();
   }, []);
+
+  useEffect(() => {
+    if (selectedClaimGroupKey && !selectedClaimGroup) {
+      setSelectedClaimGroupKey(null);
+    }
+  }, [selectedClaimGroupKey, selectedClaimGroup]);
 
   const handleCreateAssignment = async () => {
     if (!newTitle.trim()) {
@@ -277,6 +343,10 @@ export default function LateDaysManagement() {
     toast.success('Claim deleted.');
     setClaims((prev) => prev.filter((claim) => claim.id !== claimId));
     setDeletingClaimId(null);
+  };
+
+  const openClaimBreakdown = (claimGroupKey: string) => {
+    setSelectedClaimGroupKey(claimGroupKey);
   };
 
   const openGrantDialog = (student: RosterStudent) => {
@@ -421,7 +491,9 @@ export default function LateDaysManagement() {
         <Card>
           <CardHeader>
             <CardTitle>Late Day Claims</CardTitle>
-            <CardDescription>All student late-day claims with claim time and updated deadlines.</CardDescription>
+            <CardDescription>
+              Grouped by student and assignment. Click a row to view day-by-day claim history.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="max-h-[360px] overflow-auto rounded-md border">
@@ -431,40 +503,42 @@ export default function LateDaysManagement() {
                     <TableHead>Student</TableHead>
                     <TableHead>ERP</TableHead>
                     <TableHead>Assignment</TableHead>
-                    <TableHead>Days</TableHead>
-                    <TableHead>Claimed At</TableHead>
-                    <TableHead>New Due</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
+                    <TableHead>Total Days</TableHead>
+                    <TableHead>Latest Claim</TableHead>
+                    <TableHead>Current Due</TableHead>
+                    <TableHead className="text-right">Details</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {claims.length === 0 ? (
+                  {claimGroups.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                         No late-day claims found.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    claims.map((claim) => (
-                      <TableRow key={claim.id}>
-                        <TableCell className="font-medium">{claim.student_email}</TableCell>
-                        <TableCell>{claim.student_erp}</TableCell>
-                        <TableCell>{assignmentById[claim.assignment_id]?.title ?? 'Unknown Assignment'}</TableCell>
-                        <TableCell>{claim.days_used}</TableCell>
-                        <TableCell>{format(new Date(claim.claimed_at), 'PPP p')}</TableCell>
-                        <TableCell>{format(new Date(claim.due_at_after_claim), 'PPP p')}</TableCell>
+                    claimGroups.map((group) => (
+                      <TableRow
+                        key={group.key}
+                        className="cursor-pointer"
+                        onClick={() => openClaimBreakdown(group.key)}
+                      >
+                        <TableCell className="font-medium">{group.student_email}</TableCell>
+                        <TableCell>{group.student_erp}</TableCell>
+                        <TableCell>{assignmentById[group.assignment_id]?.title ?? 'Unknown Assignment'}</TableCell>
+                        <TableCell>{group.total_days_used}</TableCell>
+                        <TableCell>{format(new Date(group.latest_claimed_at), 'PPP p')}</TableCell>
+                        <TableCell>{format(new Date(group.current_due_at), 'PPP p')}</TableCell>
                         <TableCell className="text-right">
                           <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteClaim(claim.id)}
-                            disabled={deletingClaimId === claim.id}
+                            variant="outline"
+                            size="sm"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openClaimBreakdown(group.key);
+                            }}
                           >
-                            {deletingClaimId === claim.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            )}
+                            View
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -544,6 +618,69 @@ export default function LateDaysManagement() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={Boolean(selectedClaimGroupKey)} onOpenChange={(open) => (!open ? setSelectedClaimGroupKey(null) : undefined)}>
+        <DialogContent className="sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Claim Breakdown</DialogTitle>
+            <DialogDescription>
+              {selectedClaimGroup
+                ? `${selectedClaimGroup.student_email} (${selectedClaimGroup.student_erp}) · ${
+                    assignmentById[selectedClaimGroup.assignment_id]?.title ?? 'Unknown Assignment'
+                  }`
+                : 'This claim group is no longer available.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {!selectedClaimGroup ? (
+            <p className="text-sm text-muted-foreground">No claim events to show.</p>
+          ) : (
+            <div className="max-h-[420px] overflow-auto rounded-md border">
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-background">
+                  <TableRow>
+                    <TableHead>Days</TableHead>
+                    <TableHead>Claimed At</TableHead>
+                    <TableHead>Due Before</TableHead>
+                    <TableHead>Due After</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedClaimGroup.events.map((claimEvent) => (
+                    <TableRow key={claimEvent.id}>
+                      <TableCell>{claimEvent.days_used}</TableCell>
+                      <TableCell>{format(new Date(claimEvent.claimed_at), 'PPP p')}</TableCell>
+                      <TableCell>{format(new Date(claimEvent.due_at_before_claim), 'PPP p')}</TableCell>
+                      <TableCell>{format(new Date(claimEvent.due_at_after_claim), 'PPP p')}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteClaim(claimEvent.id)}
+                          disabled={deletingClaimId === claimEvent.id}
+                        >
+                          {deletingClaimId === claimEvent.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          )}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedClaimGroupKey(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(editingAssignment)} onOpenChange={(open) => (!open ? closeEditDialog() : undefined)}>
         <DialogContent>
