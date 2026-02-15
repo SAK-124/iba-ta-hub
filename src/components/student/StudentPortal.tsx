@@ -13,6 +13,11 @@ import { useAuth } from '@/lib/auth';
 
 type StudentPortalTab = 'submit' | 'issues' | 'attendance' | 'late-days';
 
+interface LateDaysSummary {
+  remaining: number;
+  totalAllowance: number;
+}
+
 export default function StudentPortal() {
   const { erp, isVerified, studentName, isLoading } = useERP();
   const { user } = useAuth();
@@ -21,6 +26,7 @@ export default function StudentPortal() {
   const [activeTab, setActiveTab] = useState<StudentPortalTab>('attendance');
   const [hasInitializedTab, setHasInitializedTab] = useState(false);
   const [lateDaysRemaining, setLateDaysRemaining] = useState(3);
+  const [lateDaysTotal, setLateDaysTotal] = useState(3);
   const [isLateDaysLoading, setIsLateDaysLoading] = useState(true);
 
   useEffect(() => {
@@ -40,7 +46,7 @@ export default function StudentPortal() {
       setIsSettingsLoading(false);
     };
 
-    fetchFeatureFlags();
+    void fetchFeatureFlags();
   }, []);
 
   useEffect(() => {
@@ -51,31 +57,49 @@ export default function StudentPortal() {
   }, [isSettingsLoading, ticketsEnabled, hasInitializedTab]);
 
   useEffect(() => {
-    const fetchRemainingLateDays = async () => {
-      if (!isVerified || !user?.email) {
+    const fetchLateDaySummary = async () => {
+      if (!isVerified || !user?.email || !erp) {
         setLateDaysRemaining(3);
+        setLateDaysTotal(3);
         setIsLateDaysLoading(false);
         return;
       }
 
       setIsLateDaysLoading(true);
-      const { data, error } = await supabase
-        .from('late_day_claims')
-        .select('days_used')
-        .eq('student_email', user.email);
 
-      if (error) {
-        console.error('Failed to load late-day usage:', error);
+      const [{ data: claims, error: claimsError }, { data: adjustments, error: adjustmentsError }] = await Promise.all([
+        supabase
+          .from('late_day_claims')
+          .select('days_used')
+          .eq('student_email', user.email),
+        supabase
+          .from('late_day_adjustments')
+          .select('days_delta')
+          .eq('student_erp', erp),
+      ]);
+
+      if (claimsError || adjustmentsError) {
+        console.error('Failed to load late-day summary:', claimsError || adjustmentsError);
         setLateDaysRemaining(3);
+        setLateDaysTotal(3);
       } else {
-        const used = (data ?? []).reduce((sum, claim) => sum + claim.days_used, 0);
-        setLateDaysRemaining(Math.max(3 - used, 0));
+        const used = (claims ?? []).reduce((sum, claim) => sum + claim.days_used, 0);
+        const granted = (adjustments ?? []).reduce((sum, adjustment) => sum + adjustment.days_delta, 0);
+        const total = 3 + granted;
+        setLateDaysTotal(total);
+        setLateDaysRemaining(Math.max(total - used, 0));
       }
+
       setIsLateDaysLoading(false);
     };
 
-    void fetchRemainingLateDays();
-  }, [isVerified, user?.email]);
+    void fetchLateDaySummary();
+  }, [isVerified, user?.email, erp]);
+
+  const handleLateDaysSummaryChange = (summary: LateDaysSummary) => {
+    setLateDaysRemaining(summary.remaining);
+    setLateDaysTotal(summary.totalAllowance);
+  };
 
   if (isLoading || isSettingsLoading) {
     return (
@@ -133,11 +157,11 @@ export default function StudentPortal() {
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <CardTitle>Late Days</CardTitle>
-                  <CardDescription>You can use at most 3 late days across assignments.</CardDescription>
+                  <CardDescription>You can use 3 base late days plus any TA-granted bonus days.</CardDescription>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="rounded-md border px-3 py-1 text-sm font-semibold">
-                    {isLateDaysLoading ? 'Loading...' : `${lateDaysRemaining} / 3 left`}
+                    {isLateDaysLoading ? 'Loading...' : `${lateDaysRemaining} / ${lateDaysTotal} left`}
                   </span>
                   <Button onClick={() => setActiveTab('late-days')}>
                     Avail Late Days
@@ -148,53 +172,53 @@ export default function StudentPortal() {
           </Card>
 
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as StudentPortalTab)} className="w-full space-y-8">
-          <TabsList className="flex w-full bg-muted/30 p-1.5 rounded-xl h-auto overflow-x-auto no-scrollbar">
-            {ticketsEnabled && (
-              <TabsTrigger value="submit" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
-                Submit Issue
+            <TabsList className="flex w-full bg-muted/30 p-1.5 rounded-xl h-auto overflow-x-auto no-scrollbar">
+              {ticketsEnabled && (
+                <TabsTrigger value="submit" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
+                  Submit Issue
+                </TabsTrigger>
+              )}
+              {ticketsEnabled && (
+                <TabsTrigger value="issues" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
+                  My Issues
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="attendance" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
+                Attendance
               </TabsTrigger>
-            )}
-            {ticketsEnabled && (
-              <TabsTrigger value="issues" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
-                My Issues
+              <TabsTrigger value="late-days" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
+                Late Days
               </TabsTrigger>
+            </TabsList>
+
+            {ticketsEnabled && (
+              <TabsContent value="submit" className="mt-6">
+                <SubmitIssue />
+              </TabsContent>
             )}
-            <TabsTrigger value="attendance" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
-              Attendance
-            </TabsTrigger>
-            <TabsTrigger value="late-days" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
-              Late Days
-            </TabsTrigger>
-          </TabsList>
 
-          {ticketsEnabled && (
-            <TabsContent value="submit" className="mt-6">
-              <SubmitIssue />
-            </TabsContent>
-          )}
-
-          {ticketsEnabled && (
-            <TabsContent value="issues" className="mt-6">
-              <MyIssues />
-            </TabsContent>
-          )}
-
-          <TabsContent value="attendance" className="mt-6">
-            {!ticketsEnabled && (
-              <Card className="mb-6 border-amber-300/60 bg-amber-50/50">
-                <CardHeader>
-                  <CardTitle className="text-lg">Ticketing is currently disabled</CardTitle>
-                  <CardDescription>
-                    Complaints/ticket submission is temporarily turned off by the TA team. Please email the TAs directly for support.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
+            {ticketsEnabled && (
+              <TabsContent value="issues" className="mt-6">
+                <MyIssues />
+              </TabsContent>
             )}
-            <AttendanceView />
-          </TabsContent>
+
+            <TabsContent value="attendance" className="mt-6">
+              {!ticketsEnabled && (
+                <Card className="mb-6 border-amber-300/60 bg-amber-50/50">
+                  <CardHeader>
+                    <CardTitle className="text-lg">Ticketing is currently disabled</CardTitle>
+                    <CardDescription>
+                      Complaints/ticket submission is temporarily turned off by the TA team. Please email the TAs directly for support.
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              )}
+              <AttendanceView />
+            </TabsContent>
 
             <TabsContent value="late-days" className="mt-6">
-              <LateDays onRemainingChange={setLateDaysRemaining} />
+              <LateDays onSummaryChange={handleLateDaysSummaryChange} />
             </TabsContent>
           </Tabs>
         </div>

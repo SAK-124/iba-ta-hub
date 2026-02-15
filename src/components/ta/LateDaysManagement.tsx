@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Tables } from '@/integrations/supabase/types';
@@ -10,11 +10,19 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
 
 type LateDayAssignment = Tables<'late_day_assignments'>;
 type LateDayClaim = Tables<'late_day_claims'>;
+type LateDayAdjustment = Tables<'late_day_adjustments'>;
+type RosterStudent = Pick<Tables<'students_roster'>, 'id' | 'erp' | 'student_name' | 'class_no'>;
 
-const toLocalDateTimeInput = (isoValue: string) => {
+interface GrantRpcResult {
+  remaining_late_days?: number;
+}
+
+const toLocalDateTimeInput = (isoValue: string | null) => {
+  if (!isoValue) return '';
   const date = new Date(isoValue);
   const timezoneOffsetMs = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - timezoneOffsetMs).toISOString().slice(0, 16);
@@ -22,9 +30,14 @@ const toLocalDateTimeInput = (isoValue: string) => {
 
 const toIsoFromLocalDateTime = (localValue: string) => new Date(localValue).toISOString();
 
+const formatDeadline = (deadline: string | null) =>
+  deadline ? format(new Date(deadline), 'PPP p') : 'Not set yet';
+
 export default function LateDaysManagement() {
   const [assignments, setAssignments] = useState<LateDayAssignment[]>([]);
   const [claims, setClaims] = useState<LateDayClaim[]>([]);
+  const [adjustments, setAdjustments] = useState<LateDayAdjustment[]>([]);
+  const [rosterStudents, setRosterStudents] = useState<RosterStudent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingAssignment, setIsCreatingAssignment] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -37,6 +50,11 @@ export default function LateDaysManagement() {
   const [editTitle, setEditTitle] = useState('');
   const [editDueAt, setEditDueAt] = useState('');
 
+  const [grantTarget, setGrantTarget] = useState<RosterStudent | null>(null);
+  const [grantDays, setGrantDays] = useState('1');
+  const [grantReason, setGrantReason] = useState('');
+  const [isGranting, setIsGranting] = useState(false);
+
   const assignmentById = useMemo(
     () =>
       assignments.reduce<Record<string, LateDayAssignment>>((acc, assignment) => {
@@ -46,19 +64,62 @@ export default function LateDaysManagement() {
     [assignments]
   );
 
+  const usedByErp = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const claim of claims) {
+      map[claim.student_erp] = (map[claim.student_erp] ?? 0) + claim.days_used;
+    }
+    return map;
+  }, [claims]);
+
+  const grantedByErp = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const adjustment of adjustments) {
+      map[adjustment.student_erp] = (map[adjustment.student_erp] ?? 0) + adjustment.days_delta;
+    }
+    return map;
+  }, [adjustments]);
+
+  const rosterWithBalances = useMemo(
+    () =>
+      rosterStudents.map((student) => {
+        const used = usedByErp[student.erp] ?? 0;
+        const granted = grantedByErp[student.erp] ?? 0;
+        const totalAllowance = 3 + granted;
+        const remaining = Math.max(totalAllowance - used, 0);
+        return {
+          ...student,
+          used,
+          granted,
+          totalAllowance,
+          remaining,
+        };
+      }),
+    [rosterStudents, usedByErp, grantedByErp]
+  );
+
   const fetchLateDaysData = async () => {
     setIsLoading(true);
 
-    const [assignmentResponse, claimResponse] = await Promise.all([
+    const [assignmentResponse, claimResponse, rosterResponse, adjustmentsResponse] = await Promise.all([
       supabase
         .from('late_day_assignments')
         .select('*')
         .order('active', { ascending: false })
-        .order('due_at', { ascending: true }),
+        .order('due_at', { ascending: true, nullsFirst: false }),
       supabase
         .from('late_day_claims')
         .select('*')
         .order('claimed_at', { ascending: false }),
+      supabase
+        .from('students_roster')
+        .select('id, erp, student_name, class_no')
+        .order('class_no', { ascending: true })
+        .order('student_name', { ascending: true }),
+      supabase
+        .from('late_day_adjustments')
+        .select('*')
+        .order('created_at', { ascending: false }),
     ]);
 
     if (assignmentResponse.error) {
@@ -75,6 +136,20 @@ export default function LateDaysManagement() {
       setClaims(claimResponse.data ?? []);
     }
 
+    if (rosterResponse.error) {
+      toast.error(`Failed to load roster: ${rosterResponse.error.message}`);
+      setRosterStudents([]);
+    } else {
+      setRosterStudents((rosterResponse.data ?? []) as RosterStudent[]);
+    }
+
+    if (adjustmentsResponse.error) {
+      toast.error(`Failed to load grants: ${adjustmentsResponse.error.message}`);
+      setAdjustments([]);
+    } else {
+      setAdjustments(adjustmentsResponse.data ?? []);
+    }
+
     setIsLoading(false);
   };
 
@@ -83,15 +158,15 @@ export default function LateDaysManagement() {
   }, []);
 
   const handleCreateAssignment = async () => {
-    if (!newTitle.trim() || !newDueAt) {
-      toast.error('Please provide assignment title and deadline.');
+    if (!newTitle.trim()) {
+      toast.error('Please provide assignment title.');
       return;
     }
 
     setIsCreatingAssignment(true);
     const { error } = await supabase.from('late_day_assignments').insert({
       title: newTitle.trim(),
-      due_at: toIsoFromLocalDateTime(newDueAt),
+      due_at: newDueAt ? toIsoFromLocalDateTime(newDueAt) : null,
       active: true,
     });
 
@@ -101,7 +176,7 @@ export default function LateDaysManagement() {
       return;
     }
 
-    toast.success('Assignment added.');
+    toast.success(newDueAt ? 'Assignment added.' : 'Assignment added without deadline.');
     setNewTitle('');
     setNewDueAt('');
     setIsCreatingAssignment(false);
@@ -122,8 +197,8 @@ export default function LateDaysManagement() {
 
   const handleSaveEdit = async () => {
     if (!editingAssignment) return;
-    if (!editTitle.trim() || !editDueAt) {
-      toast.error('Please provide assignment title and deadline.');
+    if (!editTitle.trim()) {
+      toast.error('Please provide assignment title.');
       return;
     }
 
@@ -132,7 +207,7 @@ export default function LateDaysManagement() {
       .from('late_day_assignments')
       .update({
         title: editTitle.trim(),
-        due_at: toIsoFromLocalDateTime(editDueAt),
+        due_at: editDueAt ? toIsoFromLocalDateTime(editDueAt) : null,
       })
       .eq('id', editingAssignment.id);
 
@@ -142,7 +217,7 @@ export default function LateDaysManagement() {
       return;
     }
 
-    toast.success('Assignment updated.');
+    toast.success(editDueAt ? 'Assignment updated.' : 'Assignment updated. Deadline cleared.');
     setIsSavingEdit(false);
     closeEditDialog();
     await fetchLateDaysData();
@@ -186,6 +261,50 @@ export default function LateDaysManagement() {
     setDeletingClaimId(null);
   };
 
+  const openGrantDialog = (student: RosterStudent) => {
+    setGrantTarget(student);
+    setGrantDays('1');
+    setGrantReason('');
+  };
+
+  const closeGrantDialog = () => {
+    setGrantTarget(null);
+    setGrantDays('1');
+    setGrantReason('');
+  };
+
+  const handleGrantLateDays = async () => {
+    if (!grantTarget) return;
+    const days = Number(grantDays);
+    if (!Number.isInteger(days) || days < 1) {
+      toast.error('Days must be a whole number greater than 0.');
+      return;
+    }
+
+    setIsGranting(true);
+    const { data, error } = await supabase.rpc('ta_add_late_day', {
+      p_student_erp: grantTarget.erp,
+      p_days: days,
+      p_reason: grantReason.trim() ? grantReason.trim() : null,
+    });
+
+    if (error) {
+      toast.error(`Failed to add late day: ${error.message}`);
+      setIsGranting(false);
+      return;
+    }
+
+    const payload = (data ?? null) as GrantRpcResult | null;
+    toast.success(
+      typeof payload?.remaining_late_days === 'number'
+        ? `Late days added. New remaining: ${payload.remaining_late_days}`
+        : 'Late days added.'
+    );
+    setIsGranting(false);
+    closeGrantDialog();
+    await fetchLateDaysData();
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center p-8">
@@ -198,8 +317,65 @@ export default function LateDaysManagement() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
+          <CardTitle>Student Late Day Balances</CardTitle>
+          <CardDescription>
+            Remaining = 3 base + TA grants - used. TAs can grant late days any time, even after student claim windows close.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Class</TableHead>
+                  <TableHead>Student</TableHead>
+                  <TableHead>ERP</TableHead>
+                  <TableHead>Used</TableHead>
+                  <TableHead>Granted</TableHead>
+                  <TableHead>Remaining</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rosterWithBalances.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                      No roster students found.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  rosterWithBalances.map((student) => (
+                    <TableRow key={student.id}>
+                      <TableCell>{student.class_no}</TableCell>
+                      <TableCell className="font-medium">{student.student_name}</TableCell>
+                      <TableCell>{student.erp}</TableCell>
+                      <TableCell>{student.used}</TableCell>
+                      <TableCell>{student.granted}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="font-semibold">
+                          {student.remaining}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button size="sm" onClick={() => openGrantDialog(student)}>
+                          Add Late Day
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Late Day Assignments</CardTitle>
-          <CardDescription>Create and manage assignments that support late-day claims.</CardDescription>
+          <CardDescription>
+            Add assignments now and set deadlines later. Students can only claim once a deadline exists.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
@@ -218,6 +394,7 @@ export default function LateDaysManagement() {
               Add
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground">Leave deadline blank to create as draft; set it later from Edit.</p>
 
           <div className="rounded-md border overflow-x-auto">
             <Table>
@@ -240,11 +417,18 @@ export default function LateDaysManagement() {
                   assignments.map((assignment) => (
                     <TableRow key={assignment.id}>
                       <TableCell className="font-medium">{assignment.title}</TableCell>
-                      <TableCell>{format(new Date(assignment.due_at), 'PPP p')}</TableCell>
+                      <TableCell>{formatDeadline(assignment.due_at)}</TableCell>
                       <TableCell>
-                        <Badge variant={assignment.active ? 'default' : 'secondary'}>
-                          {assignment.active ? 'Active' : 'Archived'}
-                        </Badge>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant={assignment.active ? 'default' : 'secondary'}>
+                            {assignment.active ? 'Active' : 'Archived'}
+                          </Badge>
+                          {!assignment.due_at && assignment.active && (
+                            <Badge variant="outline" className="border-amber-400 text-amber-600">
+                              Deadline Required
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="inline-flex items-center gap-1">
@@ -332,7 +516,9 @@ export default function LateDaysManagement() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Assignment</DialogTitle>
-            <DialogDescription>Update assignment title and deadline.</DialogDescription>
+            <DialogDescription>
+              Update assignment title and optionally set or clear the deadline.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -341,11 +527,17 @@ export default function LateDaysManagement() {
               value={editTitle}
               onChange={(event) => setEditTitle(event.target.value)}
             />
-            <Input
-              type="datetime-local"
-              value={editDueAt}
-              onChange={(event) => setEditDueAt(event.target.value)}
-            />
+            <div className="flex items-center gap-2">
+              <Input
+                type="datetime-local"
+                value={editDueAt}
+                onChange={(event) => setEditDueAt(event.target.value)}
+              />
+              <Button type="button" variant="outline" onClick={() => setEditDueAt('')} disabled={!editDueAt}>
+                <X className="mr-1 h-4 w-4" />
+                Clear
+              </Button>
+            </div>
           </div>
 
           <DialogFooter>
@@ -355,6 +547,49 @@ export default function LateDaysManagement() {
             <Button onClick={handleSaveEdit} disabled={isSavingEdit}>
               {isSavingEdit && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(grantTarget)} onOpenChange={(open) => (!open ? closeGrantDialog() : undefined)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Late Day</DialogTitle>
+            <DialogDescription>
+              Grant extra late days to {grantTarget?.student_name} ({grantTarget?.erp}).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Days to add</label>
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                value={grantDays}
+                onChange={(event) => setGrantDays(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Reason (optional)</label>
+              <Textarea
+                placeholder="e.g., approved exception by TA team"
+                value={grantReason}
+                onChange={(event) => setGrantReason(event.target.value)}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeGrantDialog} disabled={isGranting}>
+              Cancel
+            </Button>
+            <Button onClick={handleGrantLateDays} disabled={isGranting}>
+              {isGranting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Grant Late Day
             </Button>
           </DialogFooter>
         </DialogContent>

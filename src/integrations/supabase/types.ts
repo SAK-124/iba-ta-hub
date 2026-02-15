@@ -81,7 +81,7 @@ export type Database = {
         Row: {
           active: boolean
           created_at: string
-          due_at: string
+          due_at: string | null
           id: string
           title: string
           updated_at: string
@@ -89,7 +89,7 @@ export type Database = {
         Insert: {
           active?: boolean
           created_at?: string
-          due_at: string
+          due_at?: string | null
           id?: string
           title: string
           updated_at?: string
@@ -97,10 +97,37 @@ export type Database = {
         Update: {
           active?: boolean
           created_at?: string
-          due_at?: string
+          due_at?: string | null
           id?: string
           title?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      late_day_adjustments: {
+        Row: {
+          created_at: string
+          created_by_email: string
+          days_delta: number
+          id: string
+          reason: string | null
+          student_erp: string
+        }
+        Insert: {
+          created_at?: string
+          created_by_email: string
+          days_delta: number
+          id?: string
+          reason?: string | null
+          student_erp: string
+        }
+        Update: {
+          created_at?: string
+          created_by_email?: string
+          days_delta?: number
+          id?: string
+          reason?: string | null
+          student_erp?: string
         }
         Relationships: []
       }
@@ -327,6 +354,10 @@ export type Database = {
       check_roster: { Args: { check_erp: string }; Returns: Json }
       claim_late_days: {
         Args: { p_assignment_id: string; p_days: number }
+        Returns: Json
+      }
+      ta_add_late_day: {
+        Args: { p_days: number; p_reason?: string | null; p_student_erp: string }
         Returns: Json
       }
       is_ta: { Args: { user_email: string }; Returns: boolean }

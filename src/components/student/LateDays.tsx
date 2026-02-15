@@ -15,31 +15,60 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 type LateDayAssignment = Tables<'late_day_assignments'>;
 type LateDayClaim = Tables<'late_day_claims'>;
+type LateDayAdjustment = Tables<'late_day_adjustments'>;
 
 interface ClaimLateDaysResult {
   claim?: LateDayClaim;
   remaining_late_days?: number;
-  total_used?: number;
+  total_allowance?: number;
+}
+
+interface LateDaysSummary {
+  remaining: number;
+  totalAllowance: number;
+  grantedDays: number;
+  usedDays: number;
 }
 
 interface LateDaysProps {
-  onRemainingChange?: (remaining: number) => void;
+  onSummaryChange?: (summary: LateDaysSummary) => void;
 }
 
-const TOTAL_LATE_DAYS = 3;
+type AvailabilityState = 'claimable' | 'awaiting_deadline' | 'closed' | 'no_balance' | 'archived';
+
+interface AssignmentSummary {
+  assignment: LateDayAssignment;
+  currentDeadline: Date | null;
+  availability: AvailabilityState;
+  canClaim: boolean;
+  claimedDays: number;
+  claimCount: number;
+  latestClaimAt: Date | null;
+}
+
+const BASE_LATE_DAYS = 3;
 
 const isBeforeOrEqual = (left: Date, right: Date) => left.getTime() <= right.getTime();
 
-export default function LateDays({ onRemainingChange }: LateDaysProps) {
+const availabilityConfig: Record<AvailabilityState, { label: string; className: string }> = {
+  claimable: { label: 'Can Claim', className: 'bg-emerald-500 hover:bg-emerald-600 text-white border-transparent' },
+  awaiting_deadline: { label: 'Awaiting Deadline', className: 'bg-amber-500 hover:bg-amber-600 text-white border-transparent' },
+  closed: { label: 'Window Closed', className: 'bg-slate-500 hover:bg-slate-600 text-white border-transparent' },
+  no_balance: { label: 'No Late Days Left', className: 'bg-rose-500 hover:bg-rose-600 text-white border-transparent' },
+  archived: { label: 'Archived', className: 'bg-muted text-muted-foreground border-border' },
+};
+
+export default function LateDays({ onSummaryChange }: LateDaysProps) {
   const { user } = useAuth();
   const { erp } = useERP();
 
   const [assignments, setAssignments] = useState<LateDayAssignment[]>([]);
   const [claims, setClaims] = useState<LateDayClaim[]>([]);
+  const [adjustments, setAdjustments] = useState<LateDayAdjustment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isClaiming, setIsClaiming] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string>('');
   const [selectedDays, setSelectedDays] = useState('1');
 
   const assignmentTitleById = useMemo(
@@ -51,16 +80,17 @@ export default function LateDays({ onRemainingChange }: LateDaysProps) {
     [assignments]
   );
 
-  const totalUsed = useMemo(() => claims.reduce((sum, claim) => sum + claim.days_used, 0), [claims]);
-  const remaining = Math.max(TOTAL_LATE_DAYS - totalUsed, 0);
+  const grantedDays = useMemo(() => adjustments.reduce((sum, adjustment) => sum + adjustment.days_delta, 0), [adjustments]);
+  const usedDays = useMemo(() => claims.reduce((sum, claim) => sum + claim.days_used, 0), [claims]);
+  const totalAllowance = BASE_LATE_DAYS + grantedDays;
+  const remaining = Math.max(totalAllowance - usedDays, 0);
 
   useEffect(() => {
-    onRemainingChange?.(remaining);
-  }, [remaining, onRemainingChange]);
+    onSummaryChange?.({ remaining, totalAllowance, grantedDays, usedDays });
+  }, [remaining, totalAllowance, grantedDays, usedDays, onSummaryChange]);
 
   const latestDeadlineByAssignment = useMemo(() => {
     const map = new Map<string, Date>();
-
     for (const claim of claims) {
       const candidate = new Date(claim.due_at_after_claim);
       const existing = map.get(claim.assignment_id);
@@ -68,47 +98,102 @@ export default function LateDays({ onRemainingChange }: LateDaysProps) {
         map.set(claim.assignment_id, candidate);
       }
     }
-
     return map;
   }, [claims]);
 
-  const getCurrentDeadline = (assignment: LateDayAssignment) =>
-    latestDeadlineByAssignment.get(assignment.id) ?? new Date(assignment.due_at);
+  const claimStatsByAssignment = useMemo(() => {
+    const map = new Map<string, { claimedDays: number; claimCount: number; latestClaimAt: Date | null }>();
+    for (const claim of claims) {
+      const existing = map.get(claim.assignment_id) ?? { claimedDays: 0, claimCount: 0, latestClaimAt: null };
+      const claimedAt = new Date(claim.claimed_at);
+      map.set(claim.assignment_id, {
+        claimedDays: existing.claimedDays + claim.days_used,
+        claimCount: existing.claimCount + 1,
+        latestClaimAt:
+          !existing.latestClaimAt || claimedAt.getTime() > existing.latestClaimAt.getTime()
+            ? claimedAt
+            : existing.latestClaimAt,
+      });
+    }
+    return map;
+  }, [claims]);
 
-  const claimableAssignments = useMemo(() => {
-    if (remaining <= 0) return [];
-
+  const assignmentSummaries = useMemo(() => {
     const now = new Date();
-    return assignments.filter((assignment) => assignment.active && isBeforeOrEqual(now, getCurrentDeadline(assignment)));
-  }, [assignments, latestDeadlineByAssignment, remaining]);
 
-  const selectedAssignment = selectedAssignmentId
-    ? assignments.find((assignment) => assignment.id === selectedAssignmentId) ?? null
+    return assignments.map<AssignmentSummary>((assignment) => {
+      const latestClaimDeadline = latestDeadlineByAssignment.get(assignment.id) ?? null;
+      const currentDeadline = latestClaimDeadline ?? (assignment.due_at ? new Date(assignment.due_at) : null);
+      const claimStats = claimStatsByAssignment.get(assignment.id) ?? {
+        claimedDays: 0,
+        claimCount: 0,
+        latestClaimAt: null,
+      };
+
+      let availability: AvailabilityState;
+      if (!assignment.active) {
+        availability = 'archived';
+      } else if (!currentDeadline) {
+        availability = 'awaiting_deadline';
+      } else if (!isBeforeOrEqual(now, currentDeadline)) {
+        availability = 'closed';
+      } else if (remaining <= 0) {
+        availability = 'no_balance';
+      } else {
+        availability = 'claimable';
+      }
+
+      return {
+        assignment,
+        currentDeadline,
+        availability,
+        canClaim: availability === 'claimable',
+        claimedDays: claimStats.claimedDays,
+        claimCount: claimStats.claimCount,
+        latestClaimAt: claimStats.latestClaimAt,
+      };
+    });
+  }, [assignments, claimStatsByAssignment, latestDeadlineByAssignment, remaining]);
+
+  const activeSummaries = assignmentSummaries.filter((summary) => summary.assignment.active);
+  const claimableSummaries = activeSummaries.filter((summary) => summary.canClaim);
+  const awaitingDeadlineCount = activeSummaries.filter((summary) => summary.availability === 'awaiting_deadline').length;
+  const claimedAssignmentCount = activeSummaries.filter((summary) => summary.claimCount > 0).length;
+
+  const selectedSummary = selectedAssignmentId
+    ? assignmentSummaries.find((summary) => summary.assignment.id === selectedAssignmentId) ?? null
     : null;
-  const selectedCurrentDeadline = selectedAssignment ? getCurrentDeadline(selectedAssignment) : null;
   const selectedDaysCount = Number(selectedDays) || 1;
-  const previewDueAt = selectedCurrentDeadline ? addHours(selectedCurrentDeadline, selectedDaysCount * 24) : null;
+  const previewDueAt =
+    selectedSummary?.currentDeadline && selectedSummary.canClaim
+      ? addHours(selectedSummary.currentDeadline, selectedDaysCount * 24)
+      : null;
 
   const fetchLateDays = async () => {
     if (!user?.email || !erp) {
       setAssignments([]);
       setClaims([]);
+      setAdjustments([]);
       setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
 
-    const [assignmentResponse, claimsResponse] = await Promise.all([
+    const [assignmentResponse, claimsResponse, adjustmentResponse] = await Promise.all([
       supabase
         .from('late_day_assignments')
         .select('*')
         .order('active', { ascending: false })
-        .order('due_at', { ascending: true }),
+        .order('due_at', { ascending: true, nullsFirst: false }),
       supabase
         .from('late_day_claims')
         .select('*')
         .order('claimed_at', { ascending: false }),
+      supabase
+        .from('late_day_adjustments')
+        .select('*')
+        .order('created_at', { ascending: false }),
     ]);
 
     if (assignmentResponse.error) {
@@ -125,6 +210,13 @@ export default function LateDays({ onRemainingChange }: LateDaysProps) {
       setClaims(claimsResponse.data ?? []);
     }
 
+    if (adjustmentResponse.error) {
+      toast.error(`Failed to load late-day grants: ${adjustmentResponse.error.message}`);
+      setAdjustments([]);
+    } else {
+      setAdjustments(adjustmentResponse.data ?? []);
+    }
+
     setIsLoading(false);
   };
 
@@ -132,23 +224,24 @@ export default function LateDays({ onRemainingChange }: LateDaysProps) {
     void fetchLateDays();
   }, [user?.email, erp]);
 
-  const resetClaimFlow = () => {
-    setSelectedAssignmentId(null);
+  const openClaimDialog = (assignmentId?: string) => {
+    setSelectedAssignmentId(assignmentId ?? '');
     setSelectedDays('1');
-  };
-
-  const openClaimDialog = () => {
-    resetClaimFlow();
     setIsDialogOpen(true);
   };
 
   const closeClaimDialog = () => {
     setIsDialogOpen(false);
-    resetClaimFlow();
+    setSelectedAssignmentId('');
+    setSelectedDays('1');
   };
 
   const handleClaim = async () => {
-    if (!selectedAssignmentId) return;
+    if (!selectedSummary) return;
+    if (!selectedSummary.canClaim) {
+      toast.error('This assignment cannot be claimed right now.');
+      return;
+    }
 
     const days = Number(selectedDays);
     if (!Number.isInteger(days) || days < 1 || days > remaining) {
@@ -157,9 +250,8 @@ export default function LateDays({ onRemainingChange }: LateDaysProps) {
     }
 
     setIsClaiming(true);
-
     const { data, error } = await supabase.rpc('claim_late_days', {
-      p_assignment_id: selectedAssignmentId,
+      p_assignment_id: selectedSummary.assignment.id,
       p_days: days,
     });
 
@@ -170,15 +262,10 @@ export default function LateDays({ onRemainingChange }: LateDaysProps) {
     }
 
     const payload = (data ?? null) as ClaimLateDaysResult | null;
-
     if (payload?.claim) {
       setClaims((prev) => [payload.claim as LateDayClaim, ...prev]);
     } else {
       await fetchLateDays();
-    }
-
-    if (typeof payload?.remaining_late_days === 'number') {
-      onRemainingChange?.(payload.remaining_late_days);
     }
 
     toast.success('Late days claimed successfully.');
@@ -196,36 +283,118 @@ export default function LateDays({ onRemainingChange }: LateDaysProps) {
 
   return (
     <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Remaining</CardDescription>
+            <CardTitle>{remaining}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Allowance</CardDescription>
+            <CardTitle>{totalAllowance}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Can Claim Now</CardDescription>
+            <CardTitle>{claimableSummaries.length}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Already Claimed</CardDescription>
+            <CardTitle>{claimedAssignmentCount}</CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <CardTitle>Late Days</CardTitle>
-              <CardDescription>Use up to 3 late days total. Claimed late days cannot be revoked by students.</CardDescription>
+              <CardTitle>Assignment Status</CardTitle>
+              <CardDescription>
+                Assignments without deadlines are visible but cannot be claimed until TAs set a deadline.
+              </CardDescription>
             </div>
-            <div className="flex items-center gap-3">
-              <Badge variant="outline" className="px-3 py-1 text-sm font-semibold">
-                {remaining} / {TOTAL_LATE_DAYS} remaining
-              </Badge>
-              <Button onClick={openClaimDialog} disabled={remaining <= 0 || claimableAssignments.length === 0}>
-                Avail Late Days
-              </Button>
-            </div>
+            <Button onClick={() => openClaimDialog()} disabled={claimableSummaries.length === 0 || remaining <= 0}>
+              Avail Late Days
+            </Button>
           </div>
         </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          {remaining <= 0
-            ? 'You have used all available late days.'
-            : claimableAssignments.length === 0
-              ? 'No assignments are currently eligible for late-day claims.'
-              : `${claimableAssignments.length} assignment(s) currently available for claiming late days.`}
+        <CardContent>
+          {grantedDays > 0 && (
+            <div className="mb-4 rounded-lg border border-emerald-300/50 bg-emerald-50/40 p-3 text-sm text-emerald-800">
+              TA grants applied: +{grantedDays} late day(s).
+            </div>
+          )}
+
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Assignment</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Current Deadline</TableHead>
+                  <TableHead>Your Claims</TableHead>
+                  <TableHead>Last Claimed</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {activeSummaries.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                      No late-day assignments are active right now.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  activeSummaries.map((summary) => (
+                    <TableRow key={summary.assignment.id}>
+                      <TableCell className="font-medium">{summary.assignment.title}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge className={availabilityConfig[summary.availability].className}>
+                            {availabilityConfig[summary.availability].label}
+                          </Badge>
+                          {summary.claimCount > 0 && (
+                            <Badge variant="outline">
+                              Claimed {summary.claimedDays} day{summary.claimedDays === 1 ? '' : 's'}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {summary.currentDeadline ? format(summary.currentDeadline, 'PPP p') : 'Not set by TA'}
+                      </TableCell>
+                      <TableCell>{summary.claimCount > 0 ? `${summary.claimCount} claim(s)` : 'None'}</TableCell>
+                      <TableCell>{summary.latestClaimAt ? format(summary.latestClaimAt, 'PPP p') : '-'}</TableCell>
+                      <TableCell className="text-right">
+                        <Button size="sm" onClick={() => openClaimDialog(summary.assignment.id)} disabled={!summary.canClaim}>
+                          Claim
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {awaitingDeadlineCount > 0 && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              {awaitingDeadlineCount} assignment(s) are waiting for TA deadline setup and cannot be claimed yet.
+            </p>
+          )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
           <CardTitle>Claim History</CardTitle>
-          <CardDescription>Each claim is timestamped and records the new due date after claiming.</CardDescription>
+          <CardDescription>Immutable history of each claim you have made.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border overflow-x-auto">
@@ -263,89 +432,74 @@ export default function LateDays({ onRemainingChange }: LateDaysProps) {
         </CardContent>
       </Card>
 
-      <Dialog open={isDialogOpen} onOpenChange={(open) => (open ? setIsDialogOpen(true) : closeClaimDialog())}>
+      <Dialog open={isDialogOpen} onOpenChange={(open) => (!open ? closeClaimDialog() : setIsDialogOpen(true))}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Avail Late Days</DialogTitle>
             <DialogDescription>
-              Step 1: choose an assignment. Step 2: choose how many late days to apply.
+              Choose a claimable assignment and how many late days to apply.
             </DialogDescription>
           </DialogHeader>
 
-          {remaining <= 0 ? (
+          {claimableSummaries.length === 0 ? (
             <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
-              You have 0 remaining late days.
-            </div>
-          ) : !selectedAssignment ? (
-            <div className="space-y-2">
-              {claimableAssignments.length === 0 ? (
-                <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
-                  No assignments are currently eligible for claims.
-                </div>
-              ) : (
-                claimableAssignments.map((assignment) => (
-                  <Button
-                    key={assignment.id}
-                    type="button"
-                    variant="outline"
-                    className="h-auto w-full justify-between py-3 text-left"
-                    onClick={() => {
-                      setSelectedAssignmentId(assignment.id);
-                      setSelectedDays('1');
-                    }}
-                  >
-                    <span className="font-medium">{assignment.title}</span>
-                    <span className="text-xs text-muted-foreground">
-                      Current due: {format(getCurrentDeadline(assignment), 'PPP p')}
-                    </span>
-                  </Button>
-                ))
-              )}
+              No assignments are currently claimable.
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="rounded-md border p-3">
-                <div className="text-sm font-semibold">{selectedAssignment.title}</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  Current due: {selectedCurrentDeadline ? format(selectedCurrentDeadline, 'PPP p') : '-'}
-                </div>
-              </div>
-
               <div className="space-y-2">
-                <div className="text-sm font-medium">Late days to claim</div>
-                <Select value={selectedDays} onValueChange={setSelectedDays}>
+                <div className="text-sm font-medium">Assignment</div>
+                <Select
+                  value={selectedAssignmentId}
+                  onValueChange={setSelectedAssignmentId}
+                >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select days" />
+                    <SelectValue placeholder="Select claimable assignment" />
                   </SelectTrigger>
                   <SelectContent>
-                    {Array.from({ length: remaining }, (_, index) => index + 1).map((value) => (
-                      <SelectItem key={value} value={String(value)}>
-                        {value}
+                    {claimableSummaries.map((summary) => (
+                      <SelectItem key={summary.assignment.id} value={summary.assignment.id}>
+                        {summary.assignment.title}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              <div className="rounded-md border bg-muted/30 p-3 text-sm">
-                <div>Claim timestamp: {format(new Date(), 'PPP p')}</div>
-                <div className="mt-1">
-                  New due date if claimed: {previewDueAt ? format(previewDueAt, 'PPP p') : '-'}
-                </div>
-              </div>
+              {selectedSummary && (
+                <>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Late days to claim</div>
+                    <Select value={selectedDays} onValueChange={setSelectedDays}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select days" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: remaining }, (_, index) => index + 1).map((value) => (
+                          <SelectItem key={value} value={String(value)}>
+                            {value}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                    <div>Claim timestamp: {format(new Date(), 'PPP p')}</div>
+                    <div className="mt-1">
+                      New due date if claimed: {previewDueAt ? format(previewDueAt, 'PPP p') : '-'}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
-          <DialogFooter className="gap-2 sm:gap-0">
-            {selectedAssignment && (
-              <Button type="button" variant="outline" onClick={() => setSelectedAssignmentId(null)} disabled={isClaiming}>
-                Back
-              </Button>
-            )}
+          <DialogFooter>
             <Button
               type="button"
               onClick={handleClaim}
-              disabled={isClaiming || !selectedAssignment || remaining <= 0 || claimableAssignments.length === 0}
+              disabled={isClaiming || !selectedSummary || !selectedSummary.canClaim}
             >
               {isClaiming && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Confirm Claim
