@@ -286,14 +286,14 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Remaining</CardDescription>
+            <CardDescription>Remaining Late Days</CardDescription>
             <CardTitle>{remaining}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Total Allowance</CardDescription>
-            <CardTitle>{totalAllowance}</CardTitle>
+            <CardDescription>Used Days</CardDescription>
+            <CardTitle>{usedDays}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
@@ -304,11 +304,15 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Already Claimed</CardDescription>
-            <CardTitle>{claimedAssignmentCount}</CardTitle>
+            <CardDescription>Awaiting Deadline</CardDescription>
+            <CardTitle>{awaitingDeadlineCount}</CardTitle>
           </CardHeader>
         </Card>
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        Total allowance: {totalAllowance} (base {BASE_LATE_DAYS}{grantedDays > 0 ? ` + ${grantedDays} TA-granted` : ''}). Claimed across {claimedAssignmentCount} assignment(s).
+      </p>
 
       <Card>
         <CardHeader>

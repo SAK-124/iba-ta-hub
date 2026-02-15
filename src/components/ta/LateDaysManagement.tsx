@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Tables } from '@/integrations/supabase/types';
@@ -45,6 +45,7 @@ export default function LateDaysManagement() {
 
   const [newTitle, setNewTitle] = useState('');
   const [newDueAt, setNewDueAt] = useState('');
+  const [rosterSearchQuery, setRosterSearchQuery] = useState('');
 
   const [editingAssignment, setEditingAssignment] = useState<LateDayAssignment | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -91,12 +92,21 @@ export default function LateDaysManagement() {
           ...student,
           used,
           granted,
-          totalAllowance,
           remaining,
         };
       }),
     [rosterStudents, usedByErp, grantedByErp]
   );
+
+  const filteredRosterWithBalances = useMemo(() => {
+    const query = rosterSearchQuery.trim().toLowerCase();
+    if (!query) return rosterWithBalances;
+
+    return rosterWithBalances.filter((student) => {
+      const haystack = `${student.class_no} ${student.student_name} ${student.erp}`.toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [rosterWithBalances, rosterSearchQuery]);
 
   const fetchLateDaysData = async () => {
     setIsLoading(true);
@@ -171,7 +181,11 @@ export default function LateDaysManagement() {
     });
 
     if (error) {
-      toast.error(`Failed to create assignment: ${error.message}`);
+      if (error.message.includes('null value in column "due_at"')) {
+        toast.error('Database schema is outdated. Run: ALTER TABLE public.late_day_assignments ALTER COLUMN due_at DROP NOT NULL;');
+      } else {
+        toast.error(`Failed to create assignment: ${error.message}`);
+      }
       setIsCreatingAssignment(false);
       return;
     }
@@ -212,7 +226,11 @@ export default function LateDaysManagement() {
       .eq('id', editingAssignment.id);
 
     if (error) {
-      toast.error(`Failed to update assignment: ${error.message}`);
+      if (error.message.includes('null value in column "due_at"')) {
+        toast.error('Database schema is outdated. Run: ALTER TABLE public.late_day_assignments ALTER COLUMN due_at DROP NOT NULL;');
+      } else {
+        toast.error(`Failed to update assignment: ${error.message}`);
+      }
       setIsSavingEdit(false);
       return;
     }
@@ -314,203 +332,218 @@ export default function LateDaysManagement() {
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Student Late Day Balances</CardTitle>
-          <CardDescription>
-            Remaining = 3 base + TA grants - used. TAs can grant late days any time, even after student claim windows close.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Class</TableHead>
-                  <TableHead>Student</TableHead>
-                  <TableHead>ERP</TableHead>
-                  <TableHead>Used</TableHead>
-                  <TableHead>Granted</TableHead>
-                  <TableHead>Remaining</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rosterWithBalances.length === 0 ? (
+    <div className="grid gap-6 xl:grid-cols-3">
+      <div className="space-y-6 xl:col-span-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Late Day Assignments</CardTitle>
+            <CardDescription>
+              Add assignments now and set deadlines later. Students can only claim once a deadline exists.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
+              <Input
+                placeholder="Assignment title"
+                value={newTitle}
+                onChange={(event) => setNewTitle(event.target.value)}
+              />
+              <Input
+                type="datetime-local"
+                value={newDueAt}
+                onChange={(event) => setNewDueAt(event.target.value)}
+              />
+              <Button onClick={handleCreateAssignment} disabled={isCreatingAssignment}>
+                {isCreatingAssignment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                Add
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Leave deadline blank to create as draft; set it later from Edit.</p>
+
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                      No roster students found.
-                    </TableCell>
+                    <TableHead>Assignment</TableHead>
+                    <TableHead>Deadline</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ) : (
-                  rosterWithBalances.map((student) => (
-                    <TableRow key={student.id}>
-                      <TableCell>{student.class_no}</TableCell>
-                      <TableCell className="font-medium">{student.student_name}</TableCell>
-                      <TableCell>{student.erp}</TableCell>
-                      <TableCell>{student.used}</TableCell>
-                      <TableCell>{student.granted}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="font-semibold">
-                          {student.remaining}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button size="sm" onClick={() => openGrantDialog(student)}>
-                          Add Late Day
-                        </Button>
+                </TableHeader>
+                <TableBody>
+                  {assignments.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                        No late-day assignments yet.
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Late Day Assignments</CardTitle>
-          <CardDescription>
-            Add assignments now and set deadlines later. Students can only claim once a deadline exists.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
-            <Input
-              placeholder="Assignment title"
-              value={newTitle}
-              onChange={(event) => setNewTitle(event.target.value)}
-            />
-            <Input
-              type="datetime-local"
-              value={newDueAt}
-              onChange={(event) => setNewDueAt(event.target.value)}
-            />
-            <Button onClick={handleCreateAssignment} disabled={isCreatingAssignment}>
-              {isCreatingAssignment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-              Add
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">Leave deadline blank to create as draft; set it later from Edit.</p>
-
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Assignment</TableHead>
-                  <TableHead>Deadline</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {assignments.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
-                      No late-day assignments yet.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  assignments.map((assignment) => (
-                    <TableRow key={assignment.id}>
-                      <TableCell className="font-medium">{assignment.title}</TableCell>
-                      <TableCell>{formatDeadline(assignment.due_at)}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge variant={assignment.active ? 'default' : 'secondary'}>
-                            {assignment.active ? 'Active' : 'Archived'}
-                          </Badge>
-                          {!assignment.due_at && assignment.active && (
-                            <Badge variant="outline" className="border-amber-400 text-amber-600">
-                              Deadline Required
+                  ) : (
+                    assignments.map((assignment) => (
+                      <TableRow key={assignment.id}>
+                        <TableCell className="font-medium">{assignment.title}</TableCell>
+                        <TableCell>{formatDeadline(assignment.due_at)}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant={assignment.active ? 'default' : 'secondary'}>
+                              {assignment.active ? 'Active' : 'Archived'}
                             </Badge>
-                          )}
-                        </div>
+                            {!assignment.due_at && assignment.active && (
+                              <Badge variant="outline" className="border-amber-400 text-amber-600">
+                                Deadline Required
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => openEditDialog(assignment)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleArchiveAssignment(assignment)}
+                              disabled={!assignment.active}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Late Day Claims</CardTitle>
+            <CardDescription>All student late-day claims with claim time and updated deadlines.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="max-h-[360px] overflow-auto rounded-md border">
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-background">
+                  <TableRow>
+                    <TableHead>Student</TableHead>
+                    <TableHead>ERP</TableHead>
+                    <TableHead>Assignment</TableHead>
+                    <TableHead>Days</TableHead>
+                    <TableHead>Claimed At</TableHead>
+                    <TableHead>New Due</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {claims.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                        No late-day claims found.
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="inline-flex items-center gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => openEditDialog(assignment)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
+                    </TableRow>
+                  ) : (
+                    claims.map((claim) => (
+                      <TableRow key={claim.id}>
+                        <TableCell className="font-medium">{claim.student_email}</TableCell>
+                        <TableCell>{claim.student_erp}</TableCell>
+                        <TableCell>{assignmentById[claim.assignment_id]?.title ?? 'Unknown Assignment'}</TableCell>
+                        <TableCell>{claim.days_used}</TableCell>
+                        <TableCell>{format(new Date(claim.claimed_at), 'PPP p')}</TableCell>
+                        <TableCell>{format(new Date(claim.due_at_after_claim), 'PPP p')}</TableCell>
+                        <TableCell className="text-right">
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleArchiveAssignment(assignment)}
-                            disabled={!assignment.active}
+                            onClick={() => handleDeleteClaim(claim.id)}
+                            disabled={deletingClaimId === claim.id}
                           >
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                            {deletingClaimId === claim.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            )}
                           </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Late Day Claims</CardTitle>
-          <CardDescription>All student late-day claims with claim time and updated deadlines.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Student</TableHead>
-                  <TableHead>ERP</TableHead>
-                  <TableHead>Assignment</TableHead>
-                  <TableHead>Days</TableHead>
-                  <TableHead>Claimed At</TableHead>
-                  <TableHead>New Due</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {claims.length === 0 ? (
+      <div className="space-y-6 xl:col-span-1">
+        <Card>
+          <CardHeader>
+            <CardTitle>Student Roster Balances</CardTitle>
+            <CardDescription>
+              Search any student and grant extra late days whenever needed.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search by class, name, or ERP"
+                className="pl-9"
+                value={rosterSearchQuery}
+                onChange={(event) => setRosterSearchQuery(event.target.value)}
+              />
+            </div>
+
+            <div className="max-h-[620px] overflow-auto rounded-md border">
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow>
-                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                      No late-day claims found.
-                    </TableCell>
+                    <TableHead>Student</TableHead>
+                    <TableHead className="text-right">Used</TableHead>
+                    <TableHead className="text-right">Granted</TableHead>
+                    <TableHead className="text-right">Remaining</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
-                ) : (
-                  claims.map((claim) => (
-                    <TableRow key={claim.id}>
-                      <TableCell className="font-medium">{claim.student_email}</TableCell>
-                      <TableCell>{claim.student_erp}</TableCell>
-                      <TableCell>{assignmentById[claim.assignment_id]?.title ?? 'Unknown Assignment'}</TableCell>
-                      <TableCell>{claim.days_used}</TableCell>
-                      <TableCell>{format(new Date(claim.claimed_at), 'PPP p')}</TableCell>
-                      <TableCell>{format(new Date(claim.due_at_after_claim), 'PPP p')}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteClaim(claim.id)}
-                          disabled={deletingClaimId === claim.id}
-                        >
-                          {deletingClaimId === claim.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          )}
-                        </Button>
+                </TableHeader>
+                <TableBody>
+                  {filteredRosterWithBalances.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                        No students match your search.
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                  ) : (
+                    filteredRosterWithBalances.map((student) => (
+                      <TableRow key={student.id}>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{student.student_name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {student.class_no} · {student.erp}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">{student.used}</TableCell>
+                        <TableCell className="text-right">{student.granted}</TableCell>
+                        <TableCell className="text-right">
+                          <Badge variant="outline" className="font-semibold">{student.remaining}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button size="sm" onClick={() => openGrantDialog(student)}>
+                            Add
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       <Dialog open={Boolean(editingAssignment)} onOpenChange={(open) => (!open ? closeEditDialog() : undefined)}>
         <DialogContent>
