@@ -60,6 +60,17 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Ntfy notifications
+
+This app can send best-effort ntfy.sh notifications for key events (new ticket, late day used, attendance posted).
+
+Optional environment variables:
+
+- `VITE_NTFY_BASE_URL` (default: `https://ntfy.sh`)
+- `VITE_NTFY_TOPIC` (default: `AAMDportal`)
+
+If these are not set, the defaults above are used. Notification delivery is non-blocking and will not fail the main portal action.
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.

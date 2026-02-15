@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { syncPublicAttendanceSnapshot } from '@/lib/public-attendance-sync';
 import { emitAttendanceDataUpdated, subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { Loader2, Save } from 'lucide-react';
+import { sendNtfyNotification } from '@/lib/ntfy';
 
 type AttendanceStatus = 'present' | 'absent' | 'excused';
 type AttendanceFilterToken = 'present' | 'absent' | 'penalized';
@@ -311,6 +312,35 @@ export default function AttendanceMarking() {
 
       const { error: insertError } = await supabase.from('attendance').insert(newRecords);
       if (insertError) throw insertError;
+
+      const submitMode: 'initial' | 'overwrite' =
+        forceOverwrite || attendanceData.length > 0 ? 'overwrite' : 'initial';
+      const absentCountSubmitted = newRecords.filter((record) => record.status === 'absent').length;
+      const presentCountSubmitted = newRecords.length - absentCountSubmitted;
+      const selectedSession = sessions.find((session) => session.id === selectedSessionId);
+      const sessionLabel = selectedSession
+        ? `#${selectedSession.session_number} (${format(new Date(selectedSession.session_date), 'PPP')})`
+        : selectedSessionId;
+
+      const notificationMessage = [
+        'Event: Attendance Posted',
+        `Session: ${sessionLabel}`,
+        `Mode: ${submitMode}`,
+        `Present: ${presentCountSubmitted}`,
+        `Absent: ${absentCountSubmitted}`,
+        `Timestamp: ${new Date().toISOString()}`,
+      ].join('\n');
+
+      void sendNtfyNotification({
+        title: 'Attendance Posted',
+        message: notificationMessage,
+        tags: ['attendance', 'ta'],
+        priority: 3,
+      }).then((ok) => {
+        if (!ok) {
+          console.warn('[ntfy] Failed to send attendance notification');
+        }
+      });
 
       toast.success('Attendance marked successfully');
       emitAttendanceDataUpdated('attendance_marking_submit');

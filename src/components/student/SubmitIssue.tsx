@@ -15,6 +15,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CalendarIcon, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { sendNtfyNotification } from '@/lib/ntfy';
 
 export default function SubmitIssue() {
   const { erp, studentName, classNo } = useERP();
@@ -160,6 +161,27 @@ export default function SubmitIssue() {
       const { error } = await supabase.from('tickets').insert(ticketData);
 
       if (error) throw error;
+
+      const notificationMessage = [
+        'Event: New Ticket',
+        `ERP: ${erp}`,
+        `Student: ${studentName || '-'}`,
+        `Class: ${classNo || '-'}`,
+        `Group: ${ticketData.group_type || '-'}`,
+        `Category: ${ticketData.category || '-'}`,
+        `Timestamp: ${new Date().toISOString()}`,
+      ].join('\n');
+
+      void sendNtfyNotification({
+        title: 'New Ticket',
+        message: notificationMessage,
+        tags: ['ticket', 'student'],
+        priority: 3,
+      }).then((ok) => {
+        if (!ok) {
+          console.warn('[ntfy] Failed to send ticket notification');
+        }
+      });
 
       toast.success('Ticket submitted successfully');
       // Reset form

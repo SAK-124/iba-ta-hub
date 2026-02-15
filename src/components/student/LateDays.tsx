@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { sendNtfyNotification } from '@/lib/ntfy';
 
 type LateDayAssignment = Tables<'late_day_assignments'>;
 type LateDayClaim = Tables<'late_day_claims'>;
@@ -267,6 +268,35 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
     } else {
       await fetchLateDays();
     }
+
+    const claimedAt = payload?.claim?.claimed_at ?? new Date().toISOString();
+    const dueAfterClaim =
+      payload?.claim?.due_at_after_claim ??
+      (previewDueAt ? previewDueAt.toISOString() : selectedSummary.currentDeadline?.toISOString() ?? null);
+    const remainingAfterClaim =
+      typeof payload?.remaining_late_days === 'number' ? payload.remaining_late_days : Math.max(remaining - days, 0);
+    const usedDaysForNotification = payload?.claim?.days_used ?? days;
+
+    const notificationMessage = [
+      'Event: Late Day Used',
+      `ERP: ${erp || '-'}`,
+      `Assignment: ${selectedSummary.assignment.title}`,
+      `Days Used: ${usedDaysForNotification}`,
+      `Claimed At: ${claimedAt}`,
+      `New Due: ${dueAfterClaim ?? '-'}`,
+      `Remaining Late Days: ${remainingAfterClaim}`,
+    ].join('\n');
+
+    void sendNtfyNotification({
+      title: 'Late Day Used',
+      message: notificationMessage,
+      tags: ['late-day', 'student'],
+      priority: 3,
+    }).then((ok) => {
+      if (!ok) {
+        console.warn('[ntfy] Failed to send late-day notification');
+      }
+    });
 
     toast.success('Late days claimed successfully.');
     setIsClaiming(false);
