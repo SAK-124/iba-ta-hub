@@ -3,15 +3,25 @@ import { useERP } from '@/lib/erp-context';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import SubmitIssue from './SubmitIssue';
 import MyIssues from './MyIssues';
 import AttendanceView from './AttendanceView';
+import LateDays from './LateDays';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/lib/auth';
+
+type StudentPortalTab = 'submit' | 'issues' | 'attendance' | 'late-days';
 
 export default function StudentPortal() {
   const { erp, isVerified, studentName, isLoading } = useERP();
+  const { user } = useAuth();
   const [ticketsEnabled, setTicketsEnabled] = useState(true);
   const [isSettingsLoading, setIsSettingsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<StudentPortalTab>('attendance');
+  const [hasInitializedTab, setHasInitializedTab] = useState(false);
+  const [lateDaysRemaining, setLateDaysRemaining] = useState(3);
+  const [isLateDaysLoading, setIsLateDaysLoading] = useState(true);
 
   useEffect(() => {
     const fetchFeatureFlags = async () => {
@@ -32,6 +42,40 @@ export default function StudentPortal() {
 
     fetchFeatureFlags();
   }, []);
+
+  useEffect(() => {
+    if (!isSettingsLoading && !hasInitializedTab) {
+      setActiveTab(ticketsEnabled ? 'submit' : 'attendance');
+      setHasInitializedTab(true);
+    }
+  }, [isSettingsLoading, ticketsEnabled, hasInitializedTab]);
+
+  useEffect(() => {
+    const fetchRemainingLateDays = async () => {
+      if (!isVerified || !user?.email) {
+        setLateDaysRemaining(3);
+        setIsLateDaysLoading(false);
+        return;
+      }
+
+      setIsLateDaysLoading(true);
+      const { data, error } = await supabase
+        .from('late_day_claims')
+        .select('days_used')
+        .eq('student_email', user.email);
+
+      if (error) {
+        console.error('Failed to load late-day usage:', error);
+        setLateDaysRemaining(3);
+      } else {
+        const used = (data ?? []).reduce((sum, claim) => sum + claim.days_used, 0);
+        setLateDaysRemaining(Math.max(3 - used, 0));
+      }
+      setIsLateDaysLoading(false);
+    };
+
+    void fetchRemainingLateDays();
+  }, [isVerified, user?.email]);
 
   if (isLoading || isSettingsLoading) {
     return (
@@ -83,7 +127,27 @@ export default function StudentPortal() {
           </div>
         </div>
       ) : isVerified ? (
-        <Tabs defaultValue={ticketsEnabled ? 'submit' : 'attendance'} className="w-full space-y-8">
+        <div className="space-y-6">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <CardTitle>Late Days</CardTitle>
+                  <CardDescription>You can use at most 3 late days across assignments.</CardDescription>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="rounded-md border px-3 py-1 text-sm font-semibold">
+                    {isLateDaysLoading ? 'Loading...' : `${lateDaysRemaining} / 3 left`}
+                  </span>
+                  <Button onClick={() => setActiveTab('late-days')}>
+                    Avail Late Days
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as StudentPortalTab)} className="w-full space-y-8">
           <TabsList className="flex w-full bg-muted/30 p-1.5 rounded-xl h-auto overflow-x-auto no-scrollbar">
             {ticketsEnabled && (
               <TabsTrigger value="submit" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
@@ -97,6 +161,9 @@ export default function StudentPortal() {
             )}
             <TabsTrigger value="attendance" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
               Attendance
+            </TabsTrigger>
+            <TabsTrigger value="late-days" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
+              Late Days
             </TabsTrigger>
           </TabsList>
 
@@ -125,7 +192,12 @@ export default function StudentPortal() {
             )}
             <AttendanceView />
           </TabsContent>
-        </Tabs>
+
+            <TabsContent value="late-days" className="mt-6">
+              <LateDays onRemainingChange={setLateDaysRemaining} />
+            </TabsContent>
+          </Tabs>
+        </div>
       ) : (
         <div className="text-center py-12 text-muted-foreground">
           <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-20" />

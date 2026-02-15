@@ -77,6 +77,77 @@ export type Database = {
           },
         ]
       }
+      late_day_assignments: {
+        Row: {
+          active: boolean
+          created_at: string
+          due_at: string
+          id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          due_at: string
+          id?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          due_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      late_day_claims: {
+        Row: {
+          assignment_id: string
+          claimed_at: string
+          created_at: string
+          days_used: number
+          due_at_after_claim: string
+          due_at_before_claim: string
+          id: string
+          student_email: string
+          student_erp: string
+        }
+        Insert: {
+          assignment_id: string
+          claimed_at?: string
+          created_at?: string
+          days_used: number
+          due_at_after_claim: string
+          due_at_before_claim: string
+          id?: string
+          student_email: string
+          student_erp: string
+        }
+        Update: {
+          assignment_id?: string
+          claimed_at?: string
+          created_at?: string
+          days_used?: number
+          due_at_after_claim?: string
+          due_at_before_claim?: string
+          id?: string
+          student_email?: string
+          student_erp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "late_day_claims_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "late_day_assignments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       penalty_types: {
         Row: {
           active: boolean
@@ -254,6 +325,10 @@ export type Database = {
     }
     Functions: {
       check_roster: { Args: { check_erp: string }; Returns: Json }
+      claim_late_days: {
+        Args: { p_assignment_id: string; p_days: number }
+        Returns: Json
+      }
       is_ta: { Args: { user_email: string }; Returns: boolean }
     }
     Enums: {

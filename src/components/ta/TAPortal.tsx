@@ -9,6 +9,7 @@ import ExportData from './ExportData';
 import ConsolidatedView from './ConsolidatedView';
 import RuleExceptions from './RuleExceptions';
 import TAZoomProcess from './TAZoomProcess';
+import LateDaysManagement from './LateDaysManagement';
 import {
   Users,
   Calendar,
@@ -18,7 +19,8 @@ import {
   Settings,
   Download,
   Scale,
-  Video
+  Video,
+  Hourglass
 } from 'lucide-react';
 
 type PortalTabValue =
@@ -28,6 +30,7 @@ type PortalTabValue =
   | 'consolidated'
   | 'exceptions'
   | 'roster'
+  | 'late-days'
   | 'export'
   | 'issues'
   | 'settings';
@@ -40,7 +43,7 @@ interface PortalUiCache {
 let taPortalUiCache: PortalUiCache | null = null;
 
 const isPortalTabValue = (value: string): value is PortalTabValue =>
-  ['zoom', 'attendance', 'sessions', 'consolidated', 'exceptions', 'roster', 'export', 'issues', 'settings'].includes(value);
+  ['zoom', 'attendance', 'sessions', 'consolidated', 'exceptions', 'roster', 'late-days', 'export', 'issues', 'settings'].includes(value);
 
 export default function TAPortal() {
   const cached = taPortalUiCache;
@@ -128,6 +131,10 @@ export default function TAPortal() {
             <Users className="w-3.5 h-3.5" />
             <span>Roster</span>
           </TabsTrigger>
+          <TabsTrigger value="late-days" className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
+            <Hourglass className="w-3.5 h-3.5" />
+            <span>Late Days</span>
+          </TabsTrigger>
           <TabsTrigger value="export" className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
             <Download className="w-3.5 h-3.5" />
             <span>Export</span>
@@ -176,6 +183,12 @@ export default function TAPortal() {
         {shouldRenderTab('roster') && (
           <TabsContent value="roster" className="mt-6" forceMount>
             <RosterManagement />
+          </TabsContent>
+        )}
+
+        {shouldRenderTab('late-days') && (
+          <TabsContent value="late-days" className="mt-6" forceMount>
+            <LateDaysManagement />
           </TabsContent>
         )}
 
