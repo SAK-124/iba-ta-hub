@@ -11,7 +11,6 @@ import { Badge } from '@/components/ui/badge';
 import {
   FileSpreadsheet,
   Loader2,
-  Upload,
   AlertCircle,
   CheckCircle2,
   Search,
@@ -23,6 +22,7 @@ import {
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
+import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
 
 type GenericRow = Record<string, unknown>;
@@ -256,6 +256,8 @@ export default function TAZoomProcess() {
 
   const [data, setData] = useState<ProcessedData | null>(() => cached?.data ?? null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isCalculating, setIsCalculating] = useState(false);
+  const [calcDots, setCalcDots] = useState(0);
   const [activeTab, setActiveTab] = useState(() => cached?.activeTab ?? 'matches');
 
   const [step, setStep] = useState<'upload' | 'review' | 'results'>(() => cached?.step ?? 'upload');
@@ -356,6 +358,19 @@ export default function TAZoomProcess() {
   useEffect(() => {
     setIgnoredKeys(new Set());
   }, [data]);
+
+  useEffect(() => {
+    if (!isCalculating) {
+      setCalcDots(0);
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setCalcDots((prev) => (prev + 1) % 4);
+    }, 300);
+
+    return () => window.clearInterval(intervalId);
+  }, [isCalculating]);
 
   const rosterErpSet = useMemo(() => new Set(Object.keys(rosterReference)), [rosterReference]);
   const rosterCount = Object.keys(rosterReference).length;
@@ -553,6 +568,11 @@ export default function TAZoomProcess() {
       return;
     }
 
+    const fromCalculateButton = targetStep === 'results';
+    if (fromCalculateButton) {
+      setIsCalculating(true);
+    }
+
     setIsProcessing(true);
     const loadingToast = toast.loading(targetStep === 'review' ? 'Analyzing matches...' : 'Generating attendance...');
 
@@ -653,6 +673,9 @@ export default function TAZoomProcess() {
       toast.error('Processing failed', { description: message });
     } finally {
       setIsProcessing(false);
+      if (fromCalculateButton) {
+        setIsCalculating(false);
+      }
     }
   };
 
@@ -1000,32 +1023,33 @@ export default function TAZoomProcess() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label className="text-xs font-bold uppercase text-muted-foreground">Zoom Log</Label>
                 <div className="relative">
                   <input type="file" accept=".csv" className="hidden" id="main-zoom-upload" onChange={handleZoomFileChange} disabled={isProcessing} />
                   <Label
                     htmlFor="main-zoom-upload"
-                    className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 font-bold uppercase tracking-wider text-foreground transition-all ${
-                      zoomFile
-                        ? 'border-primary bg-primary/10'
-                        : 'border-primary/20 bg-primary/5 hover:bg-primary/10'
-                    }`}
+                    className={cn('upload-zone', zoomFile && 'is-selected', isProcessing && 'is-disabled')}
                   >
+                    <span className="upload-border-container" aria-hidden="true">
+                      <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" className="upload-border-svg">
+                        <rect className="upload-border-rect" width="100%" height="100%" rx="8" />
+                      </svg>
+                    </span>
                     {zoomFile ? (
-                      <>
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                          <CheckCircle2 className="h-5 w-5" />
-                        </div>
-                        <span className="max-w-[150px] truncate text-xs">{zoomFile.name}</span>
-                      </>
+                      <svg className="upload-icon upload-icon-selected" viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M8.5 12.5L11 15L15.5 9.5" />
+                      </svg>
                     ) : (
-                      <>
-                        <Upload className="h-6 w-6 text-primary/50" />
-                        <span className="text-xs">Select CSV</span>
-                      </>
+                      <svg className="upload-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                      </svg>
                     )}
+                    <span className={cn('upload-zone-text', zoomFile && 'max-w-[220px] truncate')}>{zoomFile ? zoomFile.name : 'Select CSV'}</span>
                   </Label>
                 </div>
               </div>
@@ -1050,9 +1074,12 @@ export default function TAZoomProcess() {
                 </div>
                 <div className="relative h-full">
                   {useSavedRoster ? (
-                    <div className="flex h-[100px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary/20 bg-primary/5 px-4 py-6 font-bold uppercase tracking-wider text-primary">
-                      <CheckCircle2 className="h-5 w-5" />
-                      <span className="text-xs">Using Saved Roster</span>
+                    <div className="roster-card">
+                      <svg className="roster-icon" viewBox="0 0 36 36" aria-hidden="true">
+                        <circle className="roster-circle" cx="18" cy="18" r="14" transform="rotate(-90 18 18)" />
+                        <path className="roster-check" d="M12 18L16 22L24 13" />
+                      </svg>
+                      <span className="upload-zone-text text-primary">Using Saved Roster</span>
                     </div>
                   ) : (
                     <>
@@ -1069,23 +1096,24 @@ export default function TAZoomProcess() {
                       />
                       <Label
                         htmlFor="roster-upload"
-                        className={`flex h-[100px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 font-bold uppercase tracking-wider transition-all ${
-                          rosterFile
-                            ? 'border-primary/50 bg-primary/5 text-primary'
-                            : 'border-muted-foreground/20 text-muted-foreground hover:bg-muted/50'
-                        }`}
+                        className={cn('upload-zone roster-upload-zone', rosterFile && 'is-selected', (isProcessing || useSavedRoster) && 'is-disabled')}
                       >
+                        <span className="upload-border-container" aria-hidden="true">
+                          <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" className="upload-border-svg">
+                            <rect className="upload-border-rect" width="100%" height="100%" rx="8" />
+                          </svg>
+                        </span>
                         {rosterFile ? (
-                          <>
-                            <CheckCircle2 className="h-5 w-5" />
-                            <span className="max-w-[150px] truncate text-xs">{rosterFile.name}</span>
-                          </>
+                          <svg className="upload-icon upload-icon-selected" viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="12" cy="12" r="9" />
+                            <path d="M8.5 12.5L11 15L15.5 9.5" />
+                          </svg>
                         ) : (
-                          <>
-                            <FileSpreadsheet className="h-5 w-5 opacity-50" />
-                            <span className="text-xs">Select Roster</span>
-                          </>
+                          <FileSpreadsheet className="upload-icon" />
                         )}
+                        <span className={cn('upload-zone-text', rosterFile && 'max-w-[220px] truncate')}>
+                          {rosterFile ? rosterFile.name : 'Select Roster'}
+                        </span>
                       </Label>
                     </>
                   )}
@@ -1118,10 +1146,32 @@ export default function TAZoomProcess() {
               <Label>Namaz Break (mins)</Label>
               <Input type="number" placeholder="0" value={namazBreak} onChange={(event) => setNamazBreak(event.target.value)} />
             </div>
-            <Button className="mt-4 w-full" variant={step === 'results' ? 'outline' : 'default'} onClick={() => processFile('results')} disabled={isProcessing || step === 'upload'}>
-              {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-              {step === 'results' ? 'Update Results' : 'Calculate Attendance'}
-            </Button>
+            <button
+              type="button"
+              className={cn('zoom-calc-btn mt-4 w-full', isCalculating && 'processing')}
+              onClick={() => processFile('results')}
+              disabled={isProcessing || step === 'upload'}
+            >
+              <svg className="icon-idle" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+              <svg className="icon-processing" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="2" width="18" height="20" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                <rect className="data-bar bar-1" x="6" y="10" width="2" height="8" rx="1" />
+                <rect className="data-bar bar-2" x="10" y="8" width="2" height="10" rx="1" />
+                <rect className="data-bar bar-3" x="14" y="12" width="2" height="6" rx="1" />
+                <rect className="data-bar bar-4" x="18" y="6" width="2" height="12" rx="1" />
+                <line className="scanner-line" x1="1" y1="2" x2="23" y2="2" />
+              </svg>
+              <span>
+                {isCalculating
+                  ? `Analyzing Logs${'.'.repeat(calcDots)}`
+                  : step === 'results'
+                    ? 'Update Results'
+                    : 'Calculate Attendance'}
+              </span>
+            </button>
           </CardContent>
         </Card>
       </div>

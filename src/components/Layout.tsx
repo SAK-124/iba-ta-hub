@@ -1,8 +1,9 @@
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
-import { GraduationCap, LogOut, User, Shield } from 'lucide-react';
+import { LogOut, User, Shield } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ModeToggle } from './mode-toggle';
+import CompanionBotLogo from './CompanionBotLogo';
 interface LayoutProps {
   children: React.ReactNode;
 }
@@ -23,9 +24,7 @@ export default function Layout({
     <header className="sticky top-0 z-50 w-full glass-morphism border-b border-primary/10">
       <div className="container flex h-16 items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-            <GraduationCap className="w-5 h-5 text-primary-foreground" />
-          </div>
+          <CompanionBotLogo />
           <div>
             <h1 className="text-lg font-semibold text-foreground my-0 text-center">AAMD Portal</h1>
             <p className="text-xs text-muted-foreground">{isTA ? 'TA Dashboard' : 'Student Portal'}</p>
