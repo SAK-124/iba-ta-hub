@@ -61,7 +61,7 @@ export default function CompanionBotLogo({ className }: CompanionBotLogoProps) {
       aria-label="AAMD companion bot"
       title="AAMD companion bot"
     >
-      <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true">
+      <svg viewBox="0 0 100 100" width="100%" height="100%" className="companion-bot-svg" aria-hidden="true">
         <circle cx="50" cy="50" r="35" className="bot-aura" />
 
         <g className="bot-antenna">

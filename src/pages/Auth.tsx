@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertCircle, GraduationCap, Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import { ModeToggle } from '@/components/mode-toggle';
+import CompanionBotLogo from '@/components/CompanionBotLogo';
 
 type AuthMode = 'student' | 'ta';
 
@@ -155,9 +156,7 @@ export default function Auth() {
       <div className="w-full max-w-md animate-fade-in">
         <div className="mb-8 flex items-center justify-center">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
-              <GraduationCap className="h-7 w-7 text-primary-foreground" />
-            </div>
+            <CompanionBotLogo className="h-14 w-14" />
             <div>
               <h1 className="text-2xl font-bold text-foreground">Course Portal</h1>
               <p className="text-sm text-muted-foreground">Sign in to continue</p>

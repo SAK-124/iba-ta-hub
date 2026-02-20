@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { GraduationCap, LogIn } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 import PublicAttendanceBoard from '@/components/public/PublicAttendanceBoard';
 import { ModeToggle } from '@/components/mode-toggle';
+import CompanionBotLogo from '@/components/CompanionBotLogo';
 
 export default function PublicAttendance() {
   return (
@@ -10,9 +11,7 @@ export default function PublicAttendance() {
       <header className="sticky top-0 z-50 w-full glass-morphism border-b border-primary/10">
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-              <GraduationCap className="h-5 w-5 text-primary-foreground" />
-            </div>
+            <CompanionBotLogo className="-ml-4 md:-ml-5" />
             <div>
               <h1 className="text-lg font-semibold text-foreground">AAMD Portal</h1>
               <p className="text-xs text-muted-foreground">Public Attendance Record</p>
