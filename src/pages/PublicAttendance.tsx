@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { GraduationCap, LogIn } from 'lucide-react';
 import PublicAttendanceBoard from '@/components/public/PublicAttendanceBoard';
+import { ModeToggle } from '@/components/mode-toggle';
 
 export default function PublicAttendance() {
   return (
@@ -18,12 +19,15 @@ export default function PublicAttendance() {
             </div>
           </div>
 
-          <Button asChild>
-            <Link to="/auth" className="inline-flex items-center gap-2">
-              <LogIn className="h-4 w-4" />
-              Login
-            </Link>
-          </Button>
+          <div className="flex items-center gap-3">
+            <ModeToggle />
+            <Button asChild>
+              <Link to="/auth" className="inline-flex items-center gap-2">
+                <LogIn className="h-4 w-4" />
+                Login
+              </Link>
+            </Button>
+          </div>
         </div>
       </header>
 

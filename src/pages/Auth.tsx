@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertCircle, GraduationCap, Loader2 } from 'lucide-react';
+import { ModeToggle } from '@/components/mode-toggle';
 
 type AuthMode = 'student' | 'ta';
 
@@ -147,7 +148,10 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="relative min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="absolute right-4 top-4">
+        <ModeToggle />
+      </div>
       <div className="w-full max-w-md animate-fade-in">
         <div className="mb-8 flex items-center justify-center">
           <div className="flex items-center gap-3">
