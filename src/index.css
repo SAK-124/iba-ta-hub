@@ -1093,69 +1093,89 @@
     }
   }
 
+  /* Sticky header safe area (prevents top clipping under browser/UI insets) */
+  .safe-sticky-header {
+    padding-top: 4px;
+    padding-top: max(env(safe-area-inset-top, 0px), 4px);
+  }
+
   /* Header companion bot */
   .companion-bot {
+    --bot-accent-blue: #38bdf8;
+    --bot-accent-red: #ef4444;
+    --bot-accent-orange: #f59e0b;
+    --bot-accent-pink: #f472b6;
+
     width: 80px;
     height: 80px;
-    border-radius: 0;
+    cursor: pointer;
+    position: relative;
+    z-index: 20;
     border: 0;
     background: transparent;
+    padding: 0;
+    line-height: 0;
+    flex-shrink: 0;
+    overflow: visible;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
-    position: relative;
-    flex-shrink: 0;
-    transition: all 0.25s ease;
-    padding: 0;
-    line-height: 0;
-    overflow: visible;
+    border-radius: 12px;
   }
 
-  .companion-bot:hover {
-    transform: translateY(-1px) scale(1.02);
-    border-color: transparent;
-    background: transparent;
+  .companion-bot:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
 
   .companion-bot-svg {
     width: 100%;
     height: 100%;
     overflow: visible;
-    transform: translate(-6px, 3px);
-    transform-origin: center;
   }
 
-  .companion-bot .bot-aura {
-    fill: #38bdf8;
-    opacity: 0.08;
-    filter: blur(5px);
+  /* Tactile squish */
+  .companion-bot:not(.charging):not(.overloaded):not(.exploding):not(.vacation):not(.vacation-shock):not(.vacation-falling):not(.vacation-headbutt):active #bot-assembly {
+    transform: scale(1.1, 0.85);
+    transform-origin: center 75px;
+    transition: transform 0.1s;
   }
 
-  .companion-bot .bot-antenna-stem {
-    stroke: #64748b;
-    stroke-width: 4;
-    stroke-linecap: round;
+  /* Visibility base states */
+  .companion-bot #bot-happy-eyes,
+  .companion-bot #bot-blush,
+  .companion-bot #bot-dizzy-eyes,
+  .companion-bot #bot-sleepy-eyes,
+  .companion-bot #bot-annoyed-1-eyes,
+  .companion-bot #bot-annoyed-2-eyes,
+  .companion-bot #bot-annoyed-3-eyes,
+  .companion-bot #bot-typing-eyes,
+  .companion-bot #bot-heart-eyes,
+  .companion-bot #bot-zzz,
+  .companion-bot #bot-steam,
+  .companion-bot #bot-hearts,
+  .companion-bot #vacation-chair,
+  .companion-bot #vacation-drink,
+  .companion-bot #bot-vacation-eyes,
+  .companion-bot #bot-vacation-mouth,
+  .companion-bot #bot-surprised-eyes,
+  .companion-bot #bot-panicked-eyes,
+  .companion-bot #bot-gibs {
+    opacity: 0;
+    pointer-events: none;
   }
 
-  .companion-bot .bot-antenna-tip {
-    fill: #ef4444;
+  .companion-bot #bot-eyes {
+    transform: scale(1);
+    transition:
+      opacity 0.2s ease,
+      transform 0.1s ease-out;
+    transform-box: fill-box;
   }
 
-  .companion-bot .bot-body {
-    fill: #1e293b;
-    stroke: #334155;
-    stroke-width: 3;
-  }
-
-  .companion-bot .bot-screen {
-    fill: #0f172a;
-    stroke: #020617;
-    stroke-width: 2;
-  }
-
+  /* Blinking */
   .companion-bot .bot-eye {
-    animation: portalBotBlink 5s infinite;
+    animation: botBlink 5s infinite;
   }
 
   .companion-bot .left-eye-origin {
@@ -1166,125 +1186,7 @@
     transform-origin: 60px 47px;
   }
 
-  .companion-bot .eye-hover {
-    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-
-  .companion-bot .normal-eye {
-    opacity: 1;
-    transition: opacity 0.2s ease;
-  }
-
-  .companion-bot .excited-eye {
-    opacity: 0;
-    transition: opacity 0.2s ease;
-  }
-
-  .companion-bot:hover .normal-eye {
-    opacity: 0;
-  }
-
-  .companion-bot:hover .excited-eye {
-    opacity: 1;
-  }
-
-  .companion-bot:hover .eye-hover {
-    transform: scale(1.15) translateY(-1px);
-  }
-
-  .companion-bot .bot-eye-dot {
-    fill: #38bdf8;
-    filter: drop-shadow(0 0 2px rgb(56 189 248 / 0.8));
-  }
-
-  .companion-bot .bot-eye-catchlight-main {
-    fill: #ffffff;
-    opacity: 0.9;
-  }
-
-  .companion-bot .bot-eye-catchlight-sub {
-    fill: #ffffff;
-    opacity: 0.6;
-  }
-
-  .companion-bot .bot-excited-eye {
-    fill: none;
-    stroke: #38bdf8;
-    stroke-width: 2.5;
-    stroke-linecap: round;
-    filter: drop-shadow(0 0 2px rgb(56 189 248 / 0.8));
-  }
-
-  .companion-bot .bot-happy-eye-line {
-    stroke: #38bdf8;
-    stroke-width: 2.5;
-    fill: none;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-
-  .companion-bot .bot-dizzy-eye-line {
-    stroke: #38bdf8;
-    stroke-width: 2.5;
-    fill: none;
-    stroke-linecap: round;
-  }
-
-  .companion-bot .bot-blush-dot {
-    fill: #ef4444;
-    opacity: 0.8;
-    filter: blur(1px);
-  }
-
-  .companion-bot .bot-happy-eyes,
-  .companion-bot .bot-blush,
-  .companion-bot .bot-dizzy-eyes {
-    opacity: 0;
-    transition: opacity 0.2s ease;
-  }
-
-  .companion-bot .bot-eyes {
-    transition:
-      opacity 0.2s ease,
-      transform 0.1s ease-out;
-    transform-box: fill-box;
-  }
-
-  .companion-bot:hover .bot-antenna {
-    animation: portalBotWiggle 0.3s infinite ease-in-out;
-    transform-origin: 50px 25px;
-  }
-
-  .companion-bot.happy {
-    animation: portalBotFlip 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-  }
-
-  .companion-bot.happy .bot-eyes,
-  .companion-bot.dizzy .bot-eyes {
-    opacity: 0;
-  }
-
-  .companion-bot.happy .bot-happy-eyes,
-  .companion-bot.happy .bot-blush {
-    opacity: 1;
-  }
-
-  .companion-bot.dizzy {
-    animation: portalDizzyFall 5s forwards;
-    pointer-events: none;
-    transform-origin: center bottom;
-  }
-
-  .companion-bot.dizzy .bot-dizzy-eyes {
-    opacity: 1;
-  }
-
-  .companion-bot.dizzy .bot-antenna {
-    animation: portalDizzyAntenna 5s forwards;
-    transform-origin: 50px 25px;
-  }
-
-  @keyframes portalBotBlink {
+  @keyframes botBlink {
     0%,
     90%,
     94%,
@@ -1299,7 +1201,36 @@
     }
   }
 
-  @keyframes portalBotWiggle {
+  /* Hover state */
+  .companion-bot .normal-eye {
+    opacity: 1;
+    transition: opacity 0.2s;
+  }
+
+  .companion-bot .excited-eye {
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .companion-bot.hovered .normal-eye {
+    opacity: 0;
+  }
+
+  .companion-bot.hovered .excited-eye {
+    opacity: 1;
+  }
+
+  .companion-bot.hovered .eye-hover {
+    transform: scale(1.15) translateY(-1px);
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .companion-bot.hovered #bot-antenna {
+    animation: wiggle 0.3s infinite ease-in-out;
+    transform-origin: 50px 25px;
+  }
+
+  @keyframes wiggle {
     0%,
     100% {
       transform: rotate(0deg);
@@ -1314,21 +1245,339 @@
     }
   }
 
-  @keyframes portalBotFlip {
-    0% {
-      transform: translateY(0) rotate(0deg);
+  /* Happy click */
+  .companion-bot.happy #bot-assembly {
+    animation: bounceHappy 0.6s cubic-bezier(0.28, 0.84, 0.42, 1);
+    transform-origin: 50px 75px;
+  }
+
+  .companion-bot.happy #bot-eyes {
+    opacity: 0;
+  }
+
+  .companion-bot.happy #bot-happy-eyes {
+    opacity: 1;
+  }
+
+  .companion-bot.happy #bot-blush {
+    opacity: 1;
+  }
+
+  @keyframes bounceHappy {
+    0%,
+    100% {
+      transform: translateY(0) scaleY(1);
+    }
+
+    30% {
+      transform: translateY(-15px) scaleY(1.05);
     }
 
     50% {
-      transform: translateY(-30px) rotate(180deg);
+      transform: translateY(0) scaleY(0.95);
     }
 
-    100% {
-      transform: translateY(0) rotate(360deg);
+    70% {
+      transform: translateY(-8px) scaleY(1.02);
+    }
+
+    85% {
+      transform: translateY(0) scaleY(0.98);
     }
   }
 
-  @keyframes portalDizzyFall {
+  /* Sleepy state */
+  .companion-bot.sleeping #bot-eyes {
+    opacity: 0;
+  }
+
+  .companion-bot.sleeping #bot-sleepy-eyes {
+    opacity: 1;
+  }
+
+  .companion-bot.sleeping #bot-zzz {
+    opacity: 1;
+  }
+
+  .companion-bot.sleeping #bot-antenna {
+    transform: rotate(45deg);
+    transition: transform 0.8s ease;
+    transform-origin: 50px 25px;
+  }
+
+  .companion-bot .z-float {
+    animation: floatZ 3s infinite linear;
+    font-family: monospace;
+  }
+
+  .companion-bot .z-float.delay-1 {
+    animation-delay: 1s;
+  }
+
+  .companion-bot .z-float.delay-2 {
+    animation-delay: 2s;
+  }
+
+  @keyframes floatZ {
+    0% {
+      transform: translate(0, 0) scale(0.5);
+      opacity: 0;
+    }
+
+    20% {
+      opacity: 1;
+    }
+
+    80% {
+      opacity: 0.8;
+    }
+
+    100% {
+      transform: translate(15px, -20px) scale(1.2);
+      opacity: 0;
+    }
+  }
+
+  /* Annoyed states */
+  .companion-bot.annoyed-1 #bot-assembly {
+    animation: annoyedShake1 1.5s ease-in-out;
+  }
+
+  .companion-bot.annoyed-1 #bot-eyes {
+    opacity: 0;
+  }
+
+  .companion-bot.annoyed-1 #bot-annoyed-1-eyes {
+    opacity: 1;
+  }
+
+  .companion-bot.annoyed-1 #antenna-bulb {
+    fill: var(--bot-accent-orange);
+    filter: drop-shadow(0 0 2px var(--bot-accent-orange));
+  }
+
+  @keyframes annoyedShake1 {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+
+    20%,
+    60% {
+      transform: translateX(-3px);
+    }
+
+    40%,
+    80% {
+      transform: translateX(3px);
+    }
+  }
+
+  .companion-bot.annoyed-2 #bot-assembly {
+    animation: annoyedShake2 0.3s infinite;
+  }
+
+  .companion-bot.annoyed-2 #bot-eyes {
+    opacity: 0;
+  }
+
+  .companion-bot.annoyed-2 #bot-annoyed-2-eyes {
+    opacity: 1;
+  }
+
+  .companion-bot.annoyed-2 #antenna-bulb {
+    fill: var(--bot-accent-orange);
+    filter: drop-shadow(0 0 4px var(--bot-accent-orange));
+  }
+
+  @keyframes annoyedShake2 {
+    0%,
+    100% {
+      transform: translate(0, 0);
+    }
+
+    25% {
+      transform: translate(-1px, 1px);
+    }
+
+    50% {
+      transform: translate(1px, -1px);
+    }
+
+    75% {
+      transform: translate(-1px, -1px);
+    }
+  }
+
+  .companion-bot.annoyed-3 #bot-assembly {
+    animation: furiousShake 0.1s infinite;
+  }
+
+  .companion-bot.annoyed-3 #bot-eyes {
+    opacity: 0;
+  }
+
+  .companion-bot.annoyed-3 #bot-annoyed-3-eyes {
+    opacity: 1;
+  }
+
+  .companion-bot.annoyed-3 #antenna-bulb {
+    fill: var(--bot-accent-red);
+    filter: drop-shadow(0 0 6px var(--bot-accent-red));
+  }
+
+  .companion-bot.annoyed-3 #bot-steam {
+    opacity: 1;
+  }
+
+  .companion-bot .steam-puff {
+    stroke-dasharray: 20;
+    stroke-dashoffset: 20;
+  }
+
+  .companion-bot.annoyed-3 .puff-1 {
+    animation: blowSteam 0.5s infinite linear;
+  }
+
+  .companion-bot.annoyed-3 .puff-2 {
+    animation: blowSteam 0.5s infinite linear 0.25s;
+  }
+
+  @keyframes furiousShake {
+    0%,
+    100% {
+      transform: translate(0, 0);
+    }
+
+    25% {
+      transform: translate(-2px, 1px);
+    }
+
+    50% {
+      transform: translate(2px, -1px);
+    }
+
+    75% {
+      transform: translate(-1px, -2px);
+    }
+  }
+
+  @keyframes blowSteam {
+    0% {
+      stroke-dashoffset: 20;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    100% {
+      stroke-dashoffset: -20;
+      opacity: 0;
+      transform: translateY(-15px) scale(1.2);
+    }
+  }
+
+  /* Typing mode */
+  .companion-bot #bot-typing-gear {
+    opacity: 0;
+    transform: translateY(15px);
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .companion-bot.typing #bot-typing-gear {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .companion-bot.typing #bot-eyes {
+    opacity: 0;
+  }
+
+  .companion-bot.typing #bot-typing-eyes {
+    opacity: 1;
+  }
+
+  .companion-bot.typing #bot-hand-l {
+    animation: typeLeft 0.12s infinite alternate;
+    transform-origin: 37px 65px;
+  }
+
+  .companion-bot.typing #bot-hand-r {
+    animation: typeRight 0.12s infinite alternate-reverse;
+    transform-origin: 63px 65px;
+  }
+
+  .companion-bot.typing #bot-antenna {
+    animation: typingAntenna 0.5s infinite;
+    transform-origin: 50px 25px;
+  }
+
+  @keyframes typeLeft {
+    0% {
+      transform: translateY(-3px) rotate(-10deg);
+    }
+
+    100% {
+      transform: translateY(2px) rotate(5deg);
+    }
+  }
+
+  @keyframes typeRight {
+    0% {
+      transform: translateY(-3px) rotate(10deg);
+    }
+
+    100% {
+      transform: translateY(2px) rotate(-5deg);
+    }
+  }
+
+  @keyframes typingAntenna {
+    0%,
+    100% {
+      transform: rotate(-4deg);
+    }
+
+    50% {
+      transform: rotate(4deg);
+    }
+  }
+
+  /* Background ping */
+  .companion-bot #antenna-bulb {
+    transition: all 0.2s;
+  }
+
+  .companion-bot.pinging #antenna-bulb {
+    fill: var(--bot-accent-blue);
+    filter: drop-shadow(0 0 6px var(--bot-accent-blue));
+    transform: scale(1.3);
+    transform-origin: 50px 8px;
+  }
+
+  /* Dizzy */
+  .companion-bot.dizzy #bot-assembly {
+    animation: dizzyFall 5s forwards;
+    transform-origin: center bottom;
+  }
+
+  .companion-bot.dizzy {
+    pointer-events: none;
+  }
+
+  .companion-bot.dizzy #bot-eyes {
+    opacity: 0;
+  }
+
+  .companion-bot.dizzy #bot-dizzy-eyes {
+    opacity: 1;
+  }
+
+  .companion-bot.dizzy #bot-antenna {
+    animation: dizzyAntenna 5s forwards;
+    transform-origin: 50px 25px;
+  }
+
+  @keyframes dizzyFall {
     0% {
       transform: rotate(0deg);
     }
@@ -1378,7 +1627,7 @@
     }
   }
 
-  @keyframes portalDizzyAntenna {
+  @keyframes dizzyAntenna {
     0%,
     15% {
       transform: rotate(0deg);
@@ -1409,15 +1658,580 @@
     }
   }
 
+  /* Petting mode */
+  .companion-bot.petting #bot-eyes {
+    opacity: 0;
+  }
+
+  .companion-bot.petting #bot-heart-eyes {
+    opacity: 1;
+  }
+
+  .companion-bot.petting #bot-hearts {
+    opacity: 1;
+  }
+
+  .companion-bot.petting #bot-antenna {
+    animation: happyWag 0.15s infinite alternate;
+    transform-origin: 50px 25px;
+  }
+
+  .companion-bot .float-heart {
+    animation: floatHeart 1.5s infinite ease-in;
+    opacity: 0;
+  }
+
+  .companion-bot .fh-1 {
+    animation-delay: 0s;
+  }
+
+  .companion-bot .fh-2 {
+    animation-delay: 0.4s;
+  }
+
+  .companion-bot .fh-3 {
+    animation-delay: 0.8s;
+  }
+
+  @keyframes happyWag {
+    0% {
+      transform: rotate(-25deg);
+    }
+
+    100% {
+      transform: rotate(25deg);
+    }
+  }
+
+  @keyframes floatHeart {
+    0% {
+      transform: translateY(0) scale(0.5);
+      opacity: 0;
+    }
+
+    20% {
+      opacity: 1;
+    }
+
+    80% {
+      opacity: 0.8;
+    }
+
+    100% {
+      transform: translateY(-25px) scale(1.2);
+      opacity: 0;
+    }
+  }
+
+  /* Vacation sequence */
+  .companion-bot.vacation #vacation-chair,
+  .companion-bot.vacation #vacation-drink {
+    opacity: 1;
+    transition: opacity 0.4s;
+  }
+
+  .companion-bot.vacation #bot-assembly {
+    transform: translateY(-15px) rotate(-5deg);
+    transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .companion-bot.vacation #bot-eyes {
+    opacity: 0;
+  }
+
+  .companion-bot.vacation #bot-vacation-eyes,
+  .companion-bot.vacation #bot-vacation-mouth {
+    opacity: 1;
+  }
+
+  .companion-bot.vacation #bot-vacation-mouth {
+    animation: sipMouth 0.8s infinite alternate;
+  }
+
+  .companion-bot.vacation #vacation-drink {
+    animation: drinkBob 1.6s infinite alternate ease-in-out;
+    transform-origin: 53px 38px;
+  }
+
+  @keyframes sipMouth {
+    0% {
+      transform: scale(1);
+    }
+
+    100% {
+      transform: scale(0.6);
+    }
+  }
+
+  @keyframes drinkBob {
+    0% {
+      transform: rotate(0deg);
+    }
+
+    100% {
+      transform: rotate(5deg);
+    }
+  }
+
+  .companion-bot.vacation-shock #vacation-chair {
+    opacity: 1;
+  }
+
+  .companion-bot.vacation-shock #vacation-drink {
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .companion-bot.vacation-shock #bot-assembly {
+    animation: vacJump 0.8s forwards;
+    transform-origin: 50px 75px;
+  }
+
+  .companion-bot.vacation-shock #bot-eyes {
+    opacity: 0;
+  }
+
+  .companion-bot.vacation-shock #bot-surprised-eyes {
+    opacity: 1;
+  }
+
+  @keyframes vacJump {
+    0% {
+      transform: translateY(-15px) rotate(-5deg);
+    }
+
+    20% {
+      transform: translateY(-30px) scale(1.05) rotate(0deg);
+    }
+
+    100% {
+      transform: translateY(-30px) scale(1.05) rotate(0deg);
+    }
+  }
+
+  .companion-bot.vacation-falling #vacation-chair {
+    opacity: 1;
+  }
+
+  .companion-bot.vacation-falling #bot-assembly {
+    animation: vacFall 0.5s forwards ease-in;
+    transform-origin: 50px 75px;
+  }
+
+  .companion-bot.vacation-falling #bot-eyes {
+    opacity: 0;
+  }
+
+  .companion-bot.vacation-falling #bot-surprised-eyes {
+    opacity: 1;
+  }
+
+  @keyframes vacFall {
+    0% {
+      transform: translateY(-30px) scale(1.05);
+    }
+
+    100% {
+      transform: translate(30px, 30px) rotate(90deg);
+    }
+  }
+
+  .companion-bot.vacation-headbutt #bot-assembly {
+    animation: vacHeadbutt 0.8s forwards ease-out;
+    transform-origin: 50px 75px;
+  }
+
+  .companion-bot.vacation-headbutt #vacation-chair {
+    animation: propLaunch 0.8s forwards cubic-bezier(0.1, 0.8, 0.3, 1);
+    transform-origin: center;
+  }
+
+  .companion-bot.vacation-headbutt #bot-eyes {
+    opacity: 0;
+  }
+
+  .companion-bot.vacation-headbutt #bot-panicked-eyes {
+    opacity: 1;
+  }
+
+  .companion-bot.vacation-headbutt .sweat-drop {
+    animation: sweatTrickle 0.8s forwards;
+  }
+
+  @keyframes sweatTrickle {
+    0% {
+      transform: translateY(0);
+      opacity: 0;
+    }
+
+    10% {
+      opacity: 1;
+    }
+
+    100% {
+      transform: translateY(5px);
+      opacity: 1;
+    }
+  }
+
+  @keyframes vacHeadbutt {
+    0% {
+      transform: translate(30px, 30px) rotate(90deg);
+    }
+
+    20% {
+      transform: translate(40px, 30px) rotate(110deg);
+    }
+
+    30% {
+      transform: translate(-10px, 20px) rotate(-15deg);
+    }
+
+    40% {
+      transform: translate(0, 0) rotate(0deg);
+    }
+
+    100% {
+      transform: translate(0, 0) rotate(0deg);
+    }
+  }
+
+  @keyframes propLaunch {
+    0% {
+      transform: translate(0, 0) rotate(0deg);
+      opacity: 1;
+    }
+
+    20% {
+      transform: translate(0, 0) rotate(0deg);
+      opacity: 1;
+    }
+
+    100% {
+      transform: translate(-300px, -150px) rotate(-180deg);
+      opacity: 0;
+    }
+  }
+
+  .companion-bot.vacation-nervous #bot-eyes {
+    opacity: 0;
+  }
+
+  .companion-bot.vacation-nervous #bot-panicked-eyes {
+    opacity: 1;
+  }
+
+  .companion-bot.vacation-nervous .sweat-drop {
+    transform: translateY(5px);
+    opacity: 1;
+  }
+
+  .companion-bot.vacation-nervous #bot-assembly {
+    animation: nervousTremble 0.15s infinite;
+  }
+
+  @keyframes nervousTremble {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+
+    50% {
+      transform: translateX(1px);
+    }
+  }
+
+  /* Charge, overload, explode */
+  .companion-bot.charging #bot-assembly {
+    animation: chargeShake 0.05s infinite;
+  }
+
+  .companion-bot.charging #antenna-bulb {
+    animation: chargePulse 0.4s infinite alternate;
+  }
+
+  .companion-bot.overloaded #bot-assembly {
+    animation: overloadShake 0.03s infinite;
+  }
+
+  .companion-bot.overloaded .companion-bot-svg {
+    filter: drop-shadow(0 0 25px var(--bot-accent-red));
+  }
+
+  .companion-bot.overloaded #antenna-bulb {
+    transform: scale(1.5);
+    fill: #fff;
+  }
+
+  @keyframes chargePulse {
+    0% {
+      transform: scale(1);
+      fill: var(--bot-accent-red);
+    }
+
+    100% {
+      transform: scale(1.3);
+      fill: #fff;
+      filter: drop-shadow(0 0 6px #fff);
+    }
+  }
+
+  @keyframes chargeShake {
+    0% {
+      transform: translate(-1px, 1px);
+    }
+
+    50% {
+      transform: translate(1px, -1px);
+    }
+
+    100% {
+      transform: translate(-1px, 1px);
+    }
+  }
+
+  @keyframes overloadShake {
+    0% {
+      transform: translate(-4px, 3px) scale(1.05);
+    }
+
+    50% {
+      transform: translate(4px, -3px) scale(1.05);
+    }
+
+    100% {
+      transform: translate(-3px, 4px) scale(1.05);
+    }
+  }
+
+  .companion-bot.exploding {
+    pointer-events: none;
+  }
+
+  .companion-bot.exploding #bot-steam,
+  .companion-bot.exploding #bot-eyes,
+  .companion-bot.exploding #bot-annoyed-3-eyes {
+    display: none;
+  }
+
+  .companion-bot.exploding #bot-assembly {
+    animation: rebuildShudder 6s forwards;
+    transform-origin: 50px 75px;
+  }
+
+  .companion-bot.exploding #bot-face {
+    animation: explodeFace 6s forwards;
+  }
+
+  .companion-bot.exploding #bot-body {
+    animation: explodeBody 6s forwards;
+  }
+
+  .companion-bot.exploding #bot-antenna {
+    animation: explodeAntenna 6s forwards;
+  }
+
+  .companion-bot.exploding #bot-gibs {
+    animation: gibFade 6s forwards;
+  }
+
+  .companion-bot.exploding .gib-1 {
+    animation: explodeGib1 6s forwards;
+  }
+
+  .companion-bot.exploding .gib-2 {
+    animation: explodeGib2 6s forwards;
+  }
+
+  .companion-bot.exploding .gib-3 {
+    animation: explodeGib3 6s forwards;
+  }
+
+  .companion-bot.exploding .gib-4 {
+    animation: explodeGib4 6s forwards;
+  }
+
+  @keyframes rebuildShudder {
+    0%,
+    84% {
+      transform: translate(0, 0);
+    }
+
+    85%,
+    89%,
+    93%,
+    97% {
+      transform: translateX(-4px) rotate(-3deg);
+    }
+
+    87%,
+    91%,
+    95%,
+    99% {
+      transform: translateX(4px) rotate(3deg);
+    }
+
+    100% {
+      transform: translate(0, 0);
+    }
+  }
+
+  @keyframes gibFade {
+    0%,
+    1% {
+      opacity: 0;
+    }
+
+    2%,
+    84% {
+      opacity: 1;
+    }
+
+    85%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes explodeFace {
+    0% {
+      transform: translate(0, 0) rotate(0);
+      animation-timing-function: cubic-bezier(0.1, 1, 0.2, 1);
+    }
+
+    10%,
+    50% {
+      transform: translate(45px, 20px) rotate(60deg);
+      animation-timing-function: cubic-bezier(0.5, 0, 0.8, 1);
+    }
+
+    85%,
+    100% {
+      transform: translate(0, 0) rotate(0);
+    }
+  }
+
+  @keyframes explodeBody {
+    0% {
+      transform: translate(0, 0) rotate(0);
+      animation-timing-function: cubic-bezier(0.1, 1, 0.2, 1);
+    }
+
+    10%,
+    50% {
+      transform: translate(-35px, 35px) rotate(-45deg);
+      animation-timing-function: cubic-bezier(0.5, 0, 0.8, 1);
+    }
+
+    85%,
+    100% {
+      transform: translate(0, 0) rotate(0);
+    }
+  }
+
+  @keyframes explodeAntenna {
+    0% {
+      transform: translate(0, 0) rotate(0);
+      animation-timing-function: cubic-bezier(0.1, 1, 0.2, 1);
+    }
+
+    10%,
+    50% {
+      transform: translate(15px, -45px) rotate(135deg);
+      animation-timing-function: cubic-bezier(0.5, 0, 0.8, 1);
+    }
+
+    85%,
+    100% {
+      transform: translate(0, 0) rotate(0);
+    }
+  }
+
+  @keyframes explodeGib1 {
+    0% {
+      transform: translate(0, 0) rotate(0);
+      animation-timing-function: cubic-bezier(0.1, 1, 0.2, 1);
+    }
+
+    10%,
+    50% {
+      transform: translate(-45px, -20px) rotate(-200deg);
+      animation-timing-function: cubic-bezier(0.5, 0, 0.8, 1);
+    }
+
+    85%,
+    100% {
+      transform: translate(0, 0) rotate(0);
+    }
+  }
+
+  @keyframes explodeGib2 {
+    0% {
+      transform: translate(0, 0) rotate(0);
+      animation-timing-function: cubic-bezier(0.1, 1, 0.2, 1);
+    }
+
+    10%,
+    50% {
+      transform: translate(55px, -15px) rotate(300deg);
+      animation-timing-function: cubic-bezier(0.5, 0, 0.8, 1);
+    }
+
+    85%,
+    100% {
+      transform: translate(0, 0) rotate(0);
+    }
+  }
+
+  @keyframes explodeGib3 {
+    0% {
+      transform: translate(0, 0) rotate(0);
+      animation-timing-function: cubic-bezier(0.1, 1, 0.2, 1);
+    }
+
+    10%,
+    50% {
+      transform: translate(-20px, -50px) rotate(-400deg);
+      animation-timing-function: cubic-bezier(0.5, 0, 0.8, 1);
+    }
+
+    85%,
+    100% {
+      transform: translate(0, 0) rotate(0);
+    }
+  }
+
+  @keyframes explodeGib4 {
+    0% {
+      transform: translate(0, 0) rotate(0);
+      animation-timing-function: cubic-bezier(0.1, 1, 0.2, 1);
+    }
+
+    10%,
+    50% {
+      transform: translate(25px, 50px) rotate(250deg);
+      animation-timing-function: cubic-bezier(0.5, 0, 0.8, 1);
+    }
+
+    85%,
+    100% {
+      transform: translate(0, 0) rotate(0);
+    }
+  }
+
   @media (max-width: 640px) {
     .companion-bot {
       width: 68px;
       height: 68px;
     }
-
-    .companion-bot-svg {
-      transform: translate(-4px, 2px);
-    }
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    .companion-bot,
+    .companion-bot * {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
