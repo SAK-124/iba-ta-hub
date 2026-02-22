@@ -71,7 +71,7 @@ export default function Auth() {
         }
 
         const { data: isAllowed, error: allowlistError } = await supabase
-          .rpc('check_ta_allowlist' as never, { check_email: trimmedEmail } as never);
+          .rpc('check_ta_allowlist', { check_email: trimmedEmail });
 
         if (allowlistError) {
           throw allowlistError;

@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 
 export default function TASettings() {
   const [rosterVerification, setRosterVerification] = useState(true);
-  const [taEmails, setTaEmails] = useState<{ id: string; email: string; active: boolean; initial_password?: string }[]>([]);
+  const [taEmails, setTaEmails] = useState<{ id: string; email: string; active: boolean; created_at: string }[]>([]);
   const [submissions, setSubmissions] = useState<{ id: string; label: string; active: boolean; sort_order: number | null }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [newTaEmail, setNewTaEmail] = useState('');
@@ -35,7 +35,7 @@ export default function TASettings() {
     try {
       const [settingsRes, taRes, subRes] = await Promise.all([
         supabase.from('app_settings').select('*').eq('id', '00000000-0000-0000-0000-000000000001').single(),
-        supabase.from('ta_allowlist').select('*').order('email'),
+        supabase.from('ta_allowlist').select('id, email, active, created_at').order('email'),
         supabase.from('submissions_list').select('*').order('sort_order')
       ]);
 
@@ -124,8 +124,9 @@ export default function TASettings() {
       if (error) throw error;
       toast.success('All attendance records wiped successfully');
       setDeleteConfirmation('');
-    } catch (error: any) {
-      toast.error('Wipe failed: ' + error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error('Wipe failed: ' + message);
     } finally {
       setIsDeletingAll(false);
     }
@@ -233,11 +234,6 @@ export default function TASettings() {
                       <TableCell className="py-4 px-6">
                         <div className="flex flex-col">
                           <span className="text-sm font-bold group-hover:text-primary transition-colors">{ta.email}</span>
-                          {ta.initial_password && (
-                            <span className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mt-1">
-                              Key: {ta.initial_password}
-                            </span>
-                          )}
                         </div>
                       </TableCell>
                       <TableCell className="py-4 px-6 text-right">

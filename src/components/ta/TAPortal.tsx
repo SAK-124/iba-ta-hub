@@ -274,7 +274,7 @@ export default function TAPortal() {
 
         {shouldRenderTab('consolidated') && (
           <TabsContent value="consolidated" className="mt-6" forceMount>
-            <ConsolidatedView />
+            <ConsolidatedView isActive={activeTab === 'consolidated'} />
           </TabsContent>
         )}
 

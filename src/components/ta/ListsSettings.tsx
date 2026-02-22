@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Loader2, Trash2 } from 'lucide-react';
+import { Loader2, Trash2, Eye, EyeOff } from 'lucide-react';
+import { useAuth } from '@/lib/auth';
 
 type AppSettings = {
     id: string;
@@ -14,19 +15,65 @@ type AppSettings = {
     tickets_enabled: boolean;
 };
 
+type TaEmailRow = {
+    id: string;
+    email: string;
+    active: boolean;
+    created_at: string;
+};
+
+type SubmissionRow = {
+    id: string;
+    label: string;
+    active: boolean;
+    sort_order: number | null;
+};
+
 export default function ListsSettings() {
+    const { user } = useAuth();
     const [settings, setSettings] = useState<AppSettings | null>(null);
-    const [taEmails, setTaEmails] = useState<any[]>([]);
+    const [taEmails, setTaEmails] = useState<TaEmailRow[]>([]);
     const [newTaEmail, setNewTaEmail] = useState('');
 
-    const [submissions, setSubmissions] = useState<any[]>([]);
+    const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
     const [newSubLabel, setNewSubLabel] = useState('');
+    const [isPasswordLoading, setIsPasswordLoading] = useState(false);
+    const [currentPassword, setCurrentPassword] = useState<string | null>(null);
+    const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
     useEffect(() => {
         fetchSettings();
-        fetchTaList();
-        fetchSubmissions();
+        void fetchTaList();
+        void fetchSubmissions();
     }, []);
+
+    useEffect(() => {
+        if (!user?.email) {
+            setCurrentPassword(null);
+            return;
+        }
+
+        const loadMyPassword = async () => {
+            setIsPasswordLoading(true);
+            try {
+                const { data, error } = await supabase.rpc('get_my_ta_password');
+
+                if (error) {
+                    toast.error('Failed to load your password');
+                    return;
+                }
+
+                setCurrentPassword(data ?? null);
+            } finally {
+                setIsPasswordLoading(false);
+            }
+        };
+
+        void loadMyPassword();
+    }, [user?.email]);
 
     const fetchSettings = async () => {
         const { data } = await supabase.from('app_settings').select('*').single();
@@ -39,13 +86,33 @@ export default function ListsSettings() {
     };
 
     const fetchTaList = async () => {
-        const { data } = await supabase.from('ta_allowlist').select('*').eq('active', true);
-        if (data) setTaEmails(data);
+        const { data, error } = await supabase
+            .from('ta_allowlist')
+            .select('id, email, active, created_at')
+            .eq('active', true)
+            .order('email');
+
+        if (error) {
+            toast.error('Failed to load TA list');
+            return;
+        }
+
+        setTaEmails((data || []) as TaEmailRow[]);
     };
 
     const fetchSubmissions = async () => {
-        const { data } = await supabase.from('submissions_list').select('*').eq('active', true).order('sort_order');
-        if (data) setSubmissions(data);
+        const { data, error } = await supabase
+            .from('submissions_list')
+            .select('*')
+            .eq('active', true)
+            .order('sort_order');
+
+        if (error) {
+            toast.error('Failed to load submission list');
+            return;
+        }
+
+        setSubmissions((data || []) as SubmissionRow[]);
     };
 
     const toggleRosterVerification = async (checked: boolean) => {
@@ -78,7 +145,7 @@ export default function ListsSettings() {
         } else {
             toast.success('TA added');
             setNewTaEmail('');
-            fetchTaList();
+            void fetchTaList();
         }
     };
 
@@ -92,7 +159,7 @@ export default function ListsSettings() {
             toast.error('Failed to remove TA');
         } else {
             toast.success('TA removed');
-            fetchTaList();
+            void fetchTaList();
         }
     };
 
@@ -104,7 +171,7 @@ export default function ListsSettings() {
         } else {
             toast.success('Submission added');
             setNewSubLabel('');
-            fetchSubmissions();
+            void fetchSubmissions();
         }
     };
 
@@ -114,9 +181,60 @@ export default function ListsSettings() {
             toast.error('Failed to remove');
         } else {
             toast.success('Removed');
-            fetchSubmissions();
+            void fetchSubmissions();
         }
     };
+
+    const updateMyPassword = async () => {
+        if (!user?.email) {
+            toast.error('Could not determine your account email');
+            return;
+        }
+
+        if (!newPassword) {
+            toast.error('Please enter a new password');
+            return;
+        }
+
+        if (newPassword.length < 6) {
+            toast.error('New password must be at least 6 characters');
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            toast.error('Password confirmation does not match');
+            return;
+        }
+
+        setIsUpdatingPassword(true);
+        try {
+            const { error: authError } = await supabase.auth.updateUser({ password: newPassword });
+            if (authError) {
+                toast.error(`Failed to update login password: ${authError.message}`);
+                return;
+            }
+
+            const { error: syncError } = await supabase.rpc('set_my_ta_password', { new_password: newPassword });
+            if (syncError) {
+                toast.warning(
+                    'Login password updated, but failed to sync visible password. Please retry from settings.'
+                );
+                return;
+            }
+
+            setCurrentPassword(newPassword);
+            setShowCurrentPassword(false);
+            setNewPassword('');
+            setConfirmPassword('');
+            toast.success('Password updated successfully');
+        } finally {
+            setIsUpdatingPassword(false);
+        }
+    };
+
+    const hasVisiblePassword = Boolean(currentPassword);
+    const currentPasswordDisplay = isPasswordLoading ? 'Loading...' : currentPassword ?? 'Not set';
+    const currentPasswordInputType = hasVisiblePassword ? (showCurrentPassword ? 'text' : 'password') : 'text';
 
     if (!settings) return <Loader2 className="animate-spin" />;
 
@@ -154,6 +272,76 @@ export default function ListsSettings() {
                             onCheckedChange={toggleStudentTickets}
                         />
                     </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>My Account Password</CardTitle>
+                    <CardDescription>Only you can view and update your own TA password.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="my-ta-email">Your TA Email</Label>
+                        <Input id="my-ta-email" value={user?.email ?? ''} readOnly />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="current-ta-password">Current Password</Label>
+                        <div className="flex gap-2">
+                            <Input
+                                id="current-ta-password"
+                                type={currentPasswordInputType}
+                                value={currentPasswordDisplay}
+                                readOnly
+                            />
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                onClick={() => setShowCurrentPassword((prev) => !prev)}
+                                disabled={!hasVisiblePassword || isPasswordLoading}
+                                aria-label={showCurrentPassword ? 'Hide password' : 'Show password'}
+                            >
+                                {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </Button>
+                        </div>
+                        {!isPasswordLoading && !hasVisiblePassword && (
+                            <p className="text-xs text-muted-foreground">No password is stored yet. Set one below.</p>
+                        )}
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="new-ta-password">New Password</Label>
+                        <Input
+                            id="new-ta-password"
+                            type="password"
+                            value={newPassword}
+                            minLength={6}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder="At least 6 characters"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="confirm-ta-password">Confirm New Password</Label>
+                        <Input
+                            id="confirm-ta-password"
+                            type="password"
+                            value={confirmPassword}
+                            minLength={6}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            placeholder="Re-enter new password"
+                        />
+                    </div>
+
+                    <Button
+                        onClick={updateMyPassword}
+                        disabled={isUpdatingPassword || !newPassword || !confirmPassword}
+                    >
+                        {isUpdatingPassword && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Update Password
+                    </Button>
                 </CardContent>
             </Card>
 

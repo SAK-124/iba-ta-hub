@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -13,48 +13,90 @@ import { subscribeAttendanceDataUpdated, subscribeRosterDataUpdated } from '@/li
 import { toast } from 'sonner';
 import { Loader2, Upload } from 'lucide-react';
 
-export default function ConsolidatedView() {
+interface ConsolidatedViewProps {
+  isActive: boolean;
+}
+
+type FetchMode = 'initial' | 'silent';
+
+export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
   const [sessions, setSessions] = useState<PublicAttendanceSession[]>([]);
   const [students, setStudents] = useState<PublicAttendanceStudent[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const hasLoadedOnceRef = useRef(false);
+  const isFetchInFlightRef = useRef(false);
 
-  useEffect(() => {
-    void fetchData();
-  }, []);
+  const fetchData = useCallback(async (mode: FetchMode) => {
+    if (isFetchInFlightRef.current) {
+      return;
+    }
 
-  useEffect(() => {
-    const unsubscribeRoster = subscribeRosterDataUpdated(() => {
-      void fetchData();
-    });
-    const unsubscribeAttendance = subscribeAttendanceDataUpdated(() => {
-      void fetchData();
-    });
-    const intervalId = window.setInterval(() => {
-      void fetchData();
-    }, 15000);
+    const shouldShowInitialLoader = mode === 'initial' && !hasLoadedOnceRef.current;
+    isFetchInFlightRef.current = true;
 
-    return () => {
-      unsubscribeRoster();
-      unsubscribeAttendance();
-      window.clearInterval(intervalId);
-    };
-  }, []);
+    if (shouldShowInitialLoader) {
+      setIsInitialLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
 
-  const fetchData = async () => {
-    setIsLoading(true);
     try {
       const board = await fetchPublicAttendanceBoard();
       setSessions(board.sessions);
       setStudents(board.students);
+      hasLoadedOnceRef.current = true;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to load consolidated attendance.';
       toast.error(message);
     } finally {
-      setIsLoading(false);
+      if (shouldShowInitialLoader) {
+        setIsInitialLoading(false);
+      }
+      setIsRefreshing(false);
+      isFetchInFlightRef.current = false;
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    void fetchData(hasLoadedOnceRef.current ? 'silent' : 'initial');
+  }, [isActive, fetchData]);
+
+  useEffect(() => {
+    const unsubscribeRoster = subscribeRosterDataUpdated(() => {
+      if (!isActive) return;
+      void fetchData(hasLoadedOnceRef.current ? 'silent' : 'initial');
+    });
+    const unsubscribeAttendance = subscribeAttendanceDataUpdated(() => {
+      if (!isActive) return;
+      void fetchData(hasLoadedOnceRef.current ? 'silent' : 'initial');
+    });
+
+    return () => {
+      unsubscribeRoster();
+      unsubscribeAttendance();
+    };
+  }, [isActive, fetchData]);
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void fetchData('silent');
+    }, 15000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [isActive, fetchData]);
 
   const filteredStudents = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -101,7 +143,13 @@ export default function ConsolidatedView() {
             <CardTitle>Consolidated View</CardTitle>
             <CardDescription>Full attendance sheet with penalties</CardDescription>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            {isRefreshing && !isInitialLoading && (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Refreshing...
+              </span>
+            )}
             <Input
               placeholder="Search..."
               className="w-[220px]"
@@ -110,7 +158,7 @@ export default function ConsolidatedView() {
             />
             <Button
               onClick={handleSyncPublicAttendanceToSheet}
-              disabled={isLoading || isSyncing || students.length === 0}
+              disabled={isInitialLoading || isSyncing || students.length === 0}
               variant="outline"
             >
               {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
@@ -120,7 +168,7 @@ export default function ConsolidatedView() {
         </div>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {isInitialLoading ? (
           <div className="flex justify-center p-8">
             <Loader2 className="animate-spin" />
           </div>

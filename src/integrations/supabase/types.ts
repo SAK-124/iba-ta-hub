@@ -280,18 +280,21 @@ export type Database = {
           created_at: string
           email: string
           id: string
+          initial_password: string | null
         }
         Insert: {
           active?: boolean
           created_at?: string
           email: string
           id?: string
+          initial_password?: string | null
         }
         Update: {
           active?: boolean
           created_at?: string
           email?: string
           id?: string
+          initial_password?: string | null
         }
         Relationships: []
       }
@@ -351,16 +354,23 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_ta_allowlist: { Args: { check_email: string }; Returns: boolean }
       check_roster: { Args: { check_erp: string }; Returns: Json }
       claim_late_days: {
         Args: { p_assignment_id: string; p_days: number }
         Returns: Json
       }
+      get_my_ta_password: { Args: Record<PropertyKey, never>; Returns: string | null }
+      is_ta: { Args: { user_email: string }; Returns: boolean }
+      set_my_ta_password: { Args: { new_password: string }; Returns: undefined }
       ta_add_late_day: {
         Args: { p_days: number; p_reason?: string | null; p_student_erp: string }
         Returns: Json
       }
-      is_ta: { Args: { user_email: string }; Returns: boolean }
+      verify_ta_setup: {
+        Args: { check_email: string; check_password: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
