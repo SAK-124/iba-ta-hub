@@ -7,10 +7,18 @@ import TAPortal from '@/components/ta/TAPortal';
 export default function Dashboard() {
   const { isTA } = useAuth();
 
+  if (isTA) {
+    return (
+      <ERPProvider>
+        <TAPortal />
+      </ERPProvider>
+    );
+  }
+
   return (
     <Layout>
       <ERPProvider>
-        {isTA ? <TAPortal /> : <StudentPortal />}
+        <StudentPortal />
       </ERPProvider>
     </Layout>
   );

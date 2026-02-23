@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ta/ui/button';
+import { Textarea } from '@/components/ta/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ta/ui/select';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
+import { Input } from '@/components/ta/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
+import { Badge } from '@/components/ta/ui/badge';
+import { Checkbox } from '@/components/ta/ui/checkbox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,7 +18,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from '@/components/ta/ui/alert-dialog';
 import { toast } from 'sonner';
 import { syncPublicAttendanceSnapshot } from '@/lib/public-attendance-sync';
 import { emitAttendanceDataUpdated, subscribeRosterDataUpdated } from '@/lib/data-sync-events';
@@ -433,8 +433,8 @@ export default function AttendanceMarking() {
   const penalizedCount = attendanceData.filter((record) => record.naming_penalty).length;
 
   return (
-    <div className="grid gap-6 md:grid-cols-3">
-      <Card className="h-fit md:col-span-1">
+    <div className="ta-module-shell grid gap-6 md:grid-cols-3">
+      <Card className="h-fit md:col-span-1 ta-module-card">
         <CardHeader>
           <CardTitle>Mark Attendance</CardTitle>
           <CardDescription>Select a session and paste absent ERPs</CardDescription>
@@ -486,7 +486,7 @@ export default function AttendanceMarking() {
         </CardContent>
       </Card>
 
-      <Card className="md:col-span-2">
+      <Card className="md:col-span-2 ta-module-card">
         <CardHeader>
           <div className="flex items-center justify-between space-x-2">
             <div>
@@ -513,19 +513,19 @@ export default function AttendanceMarking() {
           {selectedSessionId && attendanceData.length > 0 && (
             <div className="mb-4 space-y-3">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="border-green-500/20 bg-green-500/10 text-green-500">
+                <Badge variant="outline" className="ta-status-chip status-present status-present-table-text">
                   {presentCount} Present
                 </Badge>
-                <Badge variant="outline" className="border-red-500/20 bg-red-500/10 text-red-500">
+                <Badge variant="outline" className="ta-status-chip status-absent status-absent-table-text">
                   {absentCount} Absent
                 </Badge>
-                <Badge variant="outline" className="border-yellow-500/20 bg-yellow-500/10 text-yellow-500">
+                <Badge variant="outline" className="ta-status-chip status-excused status-excused-table-text">
                   {excusedCount} Excused
                 </Badge>
-                <Badge variant="outline" className="border-blue-500/20 bg-blue-500/10 text-blue-500">
+                <Badge variant="outline" className="ta-status-chip status-all status-all-table-text">
                   {penalizedCount} Penalized
                 </Badge>
-                <Badge variant="outline" className="bg-muted text-muted-foreground">
+                <Badge variant="outline" className="ta-status-chip status-all">
                   {attendanceData.length} / {roster.length} Total
                 </Badge>
               </div>
@@ -534,29 +534,37 @@ export default function AttendanceMarking() {
                   size="sm"
                   variant={activeFilters.size === 0 ? 'default' : 'outline'}
                   onClick={() => setActiveFilters(new Set())}
+                  className={`ta-status-filter group ${activeFilters.size === 0 ? 'active' : ''}`}
                 >
-                  All ({attendanceData.length})
+                  <span className="status-led status-all-led" />
+                  <span className="status-all-text text-debossed-sm">All ({attendanceData.length})</span>
                 </Button>
                 <Button
                   size="sm"
                   variant={activeFilters.has('present') ? 'default' : 'outline'}
                   onClick={() => toggleActiveFilter('present')}
+                  className={`ta-status-filter group ${activeFilters.has('present') ? 'active' : ''}`}
                 >
-                  Present ({presentCount})
+                  <span className="status-led status-present-led" />
+                  <span className="status-present-text text-debossed-sm">Present ({presentCount})</span>
                 </Button>
                 <Button
                   size="sm"
                   variant={activeFilters.has('absent') ? 'default' : 'outline'}
                   onClick={() => toggleActiveFilter('absent')}
+                  className={`ta-status-filter group ${activeFilters.has('absent') ? 'active' : ''}`}
                 >
-                  Absent ({absentCount})
+                  <span className="status-led status-absent-led" />
+                  <span className="status-absent-text text-debossed-sm">Absent ({absentCount})</span>
                 </Button>
                 <Button
                   size="sm"
                   variant={activeFilters.has('penalized') ? 'default' : 'outline'}
                   onClick={() => toggleActiveFilter('penalized')}
+                  className={`ta-status-filter group ${activeFilters.has('penalized') ? 'active' : ''}`}
                 >
-                  Penalized ({penalizedCount})
+                  <span className="status-led status-all-led" />
+                  <span className="status-all-text text-debossed-sm">Penalized ({penalizedCount})</span>
                 </Button>
               </div>
             </div>
@@ -589,12 +597,12 @@ export default function AttendanceMarking() {
                       <TableCell>{record.erp}</TableCell>
                       <TableCell>
                         <Badge
-                          className={`cursor-pointer select-none ${
+                          className={`ta-status-chip cursor-pointer select-none ${
                             record.status === 'present'
-                              ? 'bg-green-500 hover:bg-green-600'
+                              ? 'status-present status-present-table-text'
                               : record.status === 'absent'
-                                ? 'bg-red-500 hover:bg-red-600'
-                                : 'bg-yellow-500 hover:bg-yellow-600'
+                                ? 'status-absent status-absent-table-text'
+                                : 'status-excused status-excused-table-text'
                           }`}
                           onClick={() => toggleStatus(record)}
                         >

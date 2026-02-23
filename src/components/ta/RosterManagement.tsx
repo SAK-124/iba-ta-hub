@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Button } from '@/components/ta/ui/button';
+import { Textarea } from '@/components/ta/ui/textarea';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
+import { Input } from '@/components/ta/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -15,7 +15,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
     AlertDialogTrigger
-} from '@/components/ui/alert-dialog';
+} from '@/components/ta/ui/alert-dialog';
 import {
     Dialog,
     DialogContent,
@@ -24,10 +24,10 @@ import {
     DialogHeader,
     DialogTitle,
     DialogTrigger,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
+} from '@/components/ta/ui/dialog';
+import { Label } from '@/components/ta/ui/label';
 import { toast } from 'sonner';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@/components/ta/ui/badge';
 import { Loader2, Upload, Pencil, Trash2, Plus, Search } from 'lucide-react';
 import { normalizeName } from '@/lib/utils';
 import { emitRosterDataUpdated } from '@/lib/data-sync-events';
@@ -191,20 +191,20 @@ export default function RosterManagement() {
     );
 
     return (
-        <div className="space-y-8 animate-fade-in">
+        <div className="ta-module-shell ta-sand-theme space-y-8 animate-fade-in">
             <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
                 <div className="space-y-1">
-                    <h1 className="text-3xl font-extrabold tracking-tight text-foreground uppercase">
+                    <h1 className="ta-section-title text-3xl font-extrabold uppercase">
                         Roster Management
                     </h1>
-                    <p className="text-muted-foreground">Import and manage the student master list.</p>
+                    <p className="ta-section-subtitle">Import and manage the student master list.</p>
                 </div>
 
                 <div className="flex items-center gap-3">
-                    <Badge variant="outline" className="hidden sm:flex bg-primary/5 text-primary border-primary/20 h-9 px-4 rounded-lg font-bold">
+                    <Badge variant="outline" className="hidden sm:flex h-9 px-4 rounded-lg font-bold">
                         {count} Students Enrolled
                     </Badge>
-                    <Button onClick={openAddDialog} className="h-11 px-6 rounded-xl bg-primary text-primary-foreground font-bold uppercase transition-all active:scale-95 shadow-lg shadow-primary/20">
+                    <Button onClick={openAddDialog} className="h-11 px-6 rounded-xl font-bold uppercase">
                         <Plus className="mr-2 h-4 w-4" /> Add Student
                     </Button>
                 </div>
@@ -212,9 +212,9 @@ export default function RosterManagement() {
 
             <div className="grid gap-8 lg:grid-cols-12">
                 <div className="lg:col-span-4 space-y-6">
-                    <div className="glass-card p-6 rounded-2xl border border-primary/10 shadow-xl">
+                    <div className="ta-sand-card ta-module-card p-6 rounded-2xl border shadow-none">
                         <div className="flex items-center gap-3 mb-4">
-                            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                            <div className="w-10 h-10 rounded-xl ta-sand-field flex items-center justify-center text-primary">
                                 <Upload className="w-5 h-5" />
                             </div>
                             <div>
@@ -226,19 +226,19 @@ export default function RosterManagement() {
                         <div className="space-y-4">
                             <Textarea
                                 placeholder="Example: 2481 Muhammad Saboor 26611"
-                                className="min-h-[400px] bg-background/50 border-primary/10 rounded-xl font-mono text-xs focus:ring-2 focus:ring-primary/20 transition-all resize-none"
+                                className="min-h-[400px] rounded-xl font-mono text-xs resize-none"
                                 value={rosterText}
                                 onChange={(e) => setRosterText(e.target.value)}
                             />
 
                             <AlertDialog>
                                 <AlertDialogTrigger asChild>
-                                    <Button variant="outline" className="w-full h-12 rounded-xl border-primary/20 hover:bg-primary/5 text-primary font-bold uppercase transition-all" disabled={!rosterText.trim() || isUploading}>
+                                    <Button variant="outline" className="w-full h-12 rounded-xl font-bold uppercase" disabled={!rosterText.trim() || isUploading}>
                                         {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                                         Replace Entire Roster
                                     </Button>
                                 </AlertDialogTrigger>
-                                <AlertDialogContent className="glass-card border-primary/20">
+                                <AlertDialogContent className="border-[rgba(0,122,118,0.2)]">
                                     <AlertDialogHeader>
                                         <AlertDialogTitle className="text-2xl font-bold">Wipe and Replace?</AlertDialogTitle>
                                         <AlertDialogDescription className="text-muted-foreground">
@@ -247,7 +247,7 @@ export default function RosterManagement() {
                                         </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
-                                        <AlertDialogCancel className="rounded-xl border-primary/10">Abort</AlertDialogCancel>
+                                        <AlertDialogCancel className="rounded-xl">Abort</AlertDialogCancel>
                                         <AlertDialogAction onClick={parseAndUpload} className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90">Confirm Replacement</AlertDialogAction>
                                     </AlertDialogFooter>
                                 </AlertDialogContent>
@@ -257,13 +257,13 @@ export default function RosterManagement() {
                 </div>
 
                 <div className="lg:col-span-8 space-y-6">
-                    <div className="glass-card rounded-2xl border border-primary/10 shadow-xl overflow-hidden">
-                        <div className="p-6 border-b border-primary/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="ta-sand-card ta-module-card rounded-2xl border shadow-none overflow-hidden">
+                        <div className="p-6 border-b border-[rgba(0,122,118,0.18)] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                             <div className="relative w-full sm:w-80 group">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
                                 <Input
                                     placeholder="Search by ERP, Name or Class..."
-                                    className="pl-9 h-11 bg-background/50 border-primary/20 rounded-xl focus:ring-2 focus:ring-primary/20 transition-all"
+                                    className="pl-9 h-11"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
@@ -272,8 +272,8 @@ export default function RosterManagement() {
 
                         <div className="overflow-x-auto min-h-[500px]">
                             <Table>
-                                <TableHeader className="bg-primary/5">
-                                    <TableRow className="border-primary/10 hover:bg-transparent">
+                                <TableHeader>
+                                    <TableRow className="hover:bg-transparent">
                                         <TableHead className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground py-4 px-6">Class</TableHead>
                                         <TableHead className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground py-4 px-6">Student Identity</TableHead>
                                         <TableHead className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground py-4 px-6">ERP ID</TableHead>
@@ -282,24 +282,24 @@ export default function RosterManagement() {
                                 </TableHeader>
                                 <TableBody>
                                     {filteredStudents.map((s) => (
-                                        <TableRow key={s.id} className="border-primary/5 hover:bg-primary/5 transition-colors group">
+                                        <TableRow key={s.id} className="transition-colors group">
                                             <TableCell className="py-4 px-6">
-                                                <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 font-mono text-[10px]">
+                                                <Badge variant="outline" className="font-mono text-[10px]">
                                                     CL-{s.class_no}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="py-4 px-6">
-                                                <span className="font-bold text-sm group-hover:text-primary transition-colors">{s.student_name}</span>
+                                                <span className="font-bold text-sm">{s.student_name}</span>
                                             </TableCell>
                                             <TableCell className="py-4 px-6">
                                                 <span className="text-xs font-mono text-muted-foreground">{s.erp}</span>
                                             </TableCell>
                                             <TableCell className="py-4 px-6 text-right">
                                                 <div className="flex justify-end gap-1">
-                                                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg hover:bg-primary/10 hover:text-primary transition-all active:scale-90" onClick={() => openEditDialog(s)}>
+                                                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => openEditDialog(s)}>
                                                         <Pencil className="h-4 w-4" />
                                                     </Button>
-                                                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-all active:scale-90" onClick={() => handleDeleteStudent(s.id)}>
+                                                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg hover:bg-destructive/10 hover:text-destructive" onClick={() => handleDeleteStudent(s.id)}>
                                                         <Trash2 className="h-4 w-4" />
                                                     </Button>
                                                 </div>
@@ -324,7 +324,7 @@ export default function RosterManagement() {
             </div>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="glass-card border-primary/20 sm:max-w-md">
+                <DialogContent className="ta-sand-card ta-module-card sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle className="text-2xl font-bold uppercase tracking-tight">{currentStudent ? 'Edit Student Profile' : 'Add New Entry'}</DialogTitle>
                         <DialogDescription className="text-muted-foreground">
@@ -335,7 +335,7 @@ export default function RosterManagement() {
                         <div className="space-y-2">
                             <Label className="text-[10px] font-bold uppercase tracking-widest text-primary">Full Name</Label>
                             <Input
-                                className="h-11 bg-background/50 border-primary/20 rounded-xl focus:ring-2 focus:ring-primary/20"
+                                className="h-11 rounded-xl"
                                 value={formData.student_name}
                                 onChange={e => setFormData({ ...formData, student_name: e.target.value })}
                             />
@@ -344,7 +344,7 @@ export default function RosterManagement() {
                             <div className="space-y-2">
                                 <Label className="text-[10px] font-bold uppercase tracking-widest text-primary">ERP ID</Label>
                                 <Input
-                                    className="h-11 bg-background/50 border-primary/20 rounded-xl font-mono focus:ring-2 focus:ring-primary/20"
+                                    className="h-11 rounded-xl font-mono"
                                     value={formData.erp}
                                     onChange={e => setFormData({ ...formData, erp: e.target.value })}
                                 />
@@ -352,7 +352,7 @@ export default function RosterManagement() {
                             <div className="space-y-2">
                                 <Label className="text-[10px] font-bold uppercase tracking-widest text-primary">Class Code</Label>
                                 <Input
-                                    className="h-11 bg-background/50 border-primary/20 rounded-xl font-mono focus:ring-2 focus:ring-primary/20"
+                                    className="h-11 rounded-xl font-mono"
                                     value={formData.class_no}
                                     onChange={e => setFormData({ ...formData, class_no: e.target.value })}
                                 />
@@ -360,7 +360,7 @@ export default function RosterManagement() {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button onClick={handleSaveStudent} disabled={isSaving} className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold uppercase transition-all active:scale-95 shadow-lg shadow-primary/20">
+                        <Button onClick={handleSaveStudent} disabled={isSaving} className="w-full h-12 rounded-xl font-bold uppercase">
                             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} {currentStudent ? 'Confirm Updates' : 'Add to Roster'}
                         </Button>
                     </DialogFooter>

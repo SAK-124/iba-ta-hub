@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ta/ui/card';
+import { Button } from '@/components/ta/ui/button';
+import { Textarea } from '@/components/ta/ui/textarea';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
 import { AlertCircle, Loader2, RefreshCw, Trash2, Upload, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -100,8 +100,8 @@ export default function TARoster() {
   };
 
   return (
-    <div className="space-y-6">
-      <Card>
+    <div className="ta-module-shell space-y-6">
+      <Card className="ta-module-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Upload className="w-5 h-5" />
@@ -168,7 +168,7 @@ S02 Robert James Brown 12347"
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="ta-module-card">
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="flex items-center gap-2">
             <Users className="w-5 h-5" />

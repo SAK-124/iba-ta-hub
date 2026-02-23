@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
+import { Button } from '@/components/ta/ui/button';
+import { Input } from '@/components/ta/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ta/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
+import { Badge } from '@/components/ta/ui/badge';
 import { toast } from 'sonner';
 import { Loader2, Search, Trash2, Plus } from 'lucide-react';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ta/ui/dialog';
+import { Label } from '@/components/ta/ui/label';
+import { Textarea } from '@/components/ta/ui/textarea';
 import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 
 interface RuleExceptionRow {
@@ -227,8 +227,8 @@ export default function RuleExceptions() {
     const expiredCount = Object.values(cameraWarnings).filter((warnedAtMs) => clockMs - warnedAtMs >= CAMERA_WARNING_DURATION_MS).length;
 
     return (
-        <div className="space-y-6">
-            <Card>
+        <div className="ta-module-shell space-y-6">
+            <Card className="ta-module-card">
                 <CardHeader>
                     <div className="flex justify-between items-center">
                         <div>
@@ -346,7 +346,7 @@ export default function RuleExceptions() {
                 </CardContent>
             </Card>
 
-            <Card>
+            <Card className="ta-module-card">
                 <CardHeader>
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
@@ -357,7 +357,7 @@ export default function RuleExceptions() {
                         </div>
                         <div className="flex flex-wrap gap-2">
                             <Badge variant="outline">{rosterStudents.length} Roster Students</Badge>
-                            <Badge variant="outline" className={warnedCount > 0 ? 'border-amber-500/40 bg-amber-500/10 text-amber-600' : ''}>
+                            <Badge variant="outline" className={warnedCount > 0 ? 'border-[rgba(0,122,118,0.35)] bg-[rgba(0,122,118,0.12)] text-[#9be6e2]' : ''}>
                                 {warnedCount} Warned
                             </Badge>
                             <Badge variant="outline" className={expiredCount > 0 ? 'border-red-500/40 bg-red-500/10 text-red-600' : ''}>

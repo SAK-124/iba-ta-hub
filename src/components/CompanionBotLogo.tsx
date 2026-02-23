@@ -153,10 +153,10 @@ const BOT_SVG_MARKUP = `
       </g>
 
       <g id="bot-annoyed-2-eyes">
-        <line x1="32" y1="43" x2="46" y2="46" stroke="var(--bot-accent-orange)" stroke-width="2.5" stroke-linecap="round"/>
-        <line x1="68" y1="43" x2="54" y2="46" stroke="var(--bot-accent-orange)" stroke-width="2.5" stroke-linecap="round"/>
-        <circle cx="40" cy="48" r="3.5" fill="var(--bot-accent-orange)" />
-        <circle cx="60" cy="48" r="3.5" fill="var(--bot-accent-orange)" />
+        <line x1="32" y1="43" x2="46" y2="46" stroke="var(--bot-accent-secondary)" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="68" y1="43" x2="54" y2="46" stroke="var(--bot-accent-secondary)" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="40" cy="48" r="3.5" fill="var(--bot-accent-secondary)" />
+        <circle cx="60" cy="48" r="3.5" fill="var(--bot-accent-secondary)" />
       </g>
 
       <g id="bot-annoyed-3-eyes">
@@ -203,7 +203,7 @@ const BOT_SVG_MARKUP = `
     <rect x="72" y="66" width="6" height="4" rx="1" fill="#cbd5e1" />
     <rect x="22" y="72" width="8" height="4" rx="1" fill="#ef4444" />
     <rect x="32" y="72" width="36" height="4" rx="1.5" fill="var(--bot-accent-blue)" />
-    <rect x="70" y="72" width="8" height="4" rx="1" fill="#f59e0b" />
+    <rect x="70" y="72" width="8" height="4" rx="1" fill="#8b5cf6" />
 
     <g id="bot-hand-l">
       <rect x="32" y="58" width="10" height="12" rx="3" fill="#1e293b" stroke="var(--bot-accent-blue)" stroke-width="1.5" />

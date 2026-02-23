@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ta/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
 import { Loader2, Download } from 'lucide-react';
 
 export default function ExportData() {
@@ -93,17 +93,19 @@ export default function ExportData() {
     };
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Export Attendance</CardTitle>
-                <CardDescription>Download full attendance report</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Button onClick={() => handleExport('csv')} disabled={isExporting} className="w-full sm:w-auto">
-                    {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                    Download CSV
-                </Button>
-            </CardContent>
-        </Card>
+        <div className="ta-module-shell">
+            <Card className="ta-module-card">
+                <CardHeader>
+                    <CardTitle>Export Attendance</CardTitle>
+                    <CardDescription>Download full attendance report</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Button onClick={() => handleExport('csv')} disabled={isExporting} className="w-full sm:w-auto">
+                        {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                        Download CSV
+                    </Button>
+                </CardContent>
+            </Card>
+        </div>
     );
 }

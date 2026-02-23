@@ -4,13 +4,13 @@ import { Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Tables } from '@/integrations/supabase/types';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
+import { Input } from '@/components/ta/ui/input';
+import { Button } from '@/components/ta/ui/button';
+import { Badge } from '@/components/ta/ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ta/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
+import { Textarea } from '@/components/ta/ui/textarea';
 
 type LateDayAssignment = Tables<'late_day_assignments'>;
 type LateDayClaim = Tables<'late_day_claims'>;
@@ -402,9 +402,9 @@ export default function LateDaysManagement() {
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-3">
+    <div className="ta-module-shell grid gap-6 xl:grid-cols-3">
       <div className="space-y-6 xl:col-span-2">
-        <Card>
+        <Card className="ta-module-card">
           <CardHeader>
             <CardTitle>Late Day Assignments</CardTitle>
             <CardDescription>
@@ -458,7 +458,7 @@ export default function LateDaysManagement() {
                               {assignment.active ? 'Active' : 'Archived'}
                             </Badge>
                             {!assignment.due_at && assignment.active && (
-                              <Badge variant="outline" className="border-amber-400 text-amber-600">
+                              <Badge variant="outline" className="border-[rgba(0,122,118,0.3)] text-[#9be6e2]">
                                 Deadline Required
                               </Badge>
                             )}
@@ -488,7 +488,7 @@ export default function LateDaysManagement() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="ta-module-card">
           <CardHeader>
             <CardTitle>Late Day Claims</CardTitle>
             <CardDescription>
@@ -552,7 +552,7 @@ export default function LateDaysManagement() {
       </div>
 
       <div className="space-y-6 xl:col-span-1">
-        <Card>
+        <Card className="ta-module-card">
           <CardHeader>
             <CardTitle>Student Roster Balances</CardTitle>
             <CardDescription>

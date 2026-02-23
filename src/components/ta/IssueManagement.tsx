@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
+import { Badge } from '@/components/ta/ui/badge';
+import { Button } from '@/components/ta/ui/button';
+import { Input } from '@/components/ta/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ta/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
 import {
     Sheet,
     SheetContent,
@@ -14,8 +14,8 @@ import {
     SheetTitle,
     SheetTrigger,
     SheetClose
-} from '@/components/ui/sheet';
-import { Textarea } from '@/components/ui/textarea';
+} from '@/components/ta/ui/sheet';
+import { Textarea } from '@/components/ta/ui/textarea';
 import { Trash2, Loader2, Search, Filter, MoreVertical, CheckCircle2, XCircle, Clock, MessageSquare, ExternalLink } from 'lucide-react';
 import {
     AlertDialog,
@@ -27,7 +27,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
     AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+} from "@/components/ta/ui/alert-dialog"
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
@@ -136,13 +136,13 @@ export default function IssueManagement() {
     };
 
     return (
-        <div className="space-y-8 animate-fade-in">
+        <div className="ta-module-shell space-y-8 animate-fade-in">
             <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
                 <div className="space-y-1">
-                    <h1 className="text-3xl font-extrabold tracking-tight text-foreground uppercase">
+                    <h1 className="ta-section-title text-3xl font-extrabold tracking-tight uppercase">
                         Issue Tracker
                     </h1>
-                    <p className="text-muted-foreground">Manage student tickets and inquiries with ease.</p>
+                    <p className="ta-section-subtitle">Manage student tickets and inquiries with ease.</p>
                 </div>
 
                 <div className="flex gap-3 flex-wrap w-full md:w-auto">
@@ -152,16 +152,16 @@ export default function IssueManagement() {
                             placeholder="Search by ERP or Name..."
                             value={searchErp}
                             onChange={e => setSearchErp(e.target.value)}
-                            className="pl-9 h-11 bg-background/50 border-primary/20 rounded-xl focus:ring-2 focus:ring-primary/20 transition-all"
+                            className="pl-9 h-11"
                         />
                     </div>
 
                     <div className="flex gap-2 w-full md:w-auto">
                         <Select value={filterStatus} onValueChange={setFilterStatus}>
-                            <SelectTrigger className="w-full md:w-[130px] h-11 bg-background/50 border-primary/20 rounded-xl focus:ring-2 focus:ring-primary/20">
+                            <SelectTrigger className="w-full md:w-[130px] h-11">
                                 <SelectValue placeholder="Status" />
                             </SelectTrigger>
-                            <SelectContent className="glass-card">
+                            <SelectContent>
                                 <SelectItem value="all">All Status</SelectItem>
                                 <SelectItem value="pending">Pending</SelectItem>
                                 <SelectItem value="resolved">Resolved</SelectItem>
@@ -169,10 +169,10 @@ export default function IssueManagement() {
                         </Select>
 
                         <Select value={filterGroup} onValueChange={setFilterGroup}>
-                            <SelectTrigger className="w-full md:w-[150px] h-11 bg-background/50 border-primary/20 rounded-xl focus:ring-2 focus:ring-primary/20">
+                            <SelectTrigger className="w-full md:w-[150px] h-11">
                                 <SelectValue placeholder="Category" />
                             </SelectTrigger>
-                            <SelectContent className="glass-card">
+                            <SelectContent>
                                 <SelectItem value="all">All Categories</SelectItem>
                                 <SelectItem value="class_issue">Class Issue</SelectItem>
                                 <SelectItem value="grading_query">Grading</SelectItem>
@@ -184,7 +184,7 @@ export default function IssueManagement() {
                 </div>
             </div>
 
-            <div className="glass-card rounded-2xl border border-primary/10 overflow-hidden shadow-2xl backdrop-blur-xl">
+            <div className="ta-sand-card ta-module-card rounded-2xl border overflow-hidden shadow-none backdrop-blur-xl">
                 {isLoading ? (
                     <div className="flex items-center justify-center py-20">
                         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -192,8 +192,8 @@ export default function IssueManagement() {
                 ) : (
                     <div className="overflow-x-auto">
                         <Table>
-                            <TableHeader className="bg-primary/5">
-                                <TableRow className="border-primary/10 hover:bg-transparent">
+                            <TableHeader>
+                                <TableRow className="hover:bg-transparent">
                                     <TableHead className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground py-4 px-6">Date & Time</TableHead>
                                     <TableHead className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground py-4 px-6">Student ERP</TableHead>
                                     <TableHead className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground py-4 px-6">Reason / Category</TableHead>
@@ -219,13 +219,13 @@ export default function IssueManagement() {
                                     </TableRow>
                                 ) : (
                                     filteredTickets.map((ticket) => (
-                                        <TableRow key={ticket.id} className="border-primary/5 hover:bg-primary/5 transition-colors group">
+                                        <TableRow key={ticket.id} className="transition-colors group">
                                             <TableCell className="py-4 px-6 whitespace-nowrap">
                                                 <span className="text-xs font-semibold text-muted-foreground uppercase">{format(new Date(ticket.created_at), 'MMM d, h:mm a')}</span>
                                             </TableCell>
                                             <TableCell className="py-4 px-6">
                                                 <div className="flex flex-col">
-                                                    <span className="font-bold text-sm group-hover:text-primary transition-colors">{ticket.real_name}</span>
+                                                    <span className="font-bold text-sm">{ticket.real_name}</span>
                                                     <span className="text-[10px] font-mono tracking-tighter text-muted-foreground uppercase">{ticket.entered_erp}</span>
                                                 </div>
                                             </TableCell>
@@ -243,9 +243,9 @@ export default function IssueManagement() {
                                             <TableCell className="py-4 px-6 text-right flex items-center justify-end gap-2">
                                                 <Sheet>
                                                     <SheetTrigger asChild>
-                                                        <Button variant="ghost" size="sm" className="rounded-lg hover:bg-primary/10 hover:text-primary font-bold text-xs uppercase transition-all active:scale-95">Inspect</Button>
+                                                        <Button variant="ghost" size="sm" className="rounded-lg font-bold text-xs uppercase">Inspect</Button>
                                                     </SheetTrigger>
-                                                    <SheetContent className="w-full sm:max-w-xl glass-card border-l border-primary/20 overflow-y-auto pt-10">
+                                                    <SheetContent className="w-full sm:max-w-xl overflow-y-auto pt-10">
                                                         <SheetHeader className="mb-8">
                                                             <SheetTitle className="text-2xl font-extrabold tracking-tight uppercase">Ticket Details</SheetTitle>
                                                             <SheetDescription className="text-muted-foreground font-medium">Submitted on {format(new Date(ticket.created_at), 'PPP p')}</SheetDescription>
@@ -261,7 +261,7 @@ export default function IssueManagement() {
                                                         <div className="space-y-1">
                                                             <h4 className="text-[10px] font-bold text-primary uppercase tracking-widest">Issue Classification</h4>
                                                             <div className="flex items-center gap-2">
-                                                                <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-[10px] font-bold uppercase">{ticket.group_type}</Badge>
+                                                                <Badge variant="outline" className="text-[10px] font-bold uppercase">{ticket.group_type}</Badge>
                                                             </div>
                                                             <div className="font-bold text-sm uppercase">{ticket.category}</div>
                                                         </div>
@@ -269,7 +269,7 @@ export default function IssueManagement() {
 
                                                     <div className="space-y-2">
                                                         <h4 className="text-[10px] font-bold text-primary uppercase tracking-widest">Detailed Description</h4>
-                                                        <div className="bg-primary/5 p-4 rounded-xl border border-primary/10 text-sm whitespace-pre-wrap leading-relaxed">
+                                                        <div className="bg-[rgba(0,122,118,0.08)] p-4 rounded-xl border border-[rgba(0,122,118,0.2)] text-sm whitespace-pre-wrap leading-relaxed">
                                                             {ticket.details_text}
                                                         </div>
                                                     </div>
@@ -279,7 +279,7 @@ export default function IssueManagement() {
                                                         <Textarea
                                                             placeholder="Add private notes or response details..."
                                                             value={ticket.ta_response || ''}
-                                                            className="min-h-[120px] bg-background/50 border-primary/10 rounded-xl focus:ring-2 focus:ring-primary/20 resize-none transition-all"
+                                                            className="min-h-[120px] rounded-xl resize-none"
                                                             onChange={(e) => {
                                                                 const val = e.target.value;
                                                                 setTickets(prev => prev.map(t => t.id === ticket.id ? { ...t, ta_response: val } : t));
@@ -296,7 +296,7 @@ export default function IssueManagement() {
 
                                                         <div className="pt-6 border-t border-primary/10 grid grid-cols-1 gap-3">
                                                         <Button
-                                                            className={`w-full h-12 rounded-xl font-bold uppercase transition-all active:scale-95 ${ticket.status === 'pending' ? 'bg-success hover:bg-success/90 text-white shadow-lg shadow-success/20' : 'bg-background border border-primary/20 hover:bg-primary/5 text-primary'}`}
+                                                            className={`w-full h-12 rounded-xl font-bold uppercase ${ticket.status === 'pending' ? 'bg-success hover:bg-success/90 text-white shadow-lg shadow-success/20' : 'ta-sand-btn-secondary text-debossed-sm'}`}
                                                             onClick={() => toggleStatus(ticket)}
                                                         >
                                                             {ticket.status === 'pending' ? 'Resolve Ticket' : 'Reopen Ticket'}
@@ -305,7 +305,7 @@ export default function IssueManagement() {
                                                         {ticket.group_type === 'class_issue' && (
                                                             <Button
                                                                 variant="outline"
-                                                                className="w-full h-12 rounded-xl font-bold uppercase border-primary/20 hover:bg-primary/5 text-primary tracking-tight"
+                                                                className="w-full h-12 rounded-xl font-bold uppercase tracking-tight"
                                                                 onClick={async () => {
                                                                     const { error } = await supabase.from('rule_exceptions' as any).insert({
                                                                         erp: ticket.entered_erp,
@@ -329,7 +329,7 @@ export default function IssueManagement() {
                                                                     <Trash2 className="w-4 h-4 mr-2" /> Delete Ticket
                                                                 </Button>
                                                             </AlertDialogTrigger>
-                                                            <AlertDialogContent className="glass-card border-destructive/20">
+                                                            <AlertDialogContent className="border-destructive/20">
                                                                 <AlertDialogHeader>
                                                                     <AlertDialogTitle className="text-destructive">Delete Ticket?</AlertDialogTitle>
                                                                     <AlertDialogDescription>
@@ -337,7 +337,7 @@ export default function IssueManagement() {
                                                                     </AlertDialogDescription>
                                                                 </AlertDialogHeader>
                                                                 <AlertDialogFooter>
-                                                                    <AlertDialogCancel className="rounded-xl border-primary/10">Cancel</AlertDialogCancel>
+                                                                    <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
                                                                     <AlertDialogAction onClick={() => deleteTicket(ticket.id)} className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
                                                                 </AlertDialogFooter>
                                                             </AlertDialogContent>

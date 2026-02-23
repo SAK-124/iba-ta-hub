@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ta/ui/card';
+import { Button } from '@/components/ta/ui/button';
 import { Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -62,19 +62,21 @@ export default function TAExport() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Download className="w-5 h-5" />Export Attendance</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-muted-foreground">Download attendance data with columns: Class No, Name, ERP, session columns (S01, S02...), and Total Absences.</p>
-        <div className="flex gap-4">
-          <Button onClick={() => exportAttendance('csv')} disabled={isExporting}>
-            {isExporting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            <Download className="w-4 h-4 mr-2" />Download CSV
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="ta-module-shell">
+      <Card className="ta-module-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Download className="w-5 h-5" />Export Attendance</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-muted-foreground">Download attendance data with columns: Class No, Name, ERP, session columns (S01, S02...), and Total Absences.</p>
+          <div className="flex gap-4">
+            <Button onClick={() => exportAttendance('csv')} disabled={isExporting}>
+              {isExporting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              <Download className="w-4 h-4 mr-2" />Download CSV
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

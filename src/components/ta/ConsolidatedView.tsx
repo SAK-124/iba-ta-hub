@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
+import { Input } from '@/components/ta/ui/input';
+import { Button } from '@/components/ta/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
 import {
   fetchPublicAttendanceBoard,
   syncPublicAttendanceSnapshot,
@@ -136,7 +136,8 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
   };
 
   return (
-    <Card className="h-full">
+    <div className="ta-module-shell">
+      <Card className="h-full ta-module-card">
       <CardHeader>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
@@ -244,6 +245,7 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
           </div>
         )}
       </CardContent>
-    </Card>
+      </Card>
+    </div>
   );
 }

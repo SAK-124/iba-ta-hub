@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ta/ui/card';
+import { Button } from '@/components/ta/ui/button';
+import { Input } from '@/components/ta/ui/input';
+import { Label } from '@/components/ta/ui/label';
+import { Switch } from '@/components/ta/ui/switch';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ta/ui/dialog';
 import { AlertCircle, AlertTriangle, Loader2, Plus, RefreshCw, Settings, Trash2, Users, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@/components/ta/ui/badge';
 
 export default function TASettings() {
   const [rosterVerification, setRosterVerification] = useState(true);
@@ -142,7 +142,7 @@ export default function TASettings() {
   }
 
   return (
-    <div className="space-y-10 animate-fade-in pb-10">
+    <div className="ta-module-shell space-y-10 animate-fade-in pb-10">
       <div className="space-y-1">
         <h1 className="text-3xl font-extrabold tracking-tight text-foreground uppercase">
           App Configuration
@@ -152,7 +152,7 @@ export default function TASettings() {
 
       <div className="grid gap-8 lg:grid-cols-2">
         <div className="space-y-8">
-          <div className="glass-card p-6 rounded-2xl border border-primary/10 shadow-xl">
+          <div className="ta-sand-card p-6 rounded-2xl border border-primary/10 shadow-xl">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
                 <Settings className="w-5 h-5" />
@@ -174,7 +174,7 @@ export default function TASettings() {
             </div>
           </div>
 
-          <div className="glass-card rounded-2xl border border-primary/10 shadow-xl overflow-hidden">
+          <div className="ta-sand-card rounded-2xl border border-primary/10 shadow-xl overflow-hidden">
             <div className="p-6 border-b border-primary/10 flex flex-row items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
@@ -192,7 +192,7 @@ export default function TASettings() {
                     <Plus className="w-3.5 h-3.5 mr-1" /> Add
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="glass-card border-primary/20 sm:max-w-md">
+                <DialogContent className="ta-sand-card border-primary/20 sm:max-w-md">
                   <DialogHeader>
                     <DialogTitle className="text-2xl font-bold uppercase tracking-tight">Authorize TA</DialogTitle>
                   </DialogHeader>
@@ -250,7 +250,7 @@ export default function TASettings() {
         </div>
 
         <div className="space-y-8">
-          <div className="glass-card rounded-2xl border border-primary/10 shadow-xl overflow-hidden">
+          <div className="ta-sand-card rounded-2xl border border-primary/10 shadow-xl overflow-hidden">
             <div className="p-6 border-b border-primary/10 flex flex-row items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
@@ -268,7 +268,7 @@ export default function TASettings() {
                     <Plus className="w-3.5 h-3.5 mr-1" /> Add
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="glass-card border-primary/20 sm:max-w-md">
+                <DialogContent className="ta-sand-card border-primary/20 sm:max-w-md">
                   <DialogHeader>
                     <DialogTitle className="text-2xl font-bold uppercase tracking-tight">Add Submission Type</DialogTitle>
                   </DialogHeader>
@@ -308,7 +308,7 @@ export default function TASettings() {
             </div>
           </div>
 
-          <div className="glass-card p-6 rounded-2xl border border-destructive/20 shadow-xl bg-destructive/5 relative overflow-hidden group">
+          <div className="ta-sand-card p-6 rounded-2xl border border-destructive/20 shadow-xl bg-destructive/5 relative overflow-hidden group">
             <div className="absolute -right-12 -top-12 w-32 h-32 bg-destructive/10 rounded-full blur-3xl group-hover:bg-destructive/20 transition-all duration-500" />
 
             <div className="flex items-center gap-3 mb-6 relative">

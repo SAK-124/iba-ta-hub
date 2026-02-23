@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ta/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
+import { Button } from '@/components/ta/ui/button';
+import { Input } from '@/components/ta/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ta/ui/select';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ta/ui/sheet';
 import { Loader2, RefreshCw, Search, Eye, CheckCircle, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -118,8 +118,8 @@ export default function TAIssues() {
   const uniqueClasses = [...new Set(tickets.map(t => t.roster_class_no).filter(Boolean))];
 
   return (
-    <>
-      <Card>
+    <div className="ta-module-shell space-y-6">
+      <Card className="ta-module-card">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>All Issues</CardTitle>
           <Button variant="ghost" size="sm" onClick={fetchTickets} disabled={isLoading}>
@@ -345,6 +345,6 @@ export default function TAIssues() {
           )}
         </SheetContent>
       </Sheet>
-    </>
+    </div>
   );
 }

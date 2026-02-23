@@ -1,18 +1,18 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ta/ui/card';
+import { Button } from '@/components/ta/ui/button';
+import { Input } from '@/components/ta/ui/input';
+import { Label } from '@/components/ta/ui/label';
+import { Textarea } from '@/components/ta/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ta/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ta/ui/dialog';
+import { Badge } from '@/components/ta/ui/badge';
 import { AlertCircle, Loader2, Plus, Save, Search, UserCheck, UserX, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ta/ui/tooltip';
 
 interface Session {
   id: string;
@@ -365,7 +365,7 @@ export default function TAAttendance() {
   const selectedSessionData = sessions.find(s => s.id === selectedSession);
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="ta-module-shell space-y-8 animate-fade-in">
       <div className="space-y-1">
         <h1 className="text-3xl font-extrabold tracking-tight text-foreground uppercase">
           Attendance Management
@@ -375,7 +375,7 @@ export default function TAAttendance() {
 
       <div className="space-y-6">
         <div className="grid gap-6 md:grid-cols-2">
-          <div className="glass-card p-6 rounded-2xl border border-primary/10 space-y-4">
+          <div className="ta-sand-card p-6 rounded-2xl border border-primary/10 space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary">
                 <UserCheck className="w-6 h-6" />
@@ -390,7 +390,7 @@ export default function TAAttendance() {
                   <SelectTrigger className="bg-background/50 border-primary/20 rounded-xl h-11 transition-all duration-300 focus:ring-2 focus:ring-primary/20">
                     <SelectValue placeholder="Chose session to mark..." />
                   </SelectTrigger>
-                  <SelectContent className="glass-card">
+                  <SelectContent className="ta-sand-card">
                     {sessions.map(s => (
                       <SelectItem key={s.id} value={s.id} className="cursor-pointer hover:bg-primary/10">
                         Session {s.session_number} • {format(new Date(s.session_date), 'MMM d')}
@@ -453,7 +453,7 @@ export default function TAAttendance() {
           </div>
 
           {selectedSession && (
-            <div className="glass-card p-6 rounded-2xl border border-primary/10 space-y-4 animate-fade-in">
+            <div className="ta-sand-card p-6 rounded-2xl border border-primary/10 space-y-4 animate-fade-in">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center text-accent">
                   <Search className="w-6 h-6" />
@@ -540,7 +540,7 @@ export default function TAAttendance() {
         </div>
 
         {selectedSession && existingAttendance.length > 0 && (
-          <div className="glass-card p-6 rounded-2xl border border-primary/10 space-y-4 animate-fade-in mb-8">
+          <div className="ta-sand-card p-6 rounded-2xl border border-primary/10 space-y-4 animate-fade-in mb-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-success/20 flex items-center justify-center text-success">
@@ -549,16 +549,16 @@ export default function TAAttendance() {
                 <h2 className="text-xl font-bold">Session Attendance • {selectedSessionData?.session_number}</h2>
               </div>
               <div className="flex items-center gap-2">
-                <Badge variant="outline" className="rounded-lg bg-success/10 text-success border-success/20">
+                <Badge variant="outline" className="ta-status-chip status-present status-present-table-text rounded-lg">
                   {existingAttendance.filter(a => a.status === 'present').length} Present
                 </Badge>
-                <Badge variant="outline" className="rounded-lg bg-destructive/10 text-destructive border-destructive/20">
+                <Badge variant="outline" className="ta-status-chip status-absent status-absent-table-text rounded-lg">
                   {existingAttendance.filter(a => a.status === 'absent').length} Absent
                 </Badge>
-                <Badge variant="outline" className="rounded-lg bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
+                <Badge variant="outline" className="ta-status-chip status-excused status-excused-table-text rounded-lg">
                   {existingAttendance.filter(a => a.status === 'excused').length} Excused
                 </Badge>
-                <Badge variant="outline" className="rounded-lg bg-muted text-muted-foreground">
+                <Badge variant="outline" className="ta-status-chip status-all rounded-lg">
                   {existingAttendance.length} / {roster.length} Total
                 </Badge>
               </div>
@@ -570,33 +570,43 @@ export default function TAAttendance() {
                 size="sm"
                 variant={statusFilter === 'all' ? 'default' : 'outline'}
                 onClick={() => setStatusFilter('all')}
-                className="rounded-lg text-xs"
+                className={`ta-status-filter group rounded-lg text-xs ${statusFilter === 'all' ? 'active' : ''}`}
               >
-                All ({existingAttendance.length})
+                <span className="status-led status-all-led" />
+                <span className="status-all-text text-debossed-sm">All ({existingAttendance.length})</span>
               </Button>
               <Button
                 size="sm"
                 variant={statusFilter === 'present' ? 'default' : 'outline'}
                 onClick={() => setStatusFilter('present')}
-                className="rounded-lg text-xs"
+                className={`ta-status-filter group rounded-lg text-xs ${statusFilter === 'present' ? 'active' : ''}`}
               >
-                Present ({existingAttendance.filter(a => a.status === 'present').length})
+                <span className="status-led status-present-led" />
+                <span className="status-present-text text-debossed-sm">
+                  Present ({existingAttendance.filter(a => a.status === 'present').length})
+                </span>
               </Button>
               <Button
                 size="sm"
                 variant={statusFilter === 'absent' ? 'default' : 'outline'}
                 onClick={() => setStatusFilter('absent')}
-                className="rounded-lg text-xs"
+                className={`ta-status-filter group rounded-lg text-xs ${statusFilter === 'absent' ? 'active' : ''}`}
               >
-                Absent ({existingAttendance.filter(a => a.status === 'absent').length})
+                <span className="status-led status-absent-led" />
+                <span className="status-absent-text text-debossed-sm">
+                  Absent ({existingAttendance.filter(a => a.status === 'absent').length})
+                </span>
               </Button>
               <Button
                 size="sm"
                 variant={statusFilter === 'excused' ? 'default' : 'outline'}
                 onClick={() => setStatusFilter('excused')}
-                className="rounded-lg text-xs"
+                className={`ta-status-filter group rounded-lg text-xs ${statusFilter === 'excused' ? 'active' : ''}`}
               >
-                Excused ({existingAttendance.filter(a => a.status === 'excused').length})
+                <span className="status-led status-excused-led" />
+                <span className="status-excused-text text-debossed-sm">
+                  Excused ({existingAttendance.filter(a => a.status === 'excused').length})
+                </span>
               </Button>
             </div>
 
@@ -629,10 +639,13 @@ export default function TAAttendance() {
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <span
-                                      className={`status-badge cursor-pointer hover:opacity-80 transition-opacity ${record.status === 'present' ? 'status-present' :
-                                        record.status === 'absent' ? 'status-absent' :
-                                          'status-excused'
-                                        }`}
+                                      className={`ta-status-chip cursor-pointer hover:opacity-90 transition-opacity ${
+                                        record.status === 'present'
+                                          ? 'status-present status-present-table-text'
+                                          : record.status === 'absent'
+                                            ? 'status-absent status-absent-table-text'
+                                            : 'status-excused status-excused-table-text'
+                                      }`}
                                       onClick={() => updateStudentStatus(record.erp, getNextStatus(record.status))}
                                     >
                                       {record.status}

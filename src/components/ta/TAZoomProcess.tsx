@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ta/ui/card';
+import { Button } from '@/components/ta/ui/button';
+import { Label } from '@/components/ta/ui/label';
+import { Input } from '@/components/ta/ui/input';
+import { Switch } from '@/components/ta/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ta/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
+import { Checkbox } from '@/components/ta/ui/checkbox';
+import { Badge } from '@/components/ta/ui/badge';
 import {
   FileSpreadsheet,
   Loader2,
@@ -782,10 +782,10 @@ export default function TAZoomProcess() {
         <div className="overflow-hidden rounded-xl border border-border">
           <div className="max-h-[600px] overflow-x-auto">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-muted/50 backdrop-blur-md">
+              <TableHeader className="sticky top-0 z-10 backdrop-blur-md">
                 <TableRow>
                   {headers.map((header) => (
-                    <TableHead key={header} className="whitespace-nowrap font-bold text-foreground">
+                    <TableHead key={header} className="whitespace-nowrap font-bold">
                       {header}
                     </TableHead>
                   ))}
@@ -803,7 +803,7 @@ export default function TAZoomProcess() {
                   </TableRow>
                 ) : (
                   filteredRows.map((row, idx) => (
-                    <TableRow key={getRowKey(row, idx)} className="transition-colors hover:bg-muted/50">
+                    <TableRow key={getRowKey(row, idx)} className="transition-colors">
                       {headers.map((header) => (
                         <TableCell key={`${idx}-${header}`} className="whitespace-nowrap font-mono text-xs">
                           {String(row[header] ?? '')}
@@ -846,7 +846,7 @@ export default function TAZoomProcess() {
               <span className="text-red-500">{filteredRows.length}</span> absent
             </span>
             <span>
-              <span className="text-yellow-500">{ignoredKeys.size}</span> ignored
+              <span className="text-[#8fe1dd]">{ignoredKeys.size}</span> ignored
             </span>
             <span>
               <span className="text-green-500">{nonIgnoredCount}</span> to copy
@@ -895,11 +895,11 @@ export default function TAZoomProcess() {
         <div className="overflow-hidden rounded-xl border border-border">
           <div className="max-h-[600px] overflow-x-auto">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-muted/50 backdrop-blur-md">
+              <TableHeader className="sticky top-0 z-10 backdrop-blur-md">
                 <TableRow>
-                  <TableHead className="w-16 whitespace-nowrap font-bold text-foreground">Ignore</TableHead>
+                  <TableHead className="w-16 whitespace-nowrap font-bold">Ignore</TableHead>
                   {headers.map((header) => (
-                    <TableHead key={header} className="whitespace-nowrap font-bold text-foreground">
+                    <TableHead key={header} className="whitespace-nowrap font-bold">
                       {header}
                     </TableHead>
                   ))}
@@ -918,12 +918,12 @@ export default function TAZoomProcess() {
                     const isIgnored = ignoredKeys.has(key);
 
                     return (
-                      <TableRow key={key} className={`transition-colors hover:bg-muted/50 ${isIgnored ? 'bg-muted/20 opacity-50' : ''}`}>
+                      <TableRow key={key} className={`transition-colors ${isIgnored ? 'opacity-50' : ''}`}>
                         <TableCell className="w-16">
                           <Checkbox
                             checked={isIgnored}
                             onCheckedChange={() => toggleIgnoreKey(key)}
-                            className="data-[state=checked]:border-yellow-500 data-[state=checked]:bg-yellow-500"
+                            className="data-[state=checked]:border-[var(--neo-accent)] data-[state=checked]:bg-[var(--neo-accent)]"
                           />
                         </TableCell>
                         <TableCell className={`whitespace-nowrap font-mono text-xs ${isIgnored ? 'line-through' : ''}`}>
@@ -961,9 +961,9 @@ export default function TAZoomProcess() {
 
     return (
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[rgba(0,122,118,0.35)] bg-[rgba(0,122,118,0.11)] p-3">
           <div className="flex items-center gap-2 text-sm">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertTriangle className="h-4 w-4 text-[#9be6e2]" />
             <span>
               <strong>{normalizedRows.unidentifiedIssues.length}</strong> unidentified row(s)
             </span>
@@ -994,7 +994,7 @@ export default function TAZoomProcess() {
                     <p className="text-sm font-semibold">{issue.name || 'Unknown participant'}</p>
                     <p className="text-xs text-muted-foreground">ERP candidate: {issue.erpCandidate || 'N/A'}</p>
                   </div>
-                  <Badge variant="outline" className="bg-amber-500/10 text-amber-600">
+                  <Badge variant="outline" className="ta-status-chip status-all status-all-table-text">
                     {issue.reason}
                   </Badge>
                 </div>
@@ -1008,48 +1008,48 @@ export default function TAZoomProcess() {
   };
 
   return (
-    <div className="animate-fade-in space-y-6 pb-20">
+    <div className="animate-fade-in space-y-8 pb-20 ta-sand-theme ta-module-shell">
       <div className="space-y-1">
-        <h1 className="text-3xl font-extrabold uppercase tracking-tight text-foreground">Zoom Processor</h1>
-        <p className="text-muted-foreground">Upload Zoom logs, review matches, and generate attendance.</p>
+        <h2 className="text-3xl font-bold tracking-tight ta-sand-text-title">Zoom Processor</h2>
+        <p className="text-base ta-sand-text-secondary">Upload Zoom logs, review matches, and generate attendance.</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Card className="glass-card border-primary/10 md:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary">1</div>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <Card className="ta-sand-card border-0 md:col-span-2 shadow-none">
+          <CardHeader className="pb-4 border-b border-[rgba(0,122,118,0.16)] mx-6 px-0 pt-6">
+            <CardTitle className="flex items-center gap-3 text-[15px] font-semibold ta-sand-text-title">
               Upload & Match
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6 pt-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label className="text-xs font-bold uppercase text-muted-foreground">Zoom Log</Label>
-                <div className="relative">
+                <div className="relative h-[110px]">
                   <input type="file" accept=".csv" className="hidden" id="main-zoom-upload" onChange={handleZoomFileChange} disabled={isProcessing} />
                   <Label
                     htmlFor="main-zoom-upload"
-                    className={cn('upload-zone', zoomFile && 'is-selected', isProcessing && 'is-disabled')}
-                  >
-                    <span className="upload-border-container" aria-hidden="true">
-                      <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" className="upload-border-svg">
-                        <rect className="upload-border-rect" width="100%" height="100%" rx="8" />
-                      </svg>
-                    </span>
-                    {zoomFile ? (
-                      <svg className="upload-icon upload-icon-selected" viewBox="0 0 24 24" aria-hidden="true">
-                        <circle cx="12" cy="12" r="9" />
-                        <path d="M8.5 12.5L11 15L15.5 9.5" />
-                      </svg>
-                    ) : (
-                      <svg className="upload-icon" viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="17 8 12 3 7 8" />
-                        <line x1="12" y1="3" x2="12" y2="15" />
-                      </svg>
+                    className={cn(
+                      'ta-sand-field upload-zone absolute inset-0 flex flex-col items-center justify-center cursor-pointer overflow-hidden group transition-all duration-300',
+                      zoomFile ? 'is-selected' : '',
+                      isProcessing && 'opacity-50 cursor-not-allowed'
                     )}
-                    <span className={cn('upload-zone-text', zoomFile && 'max-w-[220px] truncate')}>{zoomFile ? zoomFile.name : 'Select CSV'}</span>
+                  >
+                    {zoomFile ? (
+                      <div className="flex flex-col items-center gap-2 text-[var(--accent-glow)]">
+                        <CheckCircle2 className="w-6 h-6" />
+                        <span className="text-[13px] font-bold tracking-wide max-w-[180px] truncate">{zoomFile.name}</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-3 group-hover:text-[var(--accent-glow)] transition-colors text-debossed">
+                        <svg className="w-6 h-6 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" strokeLinecap="round" strokeLinejoin="round" />
+                          <polyline points="17 8 12 3 7 8" strokeLinecap="round" strokeLinejoin="round" />
+                          <line x1="12" y1="3" x2="12" y2="15" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        <span className="text-[13px] font-semibold tracking-wide uppercase">Select CSV</span>
+                      </div>
+                    )}
                   </Label>
                 </div>
               </div>
@@ -1072,14 +1072,11 @@ export default function TAZoomProcess() {
                     />
                   </div>
                 </div>
-                <div className="relative h-full">
+                <div className="relative h-[110px]">
                   {useSavedRoster ? (
-                    <div className="roster-card">
-                      <svg className="roster-icon" viewBox="0 0 36 36" aria-hidden="true">
-                        <circle className="roster-circle" cx="18" cy="18" r="14" transform="rotate(-90 18 18)" />
-                        <path className="roster-check" d="M12 18L16 22L24 13" />
-                      </svg>
-                      <span className="upload-zone-text text-primary">Using Saved Roster</span>
+                    <div className="ta-sand-field upload-zone is-selected absolute inset-0 flex flex-col items-center justify-center">
+                      <CheckCircle2 className="w-6 h-6" />
+                      <span className="text-[13px] font-bold tracking-wide max-w-[180px] truncate">Using Saved Roster</span>
                     </div>
                   ) : (
                     <>
@@ -1096,24 +1093,23 @@ export default function TAZoomProcess() {
                       />
                       <Label
                         htmlFor="roster-upload"
-                        className={cn('upload-zone roster-upload-zone', rosterFile && 'is-selected', (isProcessing || useSavedRoster) && 'is-disabled')}
-                      >
-                        <span className="upload-border-container" aria-hidden="true">
-                          <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" className="upload-border-svg">
-                            <rect className="upload-border-rect" width="100%" height="100%" rx="8" />
-                          </svg>
-                        </span>
-                        {rosterFile ? (
-                          <svg className="upload-icon upload-icon-selected" viewBox="0 0 24 24" aria-hidden="true">
-                            <circle cx="12" cy="12" r="9" />
-                            <path d="M8.5 12.5L11 15L15.5 9.5" />
-                          </svg>
-                        ) : (
-                          <FileSpreadsheet className="upload-icon" />
+                        className={cn(
+                          'ta-sand-field upload-zone absolute inset-0 flex flex-col items-center justify-center cursor-pointer overflow-hidden group transition-all duration-300',
+                          rosterFile ? 'is-selected' : '',
+                          (isProcessing || useSavedRoster) && 'opacity-50 cursor-not-allowed'
                         )}
-                        <span className={cn('upload-zone-text', rosterFile && 'max-w-[220px] truncate')}>
-                          {rosterFile ? rosterFile.name : 'Select Roster'}
-                        </span>
+                      >
+                        {rosterFile ? (
+                          <div className="flex flex-col items-center gap-2 text-[var(--accent-glow)]">
+                            <CheckCircle2 className="w-6 h-6" />
+                            <span className="text-[13px] font-bold tracking-wide max-w-[180px] truncate">{rosterFile.name}</span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center gap-3 group-hover:text-[var(--accent-glow)] transition-colors text-debossed">
+                            <FileSpreadsheet className="w-6 h-6 opacity-70" />
+                            <span className="text-[13px] font-semibold tracking-wide uppercase">Select Roster</span>
+                          </div>
+                        )}
                       </Label>
                     </>
                   )}
@@ -1122,48 +1118,52 @@ export default function TAZoomProcess() {
             </div>
 
             {zoomFile && step === 'upload' && (
-              <Button className="h-12 w-full text-sm font-bold uppercase tracking-wider" onClick={() => processFile('review')} disabled={isProcessing}>
-                {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
-                Analyze & Match Roster
-              </Button>
+              <button
+                type="button"
+                className={cn(
+                  'mt-8 h-[52px] w-full ta-sand-btn-primary flex items-center justify-center gap-3 text-[15px] tracking-wide uppercase',
+                  isProcessing && 'opacity-50 cursor-not-allowed pointer-events-none'
+                )}
+                onClick={() => processFile('review')} disabled={isProcessing}
+              >
+                {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
+                Analyze Matrix
+              </button>
             )}
           </CardContent>
         </Card>
 
-        <Card className={`glass-card border-primary/10 ${step === 'upload' ? 'pointer-events-none opacity-50' : ''}`}>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary">2</div>
+        <Card className={`ta-sand-card border-0 shadow-none ${step === 'upload' ? 'pointer-events-none opacity-50' : ''}`}>
+          <CardHeader className="pb-4 border-b border-[rgba(0,122,118,0.16)] mx-6 px-0 pt-6">
+            <CardTitle className="flex items-center gap-3 text-[15px] font-semibold ta-sand-text-title">
               Parameters
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Custom Duration (mins)</Label>
-              <Input type="number" placeholder="Auto" value={manualDuration} onChange={(event) => setManualDuration(event.target.value)} />
+          <CardContent className="space-y-5 pt-6">
+            <div className="space-y-2.5">
+              <Label className="uppercase text-[11px] font-bold text-[#5f6a74] tracking-wider">Custom Duration (mins)</Label>
+              <Input type="number" placeholder="Auto" value={manualDuration} onChange={(event) => setManualDuration(event.target.value)} className="ta-sand-field h-12" />
             </div>
-            <div className="space-y-2">
-              <Label>Namaz Break (mins)</Label>
-              <Input type="number" placeholder="0" value={namazBreak} onChange={(event) => setNamazBreak(event.target.value)} />
+            <div className="space-y-2.5">
+              <Label className="uppercase text-[11px] font-bold text-[#5f6a74] tracking-wider">Namaz Break (mins)</Label>
+              <Input type="number" placeholder="0" value={namazBreak} onChange={(event) => setNamazBreak(event.target.value)} className="ta-sand-field h-12" />
             </div>
             <button
               type="button"
-              className={cn('zoom-calc-btn mt-4 w-full', isCalculating && 'processing')}
+              className={cn(
+                'mt-8 w-full h-[52px] flex items-center justify-center gap-3 text-[15px] tracking-wide uppercase',
+                isProcessing || step === 'upload'
+                  ? 'ta-sand-field text-[#5f6a74] cursor-not-allowed'
+                  : 'ta-sand-btn-primary'
+              )}
               onClick={() => processFile('results')}
               disabled={isProcessing || step === 'upload'}
             >
-              <svg className="icon-idle" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
-              <svg className="icon-processing" viewBox="0 0 24 24" aria-hidden="true">
-                <rect x="3" y="2" width="18" height="20" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                <rect className="data-bar bar-1" x="6" y="10" width="2" height="8" rx="1" />
-                <rect className="data-bar bar-2" x="10" y="8" width="2" height="10" rx="1" />
-                <rect className="data-bar bar-3" x="14" y="12" width="2" height="6" rx="1" />
-                <rect className="data-bar bar-4" x="18" y="6" width="2" height="12" rx="1" />
-                <line className="scanner-line" x1="1" y1="2" x2="23" y2="2" />
-              </svg>
+              {isCalculating ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-5 w-5" />
+              )}
               <span>
                 {isCalculating
                   ? `Analyzing Logs${'.'.repeat(calcDots)}`
@@ -1177,29 +1177,29 @@ export default function TAZoomProcess() {
       </div>
 
       {data && (
-        <Card className="glass-card animate-fade-in border-primary/10 shadow-2xl">
-          <CardHeader className="pb-2">
+        <Card className="ta-sand-card animate-fade-in border-0 mt-8 shadow-none">
+          <CardHeader className="pb-4 border-b border-[rgba(0,122,118,0.16)] mx-6 px-0 pt-6">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <CardTitle className="uppercase tracking-wide">{step === 'review' ? 'Match Review' : 'Final Results'}</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-[17px] font-semibold ta-sand-text-title">{step === 'review' ? 'Match Review' : 'Final Results'}</CardTitle>
+                <CardDescription className="ta-sand-text-secondary mt-1">
                   {data.rows ?? normalizedRows.rawRows.length} records processed. {step === 'review' && 'Review matches before finalizing.'}
                 </CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Badge variant="outline" className="bg-green-500/10 text-green-600">
+                <Badge variant="outline" className="ta-status-chip status-present status-present-table-text">
                   Present: {attendanceStatusCounts.present}
                 </Badge>
-                <Badge variant="outline" className="bg-red-500/10 text-red-600">
+                <Badge variant="outline" className="ta-status-chip status-absent status-absent-table-text">
                   Absent: {attendanceStatusCounts.absent}
                 </Badge>
-                <Badge variant="outline" className="bg-orange-500/10 text-orange-600">
+                <Badge variant="outline" className="ta-status-chip status-all status-all-table-text">
                   Issues: {diagnostics.issuesCount}
                 </Badge>
-                <Badge variant="outline" className="bg-amber-500/10 text-amber-600">
+                <Badge variant="outline" className="ta-status-chip status-all status-all-table-text">
                   Unidentified: {diagnostics.unidentifiedCount}
                 </Badge>
-                <Badge variant="outline" className="bg-purple-500/10 text-purple-600">
+                <Badge variant="outline" className="ta-status-chip status-all">
                   Not In Roster: {diagnostics.notInRosterCount}
                 </Badge>
               </div>
@@ -1215,9 +1215,9 @@ export default function TAZoomProcess() {
             </div>
 
             {diagnostics.integrityWarnings.length > 0 && (
-              <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
-                <p className="mb-2 font-semibold text-amber-700">Integrity warnings</p>
-                <ul className="list-disc space-y-1 pl-5 text-amber-700">
+              <div className="mt-3 rounded-lg border border-[rgba(0,122,118,0.35)] bg-[rgba(0,122,118,0.1)] p-3 text-sm">
+                <p className="mb-2 font-semibold text-[#a8f5f1]">Integrity warnings</p>
+                <ul className="list-disc space-y-1 pl-5 text-[#a8f5f1]">
                   {diagnostics.integrityWarnings.map((warning) => (
                     <li key={warning}>{warning}</li>
                   ))}
@@ -1225,25 +1225,25 @@ export default function TAZoomProcess() {
               </div>
             )}
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="mb-6 h-auto w-full justify-start overflow-x-auto bg-muted/20 p-1">
+              <TabsList className="mb-6 h-auto w-full justify-start overflow-x-auto ta-sand-field p-1 border border-[rgba(0,122,118,0.16)] ta-sand-scrollbar">
                 {step === 'review' ? (
                   <>
-                    <TabsTrigger value="matches">Matches</TabsTrigger>
-                    <TabsTrigger value="issues">Issues</TabsTrigger>
-                    <TabsTrigger value="unidentified">Unidentified</TabsTrigger>
-                    <TabsTrigger value="raw">Raw Zoom Log</TabsTrigger>
+                    <TabsTrigger value="matches" className="rounded-lg">Matches</TabsTrigger>
+                    <TabsTrigger value="issues" className="rounded-lg">Issues</TabsTrigger>
+                    <TabsTrigger value="unidentified" className="rounded-lg">Unidentified</TabsTrigger>
+                    <TabsTrigger value="raw" className="rounded-lg">Raw Zoom Log</TabsTrigger>
                   </>
                 ) : (
                   <>
-                    <TabsTrigger value="attendance">Attendance</TabsTrigger>
-                    <TabsTrigger value="absent">Absent</TabsTrigger>
-                    <TabsTrigger value="penalties">Penalties</TabsTrigger>
-                    <TabsTrigger value="matches">Matches</TabsTrigger>
-                    <TabsTrigger value="issues">Issues</TabsTrigger>
-                    <TabsTrigger value="unidentified">Unidentified</TabsTrigger>
-                    <TabsTrigger value="raw">Raw Zoom Log</TabsTrigger>
+                    <TabsTrigger value="attendance" className="rounded-lg">Attendance</TabsTrigger>
+                    <TabsTrigger value="absent" className="rounded-lg">Absent</TabsTrigger>
+                    <TabsTrigger value="penalties" className="rounded-lg">Penalties</TabsTrigger>
+                    <TabsTrigger value="matches" className="rounded-lg">Matches</TabsTrigger>
+                    <TabsTrigger value="issues" className="rounded-lg">Issues</TabsTrigger>
+                    <TabsTrigger value="unidentified" className="rounded-lg">Unidentified</TabsTrigger>
+                    <TabsTrigger value="raw" className="rounded-lg">Raw Zoom Log</TabsTrigger>
                   </>
                 )}
               </TabsList>
@@ -1254,8 +1254,8 @@ export default function TAZoomProcess() {
               <TabsContent value="issues" className="animate-fade-in">
                 <div className="space-y-4">
                   {diagnostics.notInRosterCount > 0 && (
-                    <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 p-3 text-sm">
-                      <p className="font-semibold text-purple-700">Students not in roster ({diagnostics.notInRosterCount})</p>
+                    <div className="rounded-lg border border-[rgba(0,122,118,0.24)] bg-[rgba(0,122,118,0.08)] p-3 text-sm">
+                      <p className="font-semibold text-[#89c8c5]">Students not in roster ({diagnostics.notInRosterCount})</p>
                       <div className="mt-2 max-h-32 space-y-1 overflow-auto font-mono text-xs">
                         {normalizedRows.notInRosterIssues.slice(0, 30).map((item) => (
                           <div key={item.id}>

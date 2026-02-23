@@ -1,0 +1,1065 @@
+/* TA Hard-Split Sandstone System
+ * This file must only style the TA surface.
+ */
+
+[data-ui-surface='ta'] {
+  --neo-base: #181a1c;
+  --neo-dark: #0a0b0c;
+  --neo-light: #25282b;
+  --neo-deboss: #2e3135;
+
+  --color-all: #007a76;
+  --color-present: #2b9348;
+  --color-absent: #c92a2a;
+  --color-excused: #e67700;
+
+  --ss-neo-base: var(--neo-base);
+  --ss-neo-dark: var(--neo-dark);
+  --ss-neo-light: var(--neo-light);
+  --ss-neo-elevated: #1d2023;
+  --ss-accent-glow: var(--color-all);
+  --ss-accent-deep: #004b49;
+
+  --ss-border: rgba(0, 122, 118, 0.28);
+  --ss-border-soft: rgba(0, 122, 118, 0.18);
+  --ss-border-subtle: rgba(0, 122, 118, 0.1);
+
+  --ss-text-engraved-strong: #636b74;
+  --ss-text-engraved-body: #838b94;
+  --ss-text-engraved-muted: #7c858e;
+  --ss-text-engraved-dim: #6b737c;
+  --ss-text-engraved-title: #444a51;
+
+  --ss-deboss-dark-strong: rgba(0, 0, 0, 1);
+  --ss-deboss-dark-medium: rgba(0, 0, 0, 0.96);
+  --ss-deboss-light: rgba(255, 255, 255, 0.08);
+  --ss-engraved-shadow-strong:
+    -2px -2px 3px rgba(0, 0, 0, 1),
+    1px 1px 2px rgba(255, 255, 255, 0.08);
+  --ss-engraved-shadow-body:
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.05);
+  --ss-engraved-shadow-muted:
+    -1px -1px 2px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.04);
+
+  --ss-shadow-out:
+    10px 10px 20px var(--ss-neo-dark),
+    -10px -10px 20px var(--ss-neo-light);
+  --ss-shadow-out-strong:
+    14px 14px 30px rgba(6, 8, 10, 0.9),
+    -12px -12px 26px rgba(34, 37, 41, 0.64);
+  --ss-shadow-in:
+    inset 4px 4px 8px var(--ss-neo-dark),
+    inset -4px -4px 8px var(--ss-neo-light);
+
+  /* Compatibility aliases used by TAPortal icon definitions */
+  --ss-neo-deboss: var(--neo-deboss);
+  --accent-glow: var(--ss-accent-glow);
+
+  background-color: var(--ss-neo-base);
+}
+
+[data-ui-surface='ta'] .ss-shell {
+  position: relative;
+  z-index: 2;
+}
+
+[data-ui-surface='ta'] .ss-matte-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.3;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.5' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='1'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+[data-ui-surface='ta'] .ta-sand-bg-glow {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 14% 18%, rgba(0, 122, 118, 0.09), transparent 34%),
+    radial-gradient(circle at 86% 16%, rgba(0, 122, 118, 0.07), transparent 31%),
+    radial-gradient(circle at 48% 82%, rgba(0, 0, 0, 0.64), transparent 56%);
+}
+
+[data-ui-surface='ta'] .ta-noise-fallback {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.17;
+  background:
+    radial-gradient(circle at 24% 24%, rgba(0, 122, 118, 0.09), transparent 36%),
+    radial-gradient(circle at 78% 20%, rgba(0, 122, 118, 0.08), transparent 32%);
+}
+
+/* Hub shell (exact sandstone math) */
+[data-ui-surface='ta'] .ss-neo-out {
+  background-color: var(--ss-neo-base);
+  box-shadow: 10px 10px 20px var(--ss-neo-dark), -10px -10px 20px var(--ss-neo-light);
+}
+
+[data-ui-surface='ta'] .ss-neo-in {
+  background-color: var(--ss-neo-base);
+  box-shadow: inset 4px 4px 8px var(--ss-neo-dark), inset -4px -4px 8px var(--ss-neo-light);
+}
+
+[data-ui-surface='ta'] .ss-neo-card {
+  transition:
+    transform 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+[data-ui-surface='ta'] .ss-neo-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 16px 16px 32px var(--ss-neo-dark), -12px -12px 28px var(--ss-neo-light);
+}
+
+[data-ui-surface='ta'] .ss-text-marble-debossed {
+  color: var(--ss-text-engraved-title);
+  text-shadow: var(--ss-engraved-shadow-strong);
+}
+
+[data-ui-surface='ta'] .ss-text-debossed {
+  color: var(--ss-text-engraved-strong);
+  text-shadow: var(--ss-engraved-shadow-body);
+  transition: color 320ms ease, text-shadow 320ms ease;
+}
+
+[data-ui-surface='ta'] .group:hover .ss-text-debossed {
+  color: var(--ss-accent-glow);
+  text-shadow:
+    0 0 12px rgba(0, 75, 73, 0.82),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08);
+}
+
+[data-ui-surface='ta'] .ss-text-debossed-sm {
+  color: var(--ss-text-engraved-muted);
+  text-shadow: var(--ss-engraved-shadow-muted);
+}
+
+[data-ui-surface='ta'] .text-debossed,
+[data-ui-surface='ta'] .ta-text-engraved-strong {
+  color: var(--ss-text-engraved-strong);
+  text-shadow: var(--ss-engraved-shadow-body);
+  transition: color 320ms ease, text-shadow 320ms ease;
+}
+
+[data-ui-surface='ta'] .text-debossed-sm,
+[data-ui-surface='ta'] .ta-text-engraved-muted {
+  color: var(--ss-text-engraved-muted);
+  text-shadow: var(--ss-engraved-shadow-muted);
+}
+
+[data-ui-surface='ta'] .text-debossed-body,
+[data-ui-surface='ta'] .ta-text-engraved-body {
+  color: var(--ss-text-engraved-body);
+  text-shadow: var(--ss-engraved-shadow-body);
+}
+
+/* Snippet-fidelity neomorphic helpers */
+[data-ui-surface='ta'] .neo-out,
+[data-ui-surface='ta'] .ta-neo-out {
+  background-color: var(--neo-base);
+  box-shadow: 10px 10px 20px var(--neo-dark), -10px -10px 20px var(--neo-light);
+}
+
+[data-ui-surface='ta'] .neo-in,
+[data-ui-surface='ta'] .ta-neo-in {
+  background-color: var(--neo-base);
+  box-shadow: inset 4px 4px 8px var(--neo-dark), inset -4px -4px 8px var(--neo-light);
+}
+
+[data-ui-surface='ta'] .neo-btn,
+[data-ui-surface='ta'] .ta-neo-btn {
+  transition:
+    transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+    box-shadow 0.3s ease-out,
+    border-color 0.3s ease-out,
+    color 0.3s ease-out;
+}
+
+[data-ui-surface='ta'] .neo-btn:hover:not(.active):not(:disabled),
+[data-ui-surface='ta'] .ta-neo-btn:hover:not(.active):not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 12px 12px 24px var(--neo-dark), -8px -8px 20px var(--neo-light);
+}
+
+[data-ui-surface='ta'] .border-carved {
+  border-bottom: 1px solid var(--neo-dark);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+/* Status color engine from snippet */
+[data-ui-surface='ta'] .group:hover .status-all-text,
+[data-ui-surface='ta'] .active .status-all-text,
+[data-ui-surface='ta'] .group\/row:hover .status-all-text {
+  color: var(--color-all);
+  text-shadow:
+    0 0 12px rgba(0, 122, 118, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08);
+}
+
+[data-ui-surface='ta'] .group:hover .status-all-led,
+[data-ui-surface='ta'] .active .status-all-led,
+[data-ui-surface='ta'] .group\/row:hover .status-all-led {
+  background-color: var(--color-all);
+  box-shadow: 0 0 8px var(--color-all);
+}
+
+[data-ui-surface='ta'] .group:hover .status-present-text,
+[data-ui-surface='ta'] .active .status-present-text,
+[data-ui-surface='ta'] .group\/row:hover .status-present-text {
+  color: var(--color-present);
+  text-shadow:
+    0 0 12px rgba(43, 147, 72, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08);
+}
+
+[data-ui-surface='ta'] .group:hover .status-present-led,
+[data-ui-surface='ta'] .active .status-present-led,
+[data-ui-surface='ta'] .group\/row:hover .status-present-led {
+  background-color: var(--color-present);
+  box-shadow: 0 0 8px var(--color-present);
+}
+
+[data-ui-surface='ta'] .group:hover .status-absent-text,
+[data-ui-surface='ta'] .active .status-absent-text,
+[data-ui-surface='ta'] .group\/row:hover .status-absent-text {
+  color: var(--color-absent);
+  text-shadow:
+    0 0 12px rgba(201, 42, 42, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08);
+}
+
+[data-ui-surface='ta'] .group:hover .status-absent-led,
+[data-ui-surface='ta'] .active .status-absent-led,
+[data-ui-surface='ta'] .group\/row:hover .status-absent-led {
+  background-color: var(--color-absent);
+  box-shadow: 0 0 8px var(--color-absent);
+}
+
+[data-ui-surface='ta'] .group:hover .status-excused-text,
+[data-ui-surface='ta'] .active .status-excused-text,
+[data-ui-surface='ta'] .group\/row:hover .status-excused-text {
+  color: var(--color-excused);
+  text-shadow:
+    0 0 12px rgba(230, 119, 0, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08);
+}
+
+[data-ui-surface='ta'] .group:hover .status-excused-led,
+[data-ui-surface='ta'] .active .status-excused-led,
+[data-ui-surface='ta'] .group\/row:hover .status-excused-led {
+  background-color: var(--color-excused);
+  box-shadow: 0 0 8px var(--color-excused);
+}
+
+[data-ui-surface='ta'] .status-present-table-text {
+  color: var(--color-present) !important;
+  text-shadow:
+    0 0 12px rgba(43, 147, 72, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-ui-surface='ta'] .status-absent-table-text {
+  color: var(--color-absent) !important;
+  text-shadow:
+    0 0 12px rgba(201, 42, 42, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-ui-surface='ta'] .status-excused-table-text {
+  color: var(--color-excused) !important;
+  text-shadow:
+    0 0 12px rgba(230, 119, 0, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-ui-surface='ta'] .status-all-table-text {
+  color: var(--color-all) !important;
+  text-shadow:
+    0 0 12px rgba(0, 122, 118, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-ui-surface='ta'] .status-present {
+  color: var(--color-present);
+  border-color: rgba(43, 147, 72, 0.38) !important;
+  text-shadow:
+    0 0 12px rgba(43, 147, 72, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08);
+}
+
+[data-ui-surface='ta'] .status-absent {
+  color: var(--color-absent);
+  border-color: rgba(201, 42, 42, 0.38) !important;
+  text-shadow:
+    0 0 12px rgba(201, 42, 42, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08);
+}
+
+[data-ui-surface='ta'] .status-excused {
+  color: var(--color-excused);
+  border-color: rgba(230, 119, 0, 0.38) !important;
+  text-shadow:
+    0 0 12px rgba(230, 119, 0, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08);
+}
+
+[data-ui-surface='ta'] .ss-tab-shell {
+  display: inline-flex;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.2rem;
+  background-color: var(--ss-neo-base);
+  box-shadow: var(--ss-shadow-in);
+}
+
+[data-ui-surface='ta'] .ss-tab-btn {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 0.5rem 0.95rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ss-text-engraved-dim);
+  text-shadow: var(--ss-engraved-shadow-muted);
+  transition: all 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+[data-ui-surface='ta'] .ss-tab-btn:hover {
+  color: var(--ss-text-engraved-body);
+}
+
+[data-ui-surface='ta'] .ss-tab-btn.ss-active {
+  color: var(--ss-accent-glow);
+  border-color: rgba(0, 122, 118, 0.44);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 12px rgba(0, 75, 73, 0.66);
+}
+
+/* Base TA module text + icon engraving */
+[data-ui-surface='ta'] .ta-module-shell {
+  color: var(--ss-text-engraved-body);
+  text-shadow: var(--ss-engraved-shadow-body);
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(.backdrop-blur-sm, .backdrop-blur-md, .backdrop-blur-lg, .backdrop-blur-xl, .backdrop-blur-2xl) {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(
+  .ta-section-title,
+  h1,
+  h2,
+  h3,
+  .ta-ui-card-title,
+  .ta-ui-dialog-title,
+  .ta-ui-alert-dialog-title,
+  .ta-ui-sheet-title,
+  .ta-sand-text-title
+) {
+  color: var(--ss-text-engraved-strong) !important;
+  text-shadow: var(--ss-engraved-shadow-strong) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(
+  .ta-section-subtitle,
+  .ta-ui-card-description,
+  .ta-ui-dialog-description,
+  .ta-ui-alert-dialog-description,
+  .ta-ui-sheet-description,
+  .text-muted-foreground,
+  .ta-sand-text-secondary,
+  .ta-sand-text-muted
+) {
+  color: var(--ss-text-engraved-muted) !important;
+  text-shadow: var(--ss-engraved-shadow-muted) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(
+  p,
+  label,
+  li,
+  dt,
+  dd,
+  .text-foreground,
+  .ta-ui-table-cell,
+  .ta-ui-table-head-cell,
+  .ta-ui-input,
+  .ta-ui-textarea,
+  .ta-ui-select-trigger,
+  .ta-sand-field
+) {
+  color: var(--ss-text-engraved-body) !important;
+  text-shadow: var(--ss-engraved-shadow-body) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(
+  .ta-ui-button,
+  .ta-ui-label,
+  .ta-ui-tabs-trigger,
+  .ta-ui-badge,
+  .ta-ui-table-head-cell
+) {
+  color: var(--ss-text-engraved-body);
+  text-shadow: var(--ss-engraved-shadow-body);
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(
+  .text-white,
+  .text-slate-100,
+  .text-slate-200,
+  .text-gray-100,
+  .text-gray-200
+) {
+  color: var(--ss-text-engraved-body) !important;
+  text-shadow: var(--ss-engraved-shadow-body) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .lucide {
+  color: var(--ss-text-engraved-body);
+  filter:
+    drop-shadow(1px 1px 1px rgba(255, 255, 255, 0.13))
+    drop-shadow(-1px -1px 3px rgba(0, 0, 0, 0.98));
+}
+
+[data-ui-surface='ta'] .ta-module-shell .text-primary {
+  color: var(--ss-accent-glow) !important;
+  text-shadow:
+    0 0 10px rgba(0, 122, 118, 0.44),
+    -1px -1px 2px rgba(0, 0, 0, 0.9),
+    1px 1px 1px rgba(255, 255, 255, 0.1) !important;
+  -webkit-text-fill-color: unset !important;
+  background-image: none !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-status-chip {
+  border: 1px solid #141517 !important;
+  background-color: var(--neo-base) !important;
+  box-shadow: inset 4px 4px 8px var(--neo-dark), inset -4px -4px 8px var(--neo-light) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+  padding: 0.35rem 0.8rem;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-status-chip.status-present {
+  color: var(--color-present) !important;
+  border-color: rgba(43, 147, 72, 0.4) !important;
+  text-shadow:
+    0 0 12px rgba(43, 147, 72, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-status-chip.status-absent {
+  color: var(--color-absent) !important;
+  border-color: rgba(201, 42, 42, 0.4) !important;
+  text-shadow:
+    0 0 12px rgba(201, 42, 42, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-status-chip.status-excused {
+  color: var(--color-excused) !important;
+  border-color: rgba(230, 119, 0, 0.4) !important;
+  text-shadow:
+    0 0 12px rgba(230, 119, 0, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-status-chip.status-all {
+  color: var(--color-all) !important;
+  border-color: rgba(0, 122, 118, 0.4) !important;
+  text-shadow:
+    0 0 12px rgba(0, 122, 118, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid #141517;
+  padding: 0.32rem 0.75rem;
+  background-color: var(--neo-base);
+  box-shadow: inset 4px 4px 8px var(--neo-dark), inset -4px -4px 8px var(--neo-light);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+  font-size: 0.68rem;
+}
+
+/* Shared tactile containers */
+[data-ui-surface='ta'] .ta-grain-layer,
+[data-ui-surface='ta'] .ta-module-shell :is(
+  .ta-ui-card,
+  .ta-sand-card,
+  .ta-module-card,
+  .ta-ui-table-shell,
+  .ta-ui-input,
+  .ta-ui-textarea,
+  .ta-ui-select-trigger,
+  .ta-sand-field,
+  .upload-zone,
+  .ta-ui-button,
+  .ta-ui-tabs-list,
+  .ta-ui-select-content,
+  .ta-ui-dialog-content,
+  .ta-ui-alert-dialog-content,
+  .ta-ui-sheet-content,
+  .ta-ui-popover-content,
+  .ta-ui-tooltip-content
+) {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+[data-ui-surface='ta'] .ta-grain-layer::before,
+[data-ui-surface='ta'] .ta-module-shell :is(
+  .ta-ui-card,
+  .ta-sand-card,
+  .ta-module-card,
+  .ta-ui-table-shell,
+  .ta-ui-input,
+  .ta-ui-textarea,
+  .ta-ui-select-trigger,
+  .ta-sand-field,
+  .upload-zone,
+  .ta-ui-button,
+  .ta-ui-tabs-list,
+  .ta-ui-select-content,
+  .ta-ui-dialog-content,
+  .ta-ui-alert-dialog-content,
+  .ta-ui-sheet-content,
+  .ta-ui-popover-content,
+  .ta-ui-tooltip-content
+)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.24;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.5' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='1'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-ui-card, .ta-sand-card, .ta-module-card) {
+  background-color: var(--ss-neo-base) !important;
+  border: 1px solid var(--ss-border-soft) !important;
+  box-shadow:
+    var(--ss-shadow-out),
+    inset 1px 1px 0 rgba(255, 255, 255, 0.03),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.45) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-ui-card-content, .ta-ui-card-header, .ta-ui-card-footer, .ta-ui-table-cell, .ta-ui-table-head-cell) {
+  position: relative;
+  z-index: 1;
+}
+
+/* Inputs/select/textarea */
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-ui-input, .ta-ui-textarea, .ta-ui-select-trigger, .ta-sand-field, .upload-zone) {
+  background-color: var(--ss-neo-base) !important;
+  border: 1px solid transparent !important;
+  box-shadow: var(--ss-shadow-in) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-search-input {
+  border-color: var(--ss-border-soft) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-ui-input, .ta-ui-textarea, .ta-ui-select-trigger, .ta-sand-field)::placeholder {
+  color: var(--ss-text-engraved-dim) !important;
+  text-shadow: var(--ss-engraved-shadow-muted);
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-ui-input, .ta-ui-textarea, .ta-ui-select-trigger, .ta-sand-field, .upload-zone):focus,
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-ui-input, .ta-ui-textarea, .ta-ui-select-trigger, .ta-sand-field, .upload-zone):focus-visible,
+[data-ui-surface='ta'] .ta-module-shell .upload-zone.is-selected {
+  border-color: rgba(0, 122, 118, 0.45) !important;
+  box-shadow:
+    var(--ss-shadow-in),
+    0 0 0 1px rgba(0, 122, 118, 0.34),
+    0 0 11px rgba(0, 122, 118, 0.2) !important;
+  outline: none;
+}
+
+/* Button hierarchy */
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-ui-button, .ta-sand-btn-primary, .ta-sand-btn-secondary) {
+  border-radius: 14px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition:
+    transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+    box-shadow 0.3s ease-out,
+    color 0.3s ease-out,
+    background-color 0.3s ease-out,
+    border-color 0.3s ease-out !important;
+  border: 1px solid #141517 !important;
+  background-color: var(--neo-base) !important;
+  color: var(--ss-text-engraved-body) !important;
+  text-shadow: var(--ss-engraved-shadow-body) !important;
+  box-shadow: 10px 10px 20px var(--neo-dark), -10px -10px 20px var(--neo-light) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-ui-button, .ta-sand-btn-primary, .ta-sand-btn-secondary):hover:not(:disabled):not(.active) {
+  transform: translateY(-2px);
+  box-shadow: 12px 12px 24px var(--neo-dark), -8px -8px 20px var(--neo-light) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-ui-button--default, .ta-sand-btn-primary) {
+  color: var(--ss-text-engraved-body) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-ui-button--outline, .ta-ui-button--secondary, .ta-sand-btn-secondary) {
+  color: var(--ss-text-engraved-muted) !important;
+  border-color: rgba(92, 107, 117, 0.32) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-ui-button--outline, .ta-ui-button--secondary, .ta-sand-btn-secondary):hover:not(:disabled) {
+  border-color: rgba(0, 122, 118, 0.36) !important;
+  color: var(--ss-text-engraved-body) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-button--ghost {
+  box-shadow: none !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--ss-text-engraved-muted) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-button--ghost:hover:not(:disabled) {
+  color: var(--ss-text-engraved-body) !important;
+  background: rgba(0, 122, 118, 0.08) !important;
+  box-shadow: none !important;
+  transform: none;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-button--link {
+  box-shadow: none !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--color-all) !important;
+  text-shadow:
+    0 0 10px rgba(0, 122, 118, 0.45),
+    -1px -1px 2px rgba(0, 0, 0, 0.92),
+    1px 1px 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-button--destructive {
+  color: var(--color-absent) !important;
+  border-color: rgba(201, 42, 42, 0.45) !important;
+  text-shadow:
+    0 0 12px rgba(201, 42, 42, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-ui-button, .ta-sand-btn-primary, .ta-sand-btn-secondary):active:not(:disabled) {
+  transform: translateY(0.5px) scale(0.995);
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-status-filter {
+  border: 1px solid #141517 !important;
+  background-color: var(--neo-base) !important;
+  box-shadow: 10px 10px 20px var(--neo-dark), -10px -10px 20px var(--neo-light) !important;
+  border-radius: 999px !important;
+  gap: 0.55rem;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-status-filter.active {
+  box-shadow: inset 4px 4px 8px var(--neo-dark), inset -4px -4px 8px var(--neo-light) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-status-filter .status-led {
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  transition: all 0.3s ease-out;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-status-filter.active .status-led {
+  background-color: var(--color-all);
+  box-shadow: 0 0 8px var(--color-all);
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-status-filter.active .status-present-led {
+  background-color: var(--color-present);
+  box-shadow: 0 0 8px var(--color-present);
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-status-filter.active .status-absent-led {
+  background-color: var(--color-absent);
+  box-shadow: 0 0 8px var(--color-absent);
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-status-filter.active .status-excused-led {
+  background-color: var(--color-excused);
+  box-shadow: 0 0 8px var(--color-excused);
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-status-filter .status-all-text,
+[data-ui-surface='ta'] .ta-module-shell .ta-status-filter .status-present-text,
+[data-ui-surface='ta'] .ta-module-shell .ta-status-filter .status-absent-text,
+[data-ui-surface='ta'] .ta-module-shell .ta-status-filter .status-excused-text {
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+}
+
+/* Tabs/switch/select/dialog/sheet/popover/tooltip/checkbox/calendar */
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-tabs-list {
+  border: 1px solid var(--ss-border-soft) !important;
+  border-radius: 14px;
+  background-color: var(--ss-neo-base) !important;
+  box-shadow: var(--ss-shadow-in) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-tabs-trigger {
+  border-radius: 10px;
+  color: var(--ss-text-engraved-dim);
+  text-shadow: var(--ss-engraved-shadow-muted);
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-tabs-trigger[data-state='active'] {
+  border: 1px solid rgba(0, 122, 118, 0.42) !important;
+  background: rgba(0, 122, 118, 0.12) !important;
+  color: var(--ss-accent-glow) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 20px -14px rgba(0, 122, 118, 0.58) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-ui-switch, .ta-ui-checkbox) {
+  background: var(--ss-neo-base) !important;
+  box-shadow:
+    inset 3px 3px 7px var(--ss-neo-dark),
+    inset -3px -3px 7px var(--ss-neo-light) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-switch[data-state='checked'],
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-checkbox[data-state='checked'] {
+  background: rgba(0, 122, 118, 0.82) !important;
+  box-shadow:
+    inset 3px 3px 7px rgba(0, 0, 0, 0.58),
+    0 0 11px rgba(0, 122, 118, 0.32) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-switch-thumb {
+  background: var(--ss-neo-base) !important;
+  box-shadow: 2px 2px 6px var(--ss-neo-dark), -2px -2px 6px var(--ss-neo-light) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(
+  .ta-ui-select-content,
+  .ta-ui-dialog-content,
+  .ta-ui-alert-dialog-content,
+  .ta-ui-sheet-content,
+  .ta-ui-popover-content,
+  .ta-ui-tooltip-content
+) {
+  border-color: var(--ss-border) !important;
+  background-color: rgba(20, 24, 28, 0.98) !important;
+  color: var(--ss-text-engraved-body) !important;
+  box-shadow: var(--ss-shadow-out-strong) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-select-item:focus {
+  background: rgba(0, 122, 118, 0.14) !important;
+  color: var(--ss-accent-glow) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-label {
+  color: var(--ss-text-engraved-body);
+  text-shadow: var(--ss-engraved-shadow-body);
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-calendar-head-cell {
+  color: var(--ss-text-engraved-muted) !important;
+  text-shadow: var(--ss-engraved-shadow-muted) !important;
+}
+
+/* Badges */
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-badge {
+  border-color: #141517 !important;
+  background-color: var(--neo-base) !important;
+  color: var(--ss-text-engraved-body) !important;
+  text-shadow: var(--ss-engraved-shadow-body) !important;
+  box-shadow: inset 4px 4px 8px var(--neo-dark), inset -4px -4px 8px var(--neo-light) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-badge--destructive {
+  color: var(--color-absent) !important;
+  border-color: rgba(201, 42, 42, 0.4) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-badge[class*='text-green'],
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-badge[class*='bg-green'],
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-badge.status-present {
+  color: var(--color-present) !important;
+  border-color: rgba(43, 147, 72, 0.38) !important;
+  text-shadow:
+    0 0 12px rgba(43, 147, 72, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-badge[class*='text-red'],
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-badge[class*='bg-red'],
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-badge.status-absent {
+  color: var(--color-absent) !important;
+  border-color: rgba(201, 42, 42, 0.38) !important;
+  text-shadow:
+    0 0 12px rgba(201, 42, 42, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-badge[class*='text-yellow'],
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-badge[class*='bg-yellow'],
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-badge.status-excused {
+  color: var(--color-excused) !important;
+  border-color: rgba(230, 119, 0, 0.38) !important;
+  text-shadow:
+    0 0 12px rgba(230, 119, 0, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-badge[class*='#9be6e2'],
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-badge[class*='rgba(0,122,118'] {
+  color: var(--color-all) !important;
+  border-color: rgba(0, 122, 118, 0.38) !important;
+  text-shadow:
+    0 0 12px rgba(0, 122, 118, 0.8),
+    -1px -1px 3px rgba(0, 0, 0, 1),
+    1px 1px 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+/* TA table system (primary focus) */
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-table-shell {
+  border: 1px solid rgba(0, 122, 118, 0.34) !important;
+  border-radius: 18px;
+  background-color: var(--neo-base) !important;
+  box-shadow:
+    inset 4px 4px 8px var(--neo-dark),
+    inset -4px -4px 8px var(--neo-light),
+    10px 10px 20px var(--neo-dark),
+    -10px -10px 20px var(--neo-light) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(
+  .overflow-x-auto.rounded-md.border,
+  .overflow-x-auto.rounded-lg.border,
+  .overflow-x-auto.border.rounded-md,
+  .overflow-x-auto.border.rounded-lg
+) {
+  border: 1px solid rgba(0, 122, 118, 0.34) !important;
+  border-radius: 18px !important;
+  background-color: var(--neo-base) !important;
+  box-shadow:
+    inset 4px 4px 8px var(--neo-dark),
+    inset -4px -4px 8px var(--neo-light),
+    10px 10px 20px var(--neo-dark),
+    -10px -10px 20px var(--neo-light) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(
+  .overflow-hidden.rounded-xl.border,
+  .overflow-hidden.rounded-2xl.border,
+  .overflow-hidden.rounded-lg.border,
+  .rounded-xl.border.border-primary\/10,
+  .rounded-2xl.border.border-primary\/10
+) {
+  border: 1px solid rgba(0, 122, 118, 0.3) !important;
+  background-color: var(--neo-base) !important;
+  box-shadow:
+    inset 4px 4px 8px var(--neo-dark),
+    inset -4px -4px 8px var(--neo-light),
+    10px 10px 20px var(--neo-dark),
+    -10px -10px 20px var(--neo-light) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-table {
+  color: var(--ss-text-engraved-body);
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-table-header {
+  background: rgba(10, 12, 14, 0.94) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-table-header .ta-ui-table-row {
+  background: transparent !important;
+  border-bottom: 1px solid var(--neo-dark) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-table-head-cell {
+  color: var(--ss-text-engraved-muted) !important;
+  letter-spacing: 0.14em;
+  text-shadow: var(--ss-engraved-shadow-muted) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-table-body .ta-ui-table-row {
+  background: rgba(24, 26, 28, 0.84) !important;
+  border-color: transparent !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-table-body .ta-ui-table-row.border-carved {
+  border-bottom: 1px solid var(--neo-dark) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-table-body .ta-ui-table-row:nth-child(even) {
+  background: rgba(22, 24, 26, 0.9) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-table-row {
+  transition:
+    background-color 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 300ms ease !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-table-row:hover {
+  background: rgba(0, 122, 118, 0.08) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-table-cell {
+  color: var(--ss-text-engraved-body) !important;
+  text-shadow: var(--ss-engraved-shadow-body) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(
+  .ta-ui-table-head-cell.sticky,
+  .ta-ui-table-cell.sticky,
+  .ta-ui-table-head-cell.bg-background,
+  .ta-ui-table-cell.bg-background,
+  .ta-ui-table .bg-background,
+  .ta-ui-table-header.sticky
+) {
+  background: rgba(14, 18, 22, 0.97) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-table-caption {
+  color: var(--ss-text-engraved-muted) !important;
+  text-shadow: var(--ss-engraved-shadow-muted);
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-table-footer {
+  border-color: rgba(0, 122, 118, 0.2) !important;
+  background: rgba(14, 18, 22, 0.9) !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-sand-scrollbar, .ta-ui-table-shell)::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-sand-scrollbar, .ta-ui-table-shell)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-sand-scrollbar, .ta-ui-table-shell)::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 122, 118, 0.34);
+  border-radius: 999px;
+  border: 2px solid rgba(14, 18, 22, 0.9);
+}
+
+[data-ui-surface='ta'] .ta-module-shell :is(.ta-sand-scrollbar, .ta-ui-table-shell)::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 122, 118, 0.52);
+}
+
+/* Motion */
+@keyframes taSoftEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.994);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+[data-ui-surface='ta'] .ta-module-shell .animate-fade-in {
+  animation: taSoftEnter 520ms cubic-bezier(0.22, 1, 0.36, 1) both !important;
+}
+
+[data-ui-surface='ta'] .ta-module-shell .ta-ui-tabs-content[data-state='active'] {
+  animation: taSoftEnter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+[data-ui-surface='ta'] .ta-module-shell [class*='active:scale-95']:active,
+[data-ui-surface='ta'] .ta-module-shell [class*='active:scale-90']:active {
+  transform: translateY(0.5px) scale(0.99) !important;
+}
+
+/* Autofill integrity */
+[data-ui-surface='ta'] input:-webkit-autofill,
+[data-ui-surface='ta'] input:-webkit-autofill:hover,
+[data-ui-surface='ta'] input:-webkit-autofill:focus,
+[data-ui-surface='ta'] textarea:-webkit-autofill,
+[data-ui-surface='ta'] textarea:-webkit-autofill:hover,
+[data-ui-surface='ta'] textarea:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ss-text-engraved-body) !important;
+  box-shadow:
+    inset 0 0 0 1000px rgba(20, 24, 28, 0.94),
+    inset 4px 4px 8px var(--ss-neo-dark),
+    inset -4px -4px 8px var(--ss-neo-light) !important;
+  transition: background-color 9999s ease-in-out 0s;
+  caret-color: var(--ss-accent-glow) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-ui-surface='ta'] .ss-neo-card,
+  [data-ui-surface='ta'] .ss-tab-btn,
+  [data-ui-surface='ta'] .ta-module-shell :is(
+    .animate-fade-in,
+    .ta-ui-tabs-content[data-state='active'],
+    .ta-ui-card,
+    .ta-sand-card,
+    .ta-ui-button,
+    .ta-sand-btn-primary,
+    .ta-sand-btn-secondary,
+    .ta-ui-input,
+    .ta-ui-textarea,
+    .ta-ui-select-trigger,
+    .upload-zone,
+    .ta-ui-table-row
+  ) {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+}

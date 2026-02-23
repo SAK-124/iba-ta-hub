@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ta/ui/button';
+import { Input } from '@/components/ta/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ta/ui/select';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ta/ui/popover';
+import { Calendar } from '@/components/ta/ui/calendar';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ta/ui/dialog';
 import { toast } from 'sonner';
 import { Loader2, Plus, Trash2, CalendarIcon, Clock, Pencil } from 'lucide-react';
 import { format, getDay, parse } from 'date-fns';
@@ -182,8 +182,8 @@ export default function SessionManagement() {
     };
 
     return (
-        <div className="grid gap-6 md:grid-cols-3">
-            <Card className="md:col-span-1 h-fit">
+        <div className="ta-module-shell grid gap-6 md:grid-cols-3">
+            <Card className="md:col-span-1 h-fit ta-module-card">
                 <CardHeader>
                     <CardTitle>Add Session</CardTitle>
                     <CardDescription>Create a new class session</CardDescription>
@@ -301,7 +301,7 @@ export default function SessionManagement() {
                 </CardContent>
             </Card>
 
-            <Card className="md:col-span-2">
+            <Card className="md:col-span-2 ta-module-card">
                 <CardHeader>
                     <CardTitle>Sessions List</CardTitle>
                     <CardDescription>Click edit to modify session details (attendance data is preserved)</CardDescription>
@@ -337,7 +337,7 @@ export default function SessionManagement() {
                                                 ) : '-'}
                                             </TableCell>
                                             <TableCell className="text-right space-x-1">
-                                                <Button variant="ghost" size="icon" onClick={() => openEditDialog(s)} className="hover:bg-primary/10">
+                                                <Button variant="ghost" size="icon" onClick={() => openEditDialog(s)}>
                                                     <Pencil className="h-4 w-4 text-primary" />
                                                 </Button>
                                                 <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)} className="hover:bg-destructive/10">

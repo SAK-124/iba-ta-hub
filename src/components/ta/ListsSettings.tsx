@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ta/ui/switch';
+import { Label } from '@/components/ta/ui/label';
+import { Input } from '@/components/ta/ui/input';
+import { Button } from '@/components/ta/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
 import { toast } from 'sonner';
 import { Loader2, Trash2, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -236,11 +236,11 @@ export default function ListsSettings() {
     const currentPasswordDisplay = isPasswordLoading ? 'Loading...' : currentPassword ?? 'Not set';
     const currentPasswordInputType = hasVisiblePassword ? (showCurrentPassword ? 'text' : 'password') : 'text';
 
-    if (!settings) return <Loader2 className="animate-spin" />;
+    if (!settings) return <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />;
 
     return (
-        <div className="grid gap-6 md:grid-cols-2">
-            <Card>
+        <div className="ta-module-shell grid gap-6 md:grid-cols-2">
+            <Card className="ta-module-card">
                 <CardHeader>
                     <CardTitle>Global Settings</CardTitle>
                 </CardHeader>
@@ -275,7 +275,7 @@ export default function ListsSettings() {
                 </CardContent>
             </Card>
 
-            <Card>
+            <Card className="ta-module-card">
                 <CardHeader>
                     <CardTitle>My Account Password</CardTitle>
                     <CardDescription>Only you can view and update your own TA password.</CardDescription>
@@ -345,7 +345,7 @@ export default function ListsSettings() {
                 </CardContent>
             </Card>
 
-            <Card>
+            <Card className="ta-module-card">
                 <CardHeader>
                     <CardTitle>TA Management</CardTitle>
                     <CardDescription>Add or remove Teaching Assistants</CardDescription>
@@ -361,7 +361,7 @@ export default function ListsSettings() {
                     </div>
                     <div className="space-y-2">
                         {taEmails.map(ta => (
-                            <div key={ta.id} className="flex items-center justify-between p-2 border rounded text-sm">
+                            <div key={ta.id} className="ta-sand-field flex items-center justify-between p-2 rounded-xl text-sm">
                                 <span>{ta.email}</span>
                                 <Button variant="ghost" size="sm" onClick={() => removeTa(ta.id, ta.email)}>
                                     <Trash2 className="h-4 w-4" />
@@ -372,7 +372,7 @@ export default function ListsSettings() {
                 </CardContent>
             </Card>
 
-            <Card>
+            <Card className="ta-module-card">
                 <CardHeader>
                     <CardTitle>Submission List</CardTitle>
                     <CardDescription>Manage options for "Grading Query"</CardDescription>
@@ -388,7 +388,7 @@ export default function ListsSettings() {
                     </div>
                     <div className="space-y-2">
                         {submissions.map(sub => (
-                            <div key={sub.id} className="flex items-center justify-between p-2 border rounded text-sm">
+                            <div key={sub.id} className="ta-sand-field flex items-center justify-between p-2 rounded-xl text-sm">
                                 <span>{sub.label}</span>
                                 <Button variant="ghost" size="sm" onClick={() => removeSubmission(sub.id)}>
                                     <Trash2 className="h-4 w-4" />
