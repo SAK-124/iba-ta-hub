@@ -244,6 +244,7 @@ export type Database = {
           day_of_week: string
           end_time: string | null
           id: string
+          start_time: string | null
           session_date: string
           session_number: number
         }
@@ -252,6 +253,7 @@ export type Database = {
           day_of_week: string
           end_time?: string | null
           id?: string
+          start_time?: string | null
           session_date: string
           session_number: number
         }
@@ -260,6 +262,7 @@ export type Database = {
           day_of_week?: string
           end_time?: string | null
           id?: string
+          start_time?: string | null
           session_date?: string
           session_number?: number
         }

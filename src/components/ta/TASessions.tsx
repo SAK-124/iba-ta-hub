@@ -11,11 +11,14 @@ import { Calendar, Edit2, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
+const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
 interface Session {
   id: string;
   session_number: number;
   session_date: string;
   day_of_week: string;
+  start_time: string | null;
   end_time: string | null;
 }
 
@@ -29,7 +32,8 @@ export default function TASessions() {
   // Form state
   const [sessionNumber, setSessionNumber] = useState('');
   const [sessionDate, setSessionDate] = useState('');
-  const [dayOfWeek, setDayOfWeek] = useState<string>('Friday');
+  const [dayOfWeek, setDayOfWeek] = useState<string>('Sunday');
+  const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
 
   useEffect(() => {
@@ -59,7 +63,8 @@ export default function TASessions() {
     const nextNumber = sessions.length > 0 ? Math.max(...sessions.map(s => s.session_number)) + 1 : 1;
     setSessionNumber(nextNumber.toString());
     setSessionDate('');
-    setDayOfWeek('Friday');
+    setDayOfWeek('Sunday');
+    setStartTime('');
     setEndTime('');
     setIsDialogOpen(true);
   };
@@ -69,6 +74,7 @@ export default function TASessions() {
     setSessionNumber(session.session_number.toString());
     setSessionDate(session.session_date);
     setDayOfWeek(session.day_of_week);
+    setStartTime(session.start_time || '');
     setEndTime(session.end_time || '');
     setIsDialogOpen(true);
   };
@@ -85,6 +91,7 @@ export default function TASessions() {
         session_number: parseInt(sessionNumber),
         session_date: sessionDate,
         day_of_week: dayOfWeek,
+        start_time: startTime || null,
         end_time: endTime || null
       };
 
@@ -183,11 +190,21 @@ export default function TASessions() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Friday">Friday</SelectItem>
-                        <SelectItem value="Saturday">Saturday</SelectItem>
+                        {DAYS_OF_WEEK.map((day) => (
+                          <SelectItem key={day} value={day}>{day}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+                <div>
+                  <Label>Start Time (Optional)</Label>
+                  <Input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    placeholder="HH:MM"
+                  />
                 </div>
                 <div>
                   <Label>Date</Label>
@@ -240,6 +257,7 @@ export default function TASessions() {
                   <TableHead>Session #</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Day</TableHead>
+                  <TableHead>Start Time</TableHead>
                   <TableHead>End Time</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -250,6 +268,7 @@ export default function TASessions() {
                     <TableCell className="font-medium">S{String(session.session_number).padStart(2, '0')}</TableCell>
                     <TableCell>{format(new Date(session.session_date), 'MMM d, yyyy')}</TableCell>
                     <TableCell>{session.day_of_week}</TableCell>
+                    <TableCell>{session.start_time || '-'}</TableCell>
                     <TableCell>{session.end_time || '-'}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
