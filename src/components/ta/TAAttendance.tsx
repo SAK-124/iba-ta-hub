@@ -367,7 +367,7 @@ export default function TAAttendance() {
   return (
     <div className="ta-module-shell space-y-8 animate-fade-in">
       <div className="space-y-1">
-        <h1 className="text-3xl font-extrabold tracking-tight text-foreground uppercase">
+        <h1 className="text-3xl font-extrabold tracking-tight text-debossed uppercase">
           Attendance Management
         </h1>
         <p className="text-muted-foreground">Track sessions and manage daily logs.</p>
@@ -375,9 +375,9 @@ export default function TAAttendance() {
 
       <div className="space-y-6">
         <div className="grid gap-6 md:grid-cols-2">
-          <div className="ta-sand-card p-6 rounded-2xl border border-primary/10 space-y-4">
+          <div className="neo-out p-6 rounded-[32px] border border-[#111214] space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary">
+              <div className="w-10 h-10 rounded-xl neo-in flex items-center justify-center text-debossed-sm">
                 <UserCheck className="w-6 h-6" />
               </div>
               <h2 className="text-xl font-bold">Mark Attendance</h2>
@@ -387,12 +387,12 @@ export default function TAAttendance() {
               <div className="space-y-2">
                 <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Select Session</Label>
                 <Select value={selectedSession} onValueChange={handleSessionChange}>
-                  <SelectTrigger className="bg-background/50 border-primary/20 rounded-xl h-11 transition-all duration-300 focus:ring-2 focus:ring-primary/20">
+                  <SelectTrigger className="rounded-xl h-11">
                     <SelectValue placeholder="Chose session to mark..." />
                   </SelectTrigger>
-                  <SelectContent className="ta-sand-card">
+                  <SelectContent className="neo-out">
                     {sessions.map(s => (
-                      <SelectItem key={s.id} value={s.id} className="cursor-pointer hover:bg-primary/10">
+                      <SelectItem key={s.id} value={s.id} className="cursor-pointer">
                         Session {s.session_number} • {format(new Date(s.session_date), 'MMM d')}
                       </SelectItem>
                     ))}
@@ -404,9 +404,9 @@ export default function TAAttendance() {
                 <div className="space-y-4 animate-fade-in relative">
                   {/* Overlay loading state */}
                   {isUploading && (
-                    <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-10 flex flex-col items-center justify-center rounded-xl animate-in fade-in">
-                      <Loader2 className="w-8 h-8 animate-spin text-primary mb-2" />
-                      <p className="text-xs font-bold text-primary animate-pulse">Processing Zoom Log...</p>
+                    <div className="absolute inset-0 bg-[rgba(24,26,28,0.78)] z-10 flex flex-col items-center justify-center rounded-xl animate-in fade-in">
+                      <Loader2 className="w-8 h-8 animate-spin text-debossed-sm mb-2" />
+                      <p className="text-xs font-bold text-debossed-sm animate-pulse">Processing Zoom Log...</p>
                     </div>
                   )}
 
@@ -424,7 +424,7 @@ export default function TAAttendance() {
                         />
                         <Label
                           htmlFor="zoom-upload"
-                          className={`text-[10px] font-bold uppercase tracking-wider text-primary hover:text-primary/80 cursor-pointer flex items-center gap-1 transition-colors ${isUploading ? 'pointer-events-none opacity-50' : ''}`}
+                          className={`text-[10px] font-bold uppercase tracking-wider text-debossed-sm cursor-pointer flex items-center gap-1 transition-colors ${isUploading ? 'pointer-events-none opacity-50' : ''}`}
                         >
                           <Upload className="w-3 h-3" /> Auto-Fill from Zoom
                         </Label>
@@ -435,7 +435,7 @@ export default function TAAttendance() {
                       onChange={(e) => setAbsentErps(e.target.value)}
                       placeholder="Paste ERPs here (space or comma separated)..."
                       rows={4}
-                      className="bg-background/50 border-primary/20 rounded-xl font-mono text-sm focus:ring-2 focus:ring-primary/20"
+                      className="rounded-xl font-mono text-sm"
                       disabled={isUploading}
                     />
                     <p className="text-[11px] text-muted-foreground italic">
@@ -443,7 +443,7 @@ export default function TAAttendance() {
                     </p>
                   </div>
 
-                  <Button onClick={handleSaveAttendance} disabled={isSaving || isUploading} className="w-full h-11 rounded-xl shadow-lg shadow-primary/20 transition-all duration-300 hover:scale-[1.02]">
+                  <Button onClick={handleSaveAttendance} disabled={isSaving || isUploading} className="w-full h-11 rounded-xl neo-btn neo-out text-debossed-sm transition-all duration-300">
                     {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5 mr-2" />}
                     Save Bulk Attendance
                   </Button>
@@ -453,9 +453,9 @@ export default function TAAttendance() {
           </div>
 
           {selectedSession && (
-            <div className="ta-sand-card p-6 rounded-2xl border border-primary/10 space-y-4 animate-fade-in">
+            <div className="neo-out p-6 rounded-[32px] border border-[#111214] space-y-4 animate-fade-in">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center text-accent">
+                <div className="w-10 h-10 rounded-xl neo-in flex items-center justify-center text-debossed-sm">
                   <Search className="w-6 h-6" />
                 </div>
                 <h2 className="text-xl font-bold">Quick Update</h2>
@@ -469,15 +469,15 @@ export default function TAAttendance() {
                       value={searchErp}
                       onChange={(e) => setSearchErp(e.target.value)}
                       placeholder="Search ERP..."
-                      className="pl-9 bg-background/50 border-primary/20 rounded-xl h-11 font-mono focus:ring-2 focus:ring-primary/20"
+                      className="pl-9 rounded-xl h-11 font-mono"
                       onKeyDown={(e) => e.key === 'Enter' && handleSearchStudent()}
                     />
                   </div>
-                  <Button onClick={handleSearchStudent} variant="outline" className="h-11 px-6 rounded-xl border-primary/20 hover:bg-primary/10">Search</Button>
+                  <Button onClick={handleSearchStudent} variant="outline" className="h-11 px-6 rounded-xl">Search</Button>
                 </div>
 
                 {searchResult && (
-                  <div className="p-4 bg-primary/5 rounded-xl border border-primary/10 space-y-4 animate-slide-in">
+                  <div className="p-4 neo-in rounded-xl border border-[#141517] space-y-4 animate-slide-in">
                     <div className="flex justify-between items-start">
                       <div>
                         <p className="font-bold text-lg">{searchResult.student_name}</p>
@@ -485,52 +485,64 @@ export default function TAAttendance() {
                           {searchResult.erp} • CL-{searchResult.class_no}
                         </p>
                       </div>
-                      <span className={`status-badge shrink-0 ${searchResult.status === 'present' ? 'status-present' :
-                        searchResult.status === 'absent' ? 'status-absent' :
-                          searchResult.status === 'excused' ? 'status-excused' :
-                            'bg-muted text-muted-foreground border border-border/50'
-                        }`}>
+                      <span
+                        className={`ta-status-chip shrink-0 ${
+                          searchResult.status === 'present'
+                            ? 'status-present-table-text'
+                            : searchResult.status === 'absent'
+                              ? 'status-absent-table-text'
+                              : searchResult.status === 'excused'
+                                ? 'status-excused-table-text'
+                                : 'text-debossed-sm'
+                        }`}
+                      >
                         {searchResult.status === 'not_marked' ? 'Unmarked' : searchResult.status}
                       </span>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       <Button
                         size="sm"
-                        variant={searchResult.status === 'present' ? 'default' : 'outline'}
+                        variant="outline"
                         onClick={() => updateStudentStatus(searchResult.erp, 'present')}
-                        className="rounded-lg text-[10px] font-bold uppercase tracking-tighter"
+                        className={`rounded-lg text-[10px] font-bold uppercase tracking-tighter ${
+                          searchResult.status === 'present' ? 'active neo-in' : 'neo-out'
+                        }`}
                       >
-                        Present
+                        <span className="status-present-text text-debossed-sm">Present</span>
                       </Button>
                       <Button
                         size="sm"
-                        variant={searchResult.status === 'absent' ? 'destructive' : 'outline'}
+                        variant="outline"
                         onClick={() => updateStudentStatus(searchResult.erp, 'absent')}
-                        className="rounded-lg text-[10px] font-bold uppercase tracking-tighter"
+                        className={`rounded-lg text-[10px] font-bold uppercase tracking-tighter ${
+                          searchResult.status === 'absent' ? 'active neo-in' : 'neo-out'
+                        }`}
                       >
-                        Absent
+                        <span className="status-absent-text text-debossed-sm">Absent</span>
                       </Button>
                       <Button
                         size="sm"
-                        variant={searchResult.status === 'excused' ? 'secondary' : 'outline'}
+                        variant="outline"
                         onClick={() => updateStudentStatus(searchResult.erp, 'excused')}
-                        className="rounded-lg text-[10px] font-bold uppercase tracking-tighter"
+                        className={`rounded-lg text-[10px] font-bold uppercase tracking-tighter ${
+                          searchResult.status === 'excused' ? 'active neo-in' : 'neo-out'
+                        }`}
                       >
-                        Excused
+                        <span className="status-excused-text text-debossed-sm">Excused</span>
                       </Button>
                     </div>
                   </div>
                 )}
 
                 {existingAttendance.length > 0 && (
-                  <div className="pt-2 border-t border-primary/10">
+                  <div className="pt-2 border-t border-[#141517]">
                     <Button
                       variant="ghost"
-                      className="w-full text-xs font-bold uppercase tracking-wider text-primary hover:bg-primary/5 rounded-lg h-10 transition-all active:scale-95"
+                      className="w-full text-xs font-bold uppercase tracking-wider rounded-lg h-10 transition-all active:scale-95"
                       onClick={markAllUnmarkedAsPresent}
                       disabled={isSaving}
                     >
-                      Mark All Unmarked as Present
+                      <span className="status-present-text text-debossed-sm">Mark All Unmarked as Present</span>
                     </Button>
                   </div>
                 )}
@@ -540,10 +552,10 @@ export default function TAAttendance() {
         </div>
 
         {selectedSession && existingAttendance.length > 0 && (
-          <div className="ta-sand-card p-6 rounded-2xl border border-primary/10 space-y-4 animate-fade-in mb-8">
+          <div className="neo-out p-6 rounded-[32px] border border-[#111214] space-y-4 animate-fade-in mb-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-success/20 flex items-center justify-center text-success">
+                <div className="w-10 h-10 rounded-xl neo-in flex items-center justify-center status-present-text">
                   <UserCheck className="w-6 h-6" />
                 </div>
                 <h2 className="text-xl font-bold">Session Attendance • {selectedSessionData?.session_number}</h2>
@@ -610,7 +622,7 @@ export default function TAAttendance() {
               </Button>
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-primary/10">
+            <div className="overflow-hidden rounded-xl border border-[#141517]">
               {isLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -671,7 +683,7 @@ export default function TAAttendance() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <AlertCircle className="w-5 h-5 text-warning" />
+                <AlertCircle className="w-5 h-5 status-excused-table-text" />
                 Attendance Already Exists
               </DialogTitle>
               <DialogDescription>

@@ -256,8 +256,8 @@ export default function TASessions() {
                         <Button variant="ghost" size="sm" onClick={() => openEditDialog(session)}>
                           <Edit2 className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(session)} className="text-destructive hover:text-destructive">
-                          <Trash2 className="w-4 h-4" />
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(session)}>
+                          <Trash2 className="w-4 h-4 status-absent-text" />
                         </Button>
                       </div>
                     </TableCell>

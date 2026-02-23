@@ -191,7 +191,7 @@ export default function RosterManagement() {
     );
 
     return (
-        <div className="ta-module-shell ta-sand-theme space-y-8 animate-fade-in">
+        <div className="ta-module-shell  space-y-8 animate-fade-in">
             <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
                 <div className="space-y-1">
                     <h1 className="ta-section-title text-3xl font-extrabold uppercase">
@@ -212,9 +212,9 @@ export default function RosterManagement() {
 
             <div className="grid gap-8 lg:grid-cols-12">
                 <div className="lg:col-span-4 space-y-6">
-                    <div className="ta-sand-card ta-module-card p-6 rounded-2xl border shadow-none">
+                    <div className="neo-out ta-module-card p-6 rounded-2xl border shadow-none">
                         <div className="flex items-center gap-3 mb-4">
-                            <div className="w-10 h-10 rounded-xl ta-sand-field flex items-center justify-center text-primary">
+                            <div className="w-10 h-10 rounded-xl neo-in flex items-center justify-center text-debossed-sm">
                                 <Upload className="w-5 h-5" />
                             </div>
                             <div>
@@ -238,17 +238,19 @@ export default function RosterManagement() {
                                         Replace Entire Roster
                                     </Button>
                                 </AlertDialogTrigger>
-                                <AlertDialogContent className="border-[rgba(0,122,118,0.2)]">
+                                <AlertDialogContent className="border-[#141517]">
                                     <AlertDialogHeader>
                                         <AlertDialogTitle className="text-2xl font-bold">Wipe and Replace?</AlertDialogTitle>
                                         <AlertDialogDescription className="text-muted-foreground">
-                                            This action will <span className="text-destructive font-bold">PERMANENTLY DELETE</span> the current roster.
+                                            This action will <span className="status-absent-text font-bold">PERMANENTLY DELETE</span> the current roster.
                                             Attendance logs will remain but may reference non-existent ERPs if they aren't in the new list.
                                         </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                         <AlertDialogCancel className="rounded-xl">Abort</AlertDialogCancel>
-                                        <AlertDialogAction onClick={parseAndUpload} className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90">Confirm Replacement</AlertDialogAction>
+                                        <AlertDialogAction onClick={parseAndUpload} className="rounded-xl neo-btn neo-out text-debossed-sm">
+                                            <span className="status-absent-text">Confirm Replacement</span>
+                                        </AlertDialogAction>
                                     </AlertDialogFooter>
                                 </AlertDialogContent>
                             </AlertDialog>
@@ -257,10 +259,10 @@ export default function RosterManagement() {
                 </div>
 
                 <div className="lg:col-span-8 space-y-6">
-                    <div className="ta-sand-card ta-module-card rounded-2xl border shadow-none overflow-hidden">
-                        <div className="p-6 border-b border-[rgba(0,122,118,0.18)] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="neo-out ta-module-card rounded-2xl border shadow-none">
+                        <div className="p-6 border-b border-[#141517] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                             <div className="relative w-full sm:w-80 group">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-debossed-sm transition-colors" />
                                 <Input
                                     placeholder="Search by ERP, Name or Class..."
                                     className="pl-9 h-11"
@@ -270,8 +272,7 @@ export default function RosterManagement() {
                             </div>
                         </div>
 
-                        <div className="overflow-x-auto min-h-[500px]">
-                            <Table>
+                            <Table containerClassName="min-h-[500px]" scrollClassName="overflow-x-auto">
                                 <TableHeader>
                                     <TableRow className="hover:bg-transparent">
                                         <TableHead className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground py-4 px-6">Class</TableHead>
@@ -299,8 +300,8 @@ export default function RosterManagement() {
                                                     <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => openEditDialog(s)}>
                                                         <Pencil className="h-4 w-4" />
                                                     </Button>
-                                                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg hover:bg-destructive/10 hover:text-destructive" onClick={() => handleDeleteStudent(s.id)}>
-                                                        <Trash2 className="h-4 w-4" />
+                                                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => handleDeleteStudent(s.id)}>
+                                                        <Trash2 className="h-4 w-4 status-absent-text" />
                                                     </Button>
                                                 </div>
                                             </TableCell>
@@ -318,13 +319,12 @@ export default function RosterManagement() {
                                     )}
                                 </TableBody>
                             </Table>
-                        </div>
                     </div>
                 </div>
             </div>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="ta-sand-card ta-module-card sm:max-w-md">
+                <DialogContent className="neo-out ta-module-card sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle className="text-2xl font-bold uppercase tracking-tight">{currentStudent ? 'Edit Student Profile' : 'Add New Entry'}</DialogTitle>
                         <DialogDescription className="text-muted-foreground">
@@ -333,7 +333,7 @@ export default function RosterManagement() {
                     </DialogHeader>
                     <div className="space-y-5 py-6">
                         <div className="space-y-2">
-                            <Label className="text-[10px] font-bold uppercase tracking-widest text-primary">Full Name</Label>
+                            <Label className="text-[10px] font-bold uppercase tracking-widest text-debossed-sm">Full Name</Label>
                             <Input
                                 className="h-11 rounded-xl"
                                 value={formData.student_name}
@@ -342,7 +342,7 @@ export default function RosterManagement() {
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label className="text-[10px] font-bold uppercase tracking-widest text-primary">ERP ID</Label>
+                                <Label className="text-[10px] font-bold uppercase tracking-widest text-debossed-sm">ERP ID</Label>
                                 <Input
                                     className="h-11 rounded-xl font-mono"
                                     value={formData.erp}
@@ -350,7 +350,7 @@ export default function RosterManagement() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-[10px] font-bold uppercase tracking-widest text-primary">Class Code</Label>
+                                <Label className="text-[10px] font-bold uppercase tracking-widest text-debossed-sm">Class Code</Label>
                                 <Input
                                     className="h-11 rounded-xl font-mono"
                                     value={formData.class_no}

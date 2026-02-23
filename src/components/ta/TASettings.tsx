@@ -135,7 +135,7 @@ export default function TASettings() {
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
-        <Loader2 className="w-12 h-12 animate-spin text-primary" />
+        <Loader2 className="w-12 h-12 animate-spin text-debossed-sm" />
         <p className="text-muted-foreground font-bold uppercase tracking-widest text-xs">Loading Security Policies</p>
       </div>
     );
@@ -144,7 +144,7 @@ export default function TASettings() {
   return (
     <div className="ta-module-shell space-y-10 animate-fade-in pb-10">
       <div className="space-y-1">
-        <h1 className="text-3xl font-extrabold tracking-tight text-foreground uppercase">
+        <h1 className="text-3xl font-extrabold tracking-tight text-debossed uppercase">
           App Configuration
         </h1>
         <p className="text-muted-foreground font-medium">Global settings and administrative controls.</p>
@@ -152,9 +152,9 @@ export default function TASettings() {
 
       <div className="grid gap-8 lg:grid-cols-2">
         <div className="space-y-8">
-          <div className="ta-sand-card p-6 rounded-2xl border border-primary/10 shadow-xl">
+          <div className="neo-out p-6 rounded-[32px] border border-[#111214]">
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+              <div className="w-10 h-10 rounded-xl neo-in flex items-center justify-center text-debossed-sm">
                 <Settings className="w-5 h-5" />
               </div>
               <div>
@@ -164,7 +164,7 @@ export default function TASettings() {
             </div>
 
             <div className="space-y-6">
-              <div className="flex items-center justify-between p-4 bg-primary/5 rounded-xl border border-primary/10">
+              <div className="flex items-center justify-between p-4 neo-in rounded-xl border border-[#141517]">
                 <div className="space-y-0.5">
                   <p className="font-bold text-sm">Roster Verification</p>
                   <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-tight">Only enrolled students can log sessions</p>
@@ -174,10 +174,10 @@ export default function TASettings() {
             </div>
           </div>
 
-          <div className="ta-sand-card rounded-2xl border border-primary/10 shadow-xl overflow-hidden">
-            <div className="p-6 border-b border-primary/10 flex flex-row items-center justify-between">
+          <div className="neo-out rounded-[32px] border border-[#111214] overflow-hidden">
+            <div className="p-6 border-b border-[#141517] flex flex-row items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                <div className="w-10 h-10 rounded-xl neo-in flex items-center justify-center text-debossed-sm">
                   <Users className="w-5 h-5" />
                 </div>
                 <div>
@@ -188,31 +188,31 @@ export default function TASettings() {
 
               <Dialog open={isTaDialogOpen} onOpenChange={setIsTaDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button size="sm" className="rounded-lg bg-primary text-primary-foreground font-bold text-xs uppercase transition-all shadow-md active:scale-95">
+                  <Button size="sm" className="rounded-lg neo-btn neo-out text-debossed-sm font-bold text-xs uppercase active:scale-95">
                     <Plus className="w-3.5 h-3.5 mr-1" /> Add
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="ta-sand-card border-primary/20 sm:max-w-md">
+                <DialogContent className="neo-out border-[#141517] sm:max-w-md">
                   <DialogHeader>
                     <DialogTitle className="text-2xl font-bold uppercase tracking-tight">Authorize TA</DialogTitle>
                   </DialogHeader>
                   <div className="py-6 space-y-5">
                     <div className="space-y-2">
-                      <Label className="text-[10px] font-bold uppercase tracking-widest text-primary">Email Address</Label>
+                      <Label className="text-[10px] font-bold uppercase tracking-widest text-debossed-sm">Email Address</Label>
                       <Input
                         value={newTaEmail}
                         onChange={(e) => setNewTaEmail(e.target.value)}
                         placeholder="ta@iba.edu.pk"
-                        className="h-11 bg-background/50 border-primary/20 rounded-xl focus:ring-2 focus:ring-primary/20"
+                        className="h-11 rounded-xl"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-[10px] font-bold uppercase tracking-widest text-primary">Signup Key (Optional)</Label>
+                      <Label className="text-[10px] font-bold uppercase tracking-widest text-debossed-sm">Signup Key (Optional)</Label>
                       <Input
                         value={newTaPassword}
                         onChange={(e) => setNewTaPassword(e.target.value)}
                         placeholder="Secure Password for First Login"
-                        className="h-11 bg-background/50 border-primary/20 rounded-xl font-mono focus:ring-2 focus:ring-primary/20"
+                        className="h-11 rounded-xl font-mono"
                       />
                       <p className="text-[9px] text-muted-foreground italic px-1">
                         If provided, the TA can use this to register their own account.
@@ -220,7 +220,7 @@ export default function TASettings() {
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button onClick={addTaEmail} className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold uppercase shadow-lg shadow-primary/20">Grant Access</Button>
+                    <Button onClick={addTaEmail} className="w-full h-12 rounded-xl neo-btn neo-out text-debossed-sm font-bold uppercase">Grant Access</Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
@@ -230,14 +230,14 @@ export default function TASettings() {
               <Table>
                 <TableBody>
                   {taEmails.map(ta => (
-                    <TableRow key={ta.id} className="border-primary/5 hover:bg-primary/5 transition-colors group">
+                    <TableRow key={ta.id} className="group">
                       <TableCell className="py-4 px-6">
                         <div className="flex flex-col">
-                          <span className="text-sm font-bold group-hover:text-primary transition-colors">{ta.email}</span>
+                          <span className="text-sm font-bold text-debossed-body status-all-text transition-colors">{ta.email}</span>
                         </div>
                       </TableCell>
                       <TableCell className="py-4 px-6 text-right">
-                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 opacity-50 transition-all" onClick={() => removeTaEmail(ta.id)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg group-hover:opacity-100 opacity-50 transition-all" onClick={() => removeTaEmail(ta.id)}>
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </TableCell>
@@ -250,10 +250,10 @@ export default function TASettings() {
         </div>
 
         <div className="space-y-8">
-          <div className="ta-sand-card rounded-2xl border border-primary/10 shadow-xl overflow-hidden">
-            <div className="p-6 border-b border-primary/10 flex flex-row items-center justify-between">
+          <div className="neo-out rounded-[32px] border border-[#111214] overflow-hidden">
+            <div className="p-6 border-b border-[#141517] flex flex-row items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                <div className="w-10 h-10 rounded-xl neo-in flex items-center justify-center text-debossed-sm">
                   <RefreshCw className="w-5 h-5" />
                 </div>
                 <div>
@@ -264,25 +264,25 @@ export default function TASettings() {
 
               <Dialog open={isSubDialogOpen} onOpenChange={setIsSubDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button size="sm" className="rounded-lg bg-primary text-primary-foreground font-bold text-xs uppercase shadow-md transition-all active:scale-95">
+                  <Button size="sm" className="rounded-lg neo-btn neo-out text-debossed-sm font-bold text-xs uppercase active:scale-95">
                     <Plus className="w-3.5 h-3.5 mr-1" /> Add
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="ta-sand-card border-primary/20 sm:max-w-md">
+                <DialogContent className="neo-out border-[#141517] sm:max-w-md">
                   <DialogHeader>
                     <DialogTitle className="text-2xl font-bold uppercase tracking-tight">Add Submission Type</DialogTitle>
                   </DialogHeader>
                   <div className="py-6 space-y-2">
-                    <Label className="text-[10px] font-bold uppercase tracking-widest text-primary">Display Label</Label>
+                    <Label className="text-[10px] font-bold uppercase tracking-widest text-debossed-sm">Display Label</Label>
                     <Input
                       value={newSubmission}
                       onChange={(e) => setNewSubmission(e.target.value)}
                       placeholder="e.g., Final Exam, assignment_01"
-                      className="h-11 bg-background/50 border-primary/20 rounded-xl focus:ring-2 focus:ring-primary/20"
+                      className="h-11 rounded-xl"
                     />
                   </div>
                   <DialogFooter>
-                    <Button onClick={addSubmission} className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold uppercase shadow-lg shadow-primary/20">Register Type</Button>
+                    <Button onClick={addSubmission} className="w-full h-12 rounded-xl neo-btn neo-out text-debossed-sm font-bold uppercase">Register Type</Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
@@ -292,12 +292,12 @@ export default function TASettings() {
               <Table>
                 <TableBody>
                   {submissions.map(s => (
-                    <TableRow key={s.id} className="border-primary/5 hover:bg-primary/5 transition-colors group">
+                    <TableRow key={s.id} className="group">
                       <TableCell className="py-4 px-6">
-                        <span className="text-sm font-bold group-hover:text-primary transition-colors">{s.label}</span>
+                        <span className="text-sm font-bold text-debossed-body status-all-text transition-colors">{s.label}</span>
                       </TableCell>
                       <TableCell className="py-4 px-6 text-right">
-                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 opacity-50 transition-all" onClick={() => removeSubmission(s.id)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg group-hover:opacity-100 opacity-50 transition-all" onClick={() => removeSubmission(s.id)}>
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </TableCell>
@@ -308,22 +308,20 @@ export default function TASettings() {
             </div>
           </div>
 
-          <div className="ta-sand-card p-6 rounded-2xl border border-destructive/20 shadow-xl bg-destructive/5 relative overflow-hidden group">
-            <div className="absolute -right-12 -top-12 w-32 h-32 bg-destructive/10 rounded-full blur-3xl group-hover:bg-destructive/20 transition-all duration-500" />
-
+          <div className="neo-out p-6 rounded-[32px] border border-[#111214] relative overflow-hidden group">
             <div className="flex items-center gap-3 mb-6 relative">
-              <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center text-destructive">
+              <div className="w-10 h-10 rounded-xl neo-in flex items-center justify-center status-absent-text">
                 <ShieldAlert className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-destructive">Danger Zone</h3>
-                <p className="text-[10px] text-destructive/70 font-bold uppercase tracking-wider">Irreversible Operations</p>
+                <h3 className="text-lg font-bold status-absent-text">Danger Zone</h3>
+                <p className="text-[10px] font-bold uppercase tracking-wider status-absent-text">Irreversible Operations</p>
               </div>
             </div>
 
             <div className="space-y-4 relative">
-              <div className="p-4 rounded-xl border border-destructive/10 bg-black/40">
-                <p className="text-xs font-bold text-destructive/80 mb-3 uppercase tracking-tight">Wipe All Attendance Data</p>
+              <div className="p-4 rounded-xl border border-[#141517] neo-in">
+                <p className="text-xs font-bold status-absent-text mb-3 uppercase tracking-tight">Wipe All Attendance Data</p>
                 <p className="text-[10px] text-muted-foreground mb-4 leading-relaxed">
                   This will PERMANENTLY delete every single record in modern database. All history, logs, and marks will be lost forever.
                 </p>
@@ -331,23 +329,22 @@ export default function TASettings() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label className="text-[9px] font-bold uppercase tracking-widest opacity-60">Type phrase to confirm:</Label>
-                    <code className="block p-2 bg-destructive/10 text-destructive text-[10px] rounded font-mono font-bold mb-2">DELETE ALL ATTENDANCE</code>
+                    <code className="block p-2 neo-in status-absent-text text-[10px] rounded font-mono font-bold mb-2">DELETE ALL ATTENDANCE</code>
                     <Input
                       value={deleteConfirmation}
                       onChange={(e) => setDeleteConfirmation(e.target.value)}
                       placeholder="Confirm Phrase..."
-                      className="h-10 bg-background/50 border-destructive/20 rounded-lg font-mono text-xs focus:ring-destructive/30"
+                      className="h-10 rounded-lg font-mono text-xs"
                     />
                   </div>
 
                   <Button
-                    variant="destructive"
-                    className="w-full h-11 rounded-xl font-bold uppercase shadow-lg shadow-destructive/20 active:scale-95 transition-all text-xs"
+                    className="w-full h-11 rounded-xl font-bold uppercase neo-btn neo-out active:scale-95 text-xs"
                     disabled={deleteConfirmation !== 'DELETE ALL ATTENDANCE' || isDeletingAll}
                     onClick={deleteAllAttendance}
                   >
-                    {isDeletingAll ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
-                    Initiate Global Wipe
+                    {isDeletingAll ? <Loader2 className="w-4 h-4 animate-spin mr-2 status-absent-text" /> : <Trash2 className="w-4 h-4 mr-2 status-absent-text" />}
+                    <span className="status-absent-text">Initiate Global Wipe</span>
                   </Button>
                 </div>
               </div>

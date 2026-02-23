@@ -2,10 +2,17 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
-  ({ className, ...props }, ref) => (
-    <div className="ta-ui-table-shell relative w-full overflow-auto">
-      <table ref={ref} className={cn("ta-ui-table w-full caption-bottom text-sm", className)} {...props} />
+type TableProps = React.HTMLAttributes<HTMLTableElement> & {
+  containerClassName?: string;
+  scrollClassName?: string;
+};
+
+const Table = React.forwardRef<HTMLTableElement, TableProps>(
+  ({ className, containerClassName, scrollClassName, ...props }, ref) => (
+    <div className={cn("ta-ui-table-shell neo-out relative w-full border", containerClassName)}>
+      <div className={cn("ta-ui-table-scroll w-full overflow-auto", scrollClassName)}>
+        <table ref={ref} className={cn("ta-ui-table w-full caption-bottom text-sm", className)} {...props} />
+      </div>
     </div>
   ),
 );

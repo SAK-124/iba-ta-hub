@@ -361,7 +361,7 @@ export default function ListsSettings() {
                     </div>
                     <div className="space-y-2">
                         {taEmails.map(ta => (
-                            <div key={ta.id} className="ta-sand-field flex items-center justify-between p-2 rounded-xl text-sm">
+                            <div key={ta.id} className="neo-in flex items-center justify-between p-2 rounded-xl text-sm">
                                 <span>{ta.email}</span>
                                 <Button variant="ghost" size="sm" onClick={() => removeTa(ta.id, ta.email)}>
                                     <Trash2 className="h-4 w-4" />
@@ -388,7 +388,7 @@ export default function ListsSettings() {
                     </div>
                     <div className="space-y-2">
                         {submissions.map(sub => (
-                            <div key={sub.id} className="ta-sand-field flex items-center justify-between p-2 rounded-xl text-sm">
+                            <div key={sub.id} className="neo-in flex items-center justify-between p-2 rounded-xl text-sm">
                                 <span>{sub.label}</span>
                                 <Button variant="ghost" size="sm" onClick={() => removeSubmission(sub.id)}>
                                     <Trash2 className="h-4 w-4" />

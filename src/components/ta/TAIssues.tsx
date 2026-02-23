@@ -212,7 +212,7 @@ export default function TAIssues() {
                       <TableCell>{ticket.roster_class_no || '-'}</TableCell>
                       <TableCell>{getGroupTypeLabel(ticket.group_type)}</TableCell>
                       <TableCell>
-                        <span className={`status-badge ${ticket.status === 'pending' ? 'status-pending' : 'status-resolved'}`}>
+                        <span className={`ta-status-chip ${ticket.status === 'pending' ? 'status-excused-table-text' : 'status-present-table-text'}`}>
                           {ticket.status}
                         </span>
                       </TableCell>
@@ -233,18 +233,16 @@ export default function TAIssues() {
                               variant="ghost"
                               size="sm"
                               onClick={() => updateTicketStatus(ticket.id, 'resolved')}
-                              className="text-success hover:text-success"
                             >
-                              <CheckCircle className="w-4 h-4" />
+                              <CheckCircle className="w-4 h-4 status-present-text" />
                             </Button>
                           ) : (
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => updateTicketStatus(ticket.id, 'pending')}
-                              className="text-warning hover:text-warning"
                             >
-                              <XCircle className="w-4 h-4" />
+                              <XCircle className="w-4 h-4 status-excused-text" />
                             </Button>
                           )}
                         </div>

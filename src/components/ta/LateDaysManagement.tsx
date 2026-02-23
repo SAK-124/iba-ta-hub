@@ -430,8 +430,7 @@ export default function LateDaysManagement() {
             </div>
             <p className="text-xs text-muted-foreground">Leave deadline blank to create as draft; set it later from Edit.</p>
 
-            <div className="rounded-md border overflow-x-auto">
-              <Table>
+            <Table scrollClassName="overflow-x-auto">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Assignment</TableHead>
@@ -458,7 +457,7 @@ export default function LateDaysManagement() {
                               {assignment.active ? 'Active' : 'Archived'}
                             </Badge>
                             {!assignment.due_at && assignment.active && (
-                              <Badge variant="outline" className="border-[rgba(0,122,118,0.3)] text-[#9be6e2]">
+                              <Badge variant="outline" className="status-all-table-text">
                                 Deadline Required
                               </Badge>
                             )}
@@ -475,7 +474,7 @@ export default function LateDaysManagement() {
                               onClick={() => handleArchiveAssignment(assignment)}
                               disabled={!assignment.active}
                             >
-                              <Trash2 className="h-4 w-4 text-destructive" />
+                              <Trash2 className="h-4 w-4 status-absent-text" />
                             </Button>
                           </div>
                         </TableCell>
@@ -484,7 +483,6 @@ export default function LateDaysManagement() {
                   )}
                 </TableBody>
               </Table>
-            </div>
           </CardContent>
         </Card>
 
@@ -496,8 +494,7 @@ export default function LateDaysManagement() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="max-h-[360px] overflow-auto rounded-md border">
-              <Table>
+            <Table containerClassName="max-h-[360px]">
                 <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow>
                     <TableHead>Student</TableHead>
@@ -546,7 +543,6 @@ export default function LateDaysManagement() {
                   )}
                 </TableBody>
               </Table>
-            </div>
           </CardContent>
         </Card>
       </div>
@@ -570,8 +566,7 @@ export default function LateDaysManagement() {
               />
             </div>
 
-            <div className="max-h-[620px] overflow-auto rounded-md border">
-              <Table>
+            <Table containerClassName="max-h-[620px]">
                 <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow>
                     <TableHead>Student</TableHead>
@@ -614,7 +609,6 @@ export default function LateDaysManagement() {
                   )}
                 </TableBody>
               </Table>
-            </div>
           </CardContent>
         </Card>
       </div>
@@ -635,8 +629,7 @@ export default function LateDaysManagement() {
           {!selectedClaimGroup ? (
             <p className="text-sm text-muted-foreground">No claim events to show.</p>
           ) : (
-            <div className="max-h-[420px] overflow-auto rounded-md border">
-              <Table>
+            <Table containerClassName="max-h-[420px]">
                 <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow>
                     <TableHead>Days</TableHead>
@@ -663,7 +656,7 @@ export default function LateDaysManagement() {
                           {deletingClaimId === claimEvent.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                            <Trash2 className="h-4 w-4 status-absent-text" />
                           )}
                         </Button>
                       </TableCell>
@@ -671,7 +664,6 @@ export default function LateDaysManagement() {
                   ))}
                 </TableBody>
               </Table>
-            </div>
           )}
 
           <DialogFooter>

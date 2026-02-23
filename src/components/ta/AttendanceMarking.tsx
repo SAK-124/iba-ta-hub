@@ -8,7 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ta/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
 import { Badge } from '@/components/ta/ui/badge';
-import { Checkbox } from '@/components/ta/ui/checkbox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -454,7 +453,7 @@ export default function AttendanceMarking() {
           </Select>
 
           <div className="space-y-2">
-            <span className="text-sm font-medium">Absent ERPs</span>
+            <span className="text-sm font-medium text-debossed-body">Absent ERPs</span>
             <Textarea
               placeholder="Paste ERPs here (space or newline separated)..."
               className="min-h-[200px] font-mono"
@@ -525,7 +524,7 @@ export default function AttendanceMarking() {
                 <Badge variant="outline" className="ta-status-chip status-all status-all-table-text">
                   {penalizedCount} Penalized
                 </Badge>
-                <Badge variant="outline" className="ta-status-chip status-all">
+                <Badge variant="outline" className="ta-status-chip status-all text-debossed-sm">
                   {attendanceData.length} / {roster.length} Total
                 </Badge>
               </div>
@@ -578,8 +577,7 @@ export default function AttendanceMarking() {
           ) : attendanceData.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">No attendance marked for this session yet.</div>
           ) : (
-            <div className="overflow-x-auto rounded-md border">
-              <Table>
+              <Table scrollClassName="overflow-x-auto">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Class</TableHead>
@@ -610,25 +608,32 @@ export default function AttendanceMarking() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`np-${record.id}`}
-                            checked={record.naming_penalty}
-                            onCheckedChange={(checked) => toggleNamingPenalty(record, checked as boolean)}
-                          />
-                          <label
-                            htmlFor={`np-${record.id}`}
-                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                        <button
+                          type="button"
+                          onClick={() => toggleNamingPenalty(record, !record.naming_penalty)}
+                          aria-pressed={record.naming_penalty}
+                          className="flex items-center justify-end gap-4 pr-2 cursor-pointer active:scale-95 transition-transform w-full"
+                        >
+                          <div className="w-[18px] h-[18px] rounded-full neo-in relative flex items-center justify-center border border-[#141517]">
+                            <div
+                              className={`w-[8px] h-[8px] rounded-full transition-all duration-300 ${
+                                record.naming_penalty ? 'bg-[var(--color-all)] shadow-[0_0_8px_var(--color-all)]' : 'bg-transparent'
+                              }`}
+                            />
+                          </div>
+                          <span
+                            className={`text-debossed-body font-black min-w-[20px] text-right transition-all duration-300 ${
+                              record.naming_penalty ? 'status-all-table-text' : ''
+                            }`}
                           >
-                            -1
-                          </label>
-                        </div>
+                            {record.naming_penalty ? '-1' : '0'}
+                          </span>
+                        </button>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            </div>
           )}
         </CardContent>
       </Card>

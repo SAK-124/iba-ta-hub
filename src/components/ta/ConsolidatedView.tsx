@@ -174,14 +174,13 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
             <Loader2 className="animate-spin" />
           </div>
         ) : (
-          <div className="max-h-[600px] overflow-auto rounded-md border">
-            <Table>
+            <Table containerClassName="max-h-[600px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="sticky left-0 z-10 w-[100px] bg-background">Class</TableHead>
-                  <TableHead className="sticky left-[100px] z-10 w-[200px] bg-background">Name</TableHead>
+                  <TableHead className="sticky left-0 z-10 w-[100px]">Class</TableHead>
+                  <TableHead className="sticky left-[100px] z-10 w-[200px]">Name</TableHead>
                   <TableHead className="w-[100px]">ERP</TableHead>
-                  <TableHead className="w-[80px] text-center font-bold text-destructive">Penalties</TableHead>
+                  <TableHead className="w-[80px] text-center font-bold status-absent-table-text">Penalties</TableHead>
                   <TableHead className="w-[80px] text-center font-bold">Absences</TableHead>
                   {sessions.map((session) => (
                     <TableHead key={session.id} className="w-[60px] text-center">
@@ -193,26 +192,18 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
               <TableBody>
                 {filteredStudents.map((student) => {
                   const getAbsenceColor = (count: number) => {
-                    if (count <= 4) return 'text-green-500';
-                    if (count === 5) return 'text-yellow-500';
-                    return 'text-red-500';
-                  };
-
-                  const getAbsenceBg = (count: number) => {
-                    if (count <= 4) return '';
-                    if (count === 5) return 'bg-yellow-500/10';
-                    return 'bg-red-500/10';
+                    if (count <= 4) return 'status-present-table-text';
+                    if (count === 5) return 'status-excused-table-text';
+                    return 'status-absent-table-text';
                   };
 
                   return (
                     <TableRow key={student.erp}>
-                      <TableCell className="sticky left-0 bg-background font-medium">{student.class_no}</TableCell>
-                      <TableCell className="sticky left-[100px] bg-background">{student.student_name}</TableCell>
+                      <TableCell className="sticky left-0 font-medium">{student.class_no}</TableCell>
+                      <TableCell className="sticky left-[100px]">{student.student_name}</TableCell>
                       <TableCell>{student.erp}</TableCell>
                       <TableCell className="text-center font-bold">{student.total_penalties}</TableCell>
-                      <TableCell
-                        className={`text-center font-bold ${getAbsenceColor(student.total_absences)} ${getAbsenceBg(student.total_absences)}`}
-                      >
+                      <TableCell className={`text-center font-bold ${getAbsenceColor(student.total_absences)}`}>
                         {student.total_absences}
                       </TableCell>
                       {sessions.map((session) => {
@@ -222,13 +213,13 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
 
                         if (status === 'present') {
                           symbol = 'P';
-                          color = 'text-green-600 font-bold';
+                          color = 'status-present-table-text font-bold';
                         } else if (status === 'absent') {
                           symbol = 'A';
-                          color = 'text-red-600 font-bold';
+                          color = 'status-absent-table-text font-bold';
                         } else if (status === 'excused') {
                           symbol = 'E';
-                          color = 'text-yellow-600 font-bold';
+                          color = 'status-excused-table-text font-bold';
                         }
 
                         return (
@@ -242,7 +233,6 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
                 })}
               </TableBody>
             </Table>
-          </div>
         )}
       </CardContent>
       </Card>

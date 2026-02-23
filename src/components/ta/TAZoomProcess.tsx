@@ -735,12 +735,12 @@ export default function TAZoomProcess() {
 
     return (
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center gap-4 rounded-xl border border-primary/5 bg-muted/30 p-4">
+        <div className="neo-in flex flex-wrap items-center gap-4 rounded-xl border border-[#141517] p-4">
           <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-primary" />
+            <Filter className="h-4 w-4 text-debossed-sm" />
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Filters</span>
           </div>
-          <div className="h-6 w-[1px] bg-border" />
+          <div className="h-6 w-[1px] bg-[#141517]" />
           <div className="space-y-1">
             <Label className="text-[10px] uppercase text-muted-foreground">Class</Label>
             <Input className="h-8 w-20 text-xs" placeholder="All" value={filterClass} onChange={(event) => setFilterClass(event.target.value)} />
@@ -755,7 +755,7 @@ export default function TAZoomProcess() {
             />
           </div>
           {showMinusOneOnly && (
-            <label className="mt-5 flex h-8 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-3 text-xs">
+            <label className="mt-5 flex h-8 cursor-pointer items-center gap-2 rounded-md border border-[#141517] neo-in px-3 text-xs">
               <Checkbox
                 checked={penaltiesMinusOneOnly}
                 onCheckedChange={(checked) => setPenaltiesMinusOneOnly(Boolean(checked))}
@@ -767,7 +767,7 @@ export default function TAZoomProcess() {
             <Button
               variant="ghost"
               size="sm"
-              className="mt-5 h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              className="mt-5 h-8 px-2 text-debossed-sm"
               onClick={() => {
                 setFilterClass('');
                 setFilterQuery('');
@@ -779,10 +779,10 @@ export default function TAZoomProcess() {
           )}
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-border">
+        <div className="overflow-hidden rounded-xl border border-[#141517]">
           <div className="max-h-[600px] overflow-x-auto">
             <Table>
-              <TableHeader className="sticky top-0 z-10 backdrop-blur-md">
+              <TableHeader className="sticky top-0 z-10">
                 <TableRow>
                   {headers.map((header) => (
                     <TableHead key={header} className="whitespace-nowrap font-bold">
@@ -840,16 +840,16 @@ export default function TAZoomProcess() {
 
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between rounded-xl border border-primary/5 bg-muted/30 p-3">
+        <div className="neo-in flex items-center justify-between rounded-xl border border-[#141517] p-3">
           <div className="flex items-center gap-4 text-sm font-medium">
             <span>
-              <span className="text-red-500">{filteredRows.length}</span> absent
+              <span className="status-absent-table-text">{filteredRows.length}</span> absent
             </span>
             <span>
-              <span className="text-[#8fe1dd]">{ignoredKeys.size}</span> ignored
+              <span className="status-all-table-text">{ignoredKeys.size}</span> ignored
             </span>
             <span>
-              <span className="text-green-500">{nonIgnoredCount}</span> to copy
+              <span className="status-present-table-text">{nonIgnoredCount}</span> to copy
             </span>
           </div>
           <Button onClick={copyAbsentErps} variant="outline" size="sm" className="gap-2">
@@ -858,12 +858,12 @@ export default function TAZoomProcess() {
           </Button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 rounded-xl border border-primary/5 bg-muted/30 p-4">
+        <div className="neo-in flex flex-wrap items-center gap-4 rounded-xl border border-[#141517] p-4">
           <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-primary" />
+            <Filter className="h-4 w-4 text-debossed-sm" />
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Filters</span>
           </div>
-          <div className="h-6 w-[1px] bg-border" />
+          <div className="h-6 w-[1px] bg-[#141517]" />
           <div className="space-y-1">
             <Label className="text-[10px] uppercase text-muted-foreground">Class</Label>
             <Input className="h-8 w-20 text-xs" placeholder="All" value={filterClass} onChange={(event) => setFilterClass(event.target.value)} />
@@ -881,7 +881,7 @@ export default function TAZoomProcess() {
             <Button
               variant="ghost"
               size="sm"
-              className="mt-5 h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              className="mt-5 h-8 px-2 text-debossed-sm"
               onClick={() => {
                 setFilterClass('');
                 setFilterQuery('');
@@ -892,10 +892,10 @@ export default function TAZoomProcess() {
           )}
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-border">
+        <div className="overflow-hidden rounded-xl border border-[#141517]">
           <div className="max-h-[600px] overflow-x-auto">
             <Table>
-              <TableHeader className="sticky top-0 z-10 backdrop-blur-md">
+              <TableHeader className="sticky top-0 z-10">
                 <TableRow>
                   <TableHead className="w-16 whitespace-nowrap font-bold">Ignore</TableHead>
                   {headers.map((header) => (
@@ -961,9 +961,9 @@ export default function TAZoomProcess() {
 
     return (
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[rgba(0,122,118,0.35)] bg-[rgba(0,122,118,0.11)] p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#141517] neo-in p-3">
           <div className="flex items-center gap-2 text-sm">
-            <AlertTriangle className="h-4 w-4 text-[#9be6e2]" />
+            <AlertTriangle className="h-4 w-4 status-all-table-text" />
             <span>
               <strong>{normalizedRows.unidentifiedIssues.length}</strong> unidentified row(s)
             </span>
@@ -987,7 +987,7 @@ export default function TAZoomProcess() {
 
         <div className="space-y-3">
           {normalizedRows.unidentifiedIssues.map((issue) => (
-            <details key={issue.id} className="rounded-xl border border-border bg-background p-4">
+            <details key={issue.id} className="rounded-xl border border-[#141517] neo-in p-4">
               <summary className="cursor-pointer list-none">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="space-y-1">
@@ -999,7 +999,7 @@ export default function TAZoomProcess() {
                   </Badge>
                 </div>
               </summary>
-              <pre className="mt-4 max-h-64 overflow-auto rounded-md bg-muted p-3 text-xs">{JSON.stringify(issue.raw, null, 2)}</pre>
+              <pre className="mt-4 max-h-64 overflow-auto rounded-md neo-in p-3 text-xs">{JSON.stringify(issue.raw, null, 2)}</pre>
             </details>
           ))}
         </div>
@@ -1008,16 +1008,16 @@ export default function TAZoomProcess() {
   };
 
   return (
-    <div className="animate-fade-in space-y-8 pb-20 ta-sand-theme ta-module-shell">
+    <div className="animate-fade-in space-y-8 pb-20  ta-module-shell">
       <div className="space-y-1">
-        <h2 className="text-3xl font-bold tracking-tight ta-sand-text-title">Zoom Processor</h2>
-        <p className="text-base ta-sand-text-secondary">Upload Zoom logs, review matches, and generate attendance.</p>
+        <h2 className="text-3xl font-bold tracking-tight text-debossed">Zoom Processor</h2>
+        <p className="text-base text-debossed-sm">Upload Zoom logs, review matches, and generate attendance.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        <Card className="ta-sand-card border-0 md:col-span-2 shadow-none">
-          <CardHeader className="pb-4 border-b border-[rgba(0,122,118,0.16)] mx-6 px-0 pt-6">
-            <CardTitle className="flex items-center gap-3 text-[15px] font-semibold ta-sand-text-title">
+        <Card className="neo-out border-0 md:col-span-2 shadow-none">
+          <CardHeader className="pb-4 border-b border-[#141517] mx-6 px-0 pt-6">
+            <CardTitle className="flex items-center gap-3 text-[15px] font-semibold text-debossed">
               Upload & Match
             </CardTitle>
           </CardHeader>
@@ -1030,18 +1030,18 @@ export default function TAZoomProcess() {
                   <Label
                     htmlFor="main-zoom-upload"
                     className={cn(
-                      'ta-sand-field upload-zone absolute inset-0 flex flex-col items-center justify-center cursor-pointer overflow-hidden group transition-all duration-300',
+                      'neo-in upload-zone absolute inset-0 flex flex-col items-center justify-center cursor-pointer overflow-hidden group transition-all duration-300',
                       zoomFile ? 'is-selected' : '',
                       isProcessing && 'opacity-50 cursor-not-allowed'
                     )}
                   >
                     {zoomFile ? (
-                      <div className="flex flex-col items-center gap-2 text-[var(--accent-glow)]">
+                      <div className="flex flex-col items-center gap-2 text-debossed-sm status-all-text">
                         <CheckCircle2 className="w-6 h-6" />
                         <span className="text-[13px] font-bold tracking-wide max-w-[180px] truncate">{zoomFile.name}</span>
                       </div>
                     ) : (
-                      <div className="flex flex-col items-center gap-3 group-hover:text-[var(--accent-glow)] transition-colors text-debossed">
+                      <div className="flex flex-col items-center gap-3 text-debossed status-all-text transition-colors">
                         <svg className="w-6 h-6 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" strokeLinecap="round" strokeLinejoin="round" />
                           <polyline points="17 8 12 3 7 8" strokeLinecap="round" strokeLinejoin="round" />
@@ -1074,7 +1074,7 @@ export default function TAZoomProcess() {
                 </div>
                 <div className="relative h-[110px]">
                   {useSavedRoster ? (
-                    <div className="ta-sand-field upload-zone is-selected absolute inset-0 flex flex-col items-center justify-center">
+                    <div className="neo-in upload-zone is-selected absolute inset-0 flex flex-col items-center justify-center">
                       <CheckCircle2 className="w-6 h-6" />
                       <span className="text-[13px] font-bold tracking-wide max-w-[180px] truncate">Using Saved Roster</span>
                     </div>
@@ -1094,18 +1094,18 @@ export default function TAZoomProcess() {
                       <Label
                         htmlFor="roster-upload"
                         className={cn(
-                          'ta-sand-field upload-zone absolute inset-0 flex flex-col items-center justify-center cursor-pointer overflow-hidden group transition-all duration-300',
+                          'neo-in upload-zone absolute inset-0 flex flex-col items-center justify-center cursor-pointer overflow-hidden group transition-all duration-300',
                           rosterFile ? 'is-selected' : '',
                           (isProcessing || useSavedRoster) && 'opacity-50 cursor-not-allowed'
                         )}
                       >
                         {rosterFile ? (
-                          <div className="flex flex-col items-center gap-2 text-[var(--accent-glow)]">
+                          <div className="flex flex-col items-center gap-2 text-debossed-sm status-all-text">
                             <CheckCircle2 className="w-6 h-6" />
                             <span className="text-[13px] font-bold tracking-wide max-w-[180px] truncate">{rosterFile.name}</span>
                           </div>
                         ) : (
-                          <div className="flex flex-col items-center gap-3 group-hover:text-[var(--accent-glow)] transition-colors text-debossed">
+                          <div className="flex flex-col items-center gap-3 text-debossed status-all-text transition-colors">
                             <FileSpreadsheet className="w-6 h-6 opacity-70" />
                             <span className="text-[13px] font-semibold tracking-wide uppercase">Select Roster</span>
                           </div>
@@ -1121,7 +1121,7 @@ export default function TAZoomProcess() {
               <button
                 type="button"
                 className={cn(
-                  'mt-8 h-[52px] w-full ta-sand-btn-primary flex items-center justify-center gap-3 text-[15px] tracking-wide uppercase',
+                  'mt-8 h-[52px] w-full neo-btn neo-out flex items-center justify-center gap-3 text-[15px] tracking-wide uppercase',
                   isProcessing && 'opacity-50 cursor-not-allowed pointer-events-none'
                 )}
                 onClick={() => processFile('review')} disabled={isProcessing}
@@ -1133,28 +1133,28 @@ export default function TAZoomProcess() {
           </CardContent>
         </Card>
 
-        <Card className={`ta-sand-card border-0 shadow-none ${step === 'upload' ? 'pointer-events-none opacity-50' : ''}`}>
-          <CardHeader className="pb-4 border-b border-[rgba(0,122,118,0.16)] mx-6 px-0 pt-6">
-            <CardTitle className="flex items-center gap-3 text-[15px] font-semibold ta-sand-text-title">
+        <Card className={`neo-out border-0 shadow-none ${step === 'upload' ? 'pointer-events-none opacity-50' : ''}`}>
+          <CardHeader className="pb-4 border-b border-[#141517] mx-6 px-0 pt-6">
+            <CardTitle className="flex items-center gap-3 text-[15px] font-semibold text-debossed">
               Parameters
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5 pt-6">
             <div className="space-y-2.5">
-              <Label className="uppercase text-[11px] font-bold text-[#5f6a74] tracking-wider">Custom Duration (mins)</Label>
-              <Input type="number" placeholder="Auto" value={manualDuration} onChange={(event) => setManualDuration(event.target.value)} className="ta-sand-field h-12" />
+              <Label className="uppercase text-[11px] font-bold text-debossed-sm tracking-wider">Custom Duration (mins)</Label>
+              <Input type="number" placeholder="Auto" value={manualDuration} onChange={(event) => setManualDuration(event.target.value)} className="neo-in h-12" />
             </div>
             <div className="space-y-2.5">
-              <Label className="uppercase text-[11px] font-bold text-[#5f6a74] tracking-wider">Namaz Break (mins)</Label>
-              <Input type="number" placeholder="0" value={namazBreak} onChange={(event) => setNamazBreak(event.target.value)} className="ta-sand-field h-12" />
+              <Label className="uppercase text-[11px] font-bold text-debossed-sm tracking-wider">Namaz Break (mins)</Label>
+              <Input type="number" placeholder="0" value={namazBreak} onChange={(event) => setNamazBreak(event.target.value)} className="neo-in h-12" />
             </div>
             <button
               type="button"
               className={cn(
                 'mt-8 w-full h-[52px] flex items-center justify-center gap-3 text-[15px] tracking-wide uppercase',
                 isProcessing || step === 'upload'
-                  ? 'ta-sand-field text-[#5f6a74] cursor-not-allowed'
-                  : 'ta-sand-btn-primary'
+                  ? 'neo-in text-debossed-sm cursor-not-allowed'
+                  : 'neo-btn neo-out'
               )}
               onClick={() => processFile('results')}
               disabled={isProcessing || step === 'upload'}
@@ -1177,12 +1177,12 @@ export default function TAZoomProcess() {
       </div>
 
       {data && (
-        <Card className="ta-sand-card animate-fade-in border-0 mt-8 shadow-none">
-          <CardHeader className="pb-4 border-b border-[rgba(0,122,118,0.16)] mx-6 px-0 pt-6">
+        <Card className="neo-out animate-fade-in border-0 mt-8 shadow-none">
+          <CardHeader className="pb-4 border-b border-[#141517] mx-6 px-0 pt-6">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <CardTitle className="text-[17px] font-semibold ta-sand-text-title">{step === 'review' ? 'Match Review' : 'Final Results'}</CardTitle>
-                <CardDescription className="ta-sand-text-secondary mt-1">
+                <CardTitle className="text-[17px] font-semibold text-debossed">{step === 'review' ? 'Match Review' : 'Final Results'}</CardTitle>
+                <CardDescription className="text-debossed-sm mt-1">
                   {data.rows ?? normalizedRows.rawRows.length} records processed. {step === 'review' && 'Review matches before finalizing.'}
                 </CardDescription>
               </div>
@@ -1215,9 +1215,9 @@ export default function TAZoomProcess() {
             </div>
 
             {diagnostics.integrityWarnings.length > 0 && (
-              <div className="mt-3 rounded-lg border border-[rgba(0,122,118,0.35)] bg-[rgba(0,122,118,0.1)] p-3 text-sm">
-                <p className="mb-2 font-semibold text-[#a8f5f1]">Integrity warnings</p>
-                <ul className="list-disc space-y-1 pl-5 text-[#a8f5f1]">
+              <div className="mt-3 rounded-lg border border-[#141517] neo-in p-3 text-sm">
+                <p className="mb-2 font-semibold status-excused-table-text">Integrity warnings</p>
+                <ul className="list-disc space-y-1 pl-5 status-excused-table-text">
                   {diagnostics.integrityWarnings.map((warning) => (
                     <li key={warning}>{warning}</li>
                   ))}
@@ -1227,7 +1227,7 @@ export default function TAZoomProcess() {
           </CardHeader>
           <CardContent className="pt-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="mb-6 h-auto w-full justify-start overflow-x-auto ta-sand-field p-1 border border-[rgba(0,122,118,0.16)] ta-sand-scrollbar">
+              <TabsList className="mb-6 h-auto w-full justify-start overflow-x-auto neo-in p-1 border border-[#141517]">
                 {step === 'review' ? (
                   <>
                     <TabsTrigger value="matches" className="rounded-lg">Matches</TabsTrigger>
@@ -1254,8 +1254,8 @@ export default function TAZoomProcess() {
               <TabsContent value="issues" className="animate-fade-in">
                 <div className="space-y-4">
                   {diagnostics.notInRosterCount > 0 && (
-                    <div className="rounded-lg border border-[rgba(0,122,118,0.24)] bg-[rgba(0,122,118,0.08)] p-3 text-sm">
-                      <p className="font-semibold text-[#89c8c5]">Students not in roster ({diagnostics.notInRosterCount})</p>
+                    <div className="rounded-lg border border-[#141517] neo-in p-3 text-sm">
+                      <p className="font-semibold status-all-table-text">Students not in roster ({diagnostics.notInRosterCount})</p>
                       <div className="mt-2 max-h-32 space-y-1 overflow-auto font-mono text-xs">
                         {normalizedRows.notInRosterIssues.slice(0, 30).map((item) => (
                           <div key={item.id}>

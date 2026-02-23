@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ta/ui/button';
 import { Input } from '@/components/ta/ui/input';
@@ -37,6 +37,8 @@ export default function SessionManagement() {
     const [startTime, setStartTime] = useState('');
     const [endTime, setEndTime] = useState('');
     const [isCreating, setIsCreating] = useState(false);
+    const startTimeInputRef = useRef<HTMLInputElement>(null);
+    const endTimeInputRef = useRef<HTMLInputElement>(null);
 
     // Edit dialog state
     const [editingSession, setEditingSession] = useState<Session | null>(null);
@@ -181,6 +183,18 @@ export default function SessionManagement() {
         }
     };
 
+    const openTimePicker = (inputRef: { current: HTMLInputElement | null }) => {
+        const input = inputRef.current;
+        if (!input) return;
+        const pickerInput = input as HTMLInputElement & { showPicker?: () => void };
+        if (typeof pickerInput.showPicker === 'function') {
+            pickerInput.showPicker();
+            return;
+        }
+        input.focus();
+        input.click();
+    };
+
     return (
         <div className="ta-module-shell grid gap-6 md:grid-cols-3">
             <Card className="md:col-span-1 h-fit ta-module-card">
@@ -232,7 +246,7 @@ export default function SessionManagement() {
                         <div className="flex items-center justify-between">
                             <label className="text-sm font-medium text-muted-foreground">Day of Week</label>
                             {selectedDate && day && !useCustomDay && (
-                                <span className="text-xs text-primary">Auto: {day}</span>
+                                <span className="text-xs text-debossed-sm status-all-text">Auto: {day}</span>
                             )}
                         </div>
                         <Select
@@ -271,24 +285,40 @@ export default function SessionManagement() {
                         <div className="space-y-1.5">
                             <label className="text-sm font-medium text-muted-foreground">Start Time</label>
                             <div className="relative">
-                                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                                <button
+                                    type="button"
+                                    onClick={() => openTimePicker(startTimeInputRef)}
+                                    className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-debossed-sm status-all-text transition-colors duration-300"
+                                    aria-label="Open start time picker"
+                                >
+                                    <Clock className="h-4 w-4" />
+                                </button>
                                 <Input
                                     type="time"
                                     value={startTime}
                                     onChange={e => setStartTime(e.target.value)}
                                     className="pl-10"
+                                    ref={startTimeInputRef}
                                 />
                             </div>
                         </div>
                         <div className="space-y-1.5">
                             <label className="text-sm font-medium text-muted-foreground">End Time</label>
                             <div className="relative">
-                                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                                <button
+                                    type="button"
+                                    onClick={() => openTimePicker(endTimeInputRef)}
+                                    className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-debossed-sm status-all-text transition-colors duration-300"
+                                    aria-label="Open end time picker"
+                                >
+                                    <Clock className="h-4 w-4" />
+                                </button>
                                 <Input
                                     type="time"
                                     value={endTime}
                                     onChange={e => setEndTime(e.target.value)}
                                     className="pl-10"
+                                    ref={endTimeInputRef}
                                 />
                             </div>
                         </div>
@@ -312,8 +342,7 @@ export default function SessionManagement() {
                     ) : sessions.length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground">No sessions created yet</div>
                     ) : (
-                        <div className="rounded-md border overflow-x-auto">
-                            <Table>
+                            <Table scrollClassName="overflow-x-auto">
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead className="w-16">#</TableHead>
@@ -326,7 +355,7 @@ export default function SessionManagement() {
                                 <TableBody>
                                     {sessions.map((s) => (
                                         <TableRow key={s.id}>
-                                            <TableCell className="font-bold text-primary">{s.session_number}</TableCell>
+                                            <TableCell className="font-bold status-all-table-text">{s.session_number}</TableCell>
                                             <TableCell>{format(new Date(s.session_date), 'PPP')}</TableCell>
                                             <TableCell>{s.day_of_week}</TableCell>
                                             <TableCell className="text-sm text-muted-foreground">
@@ -338,17 +367,16 @@ export default function SessionManagement() {
                                             </TableCell>
                                             <TableCell className="text-right space-x-1">
                                                 <Button variant="ghost" size="icon" onClick={() => openEditDialog(s)}>
-                                                    <Pencil className="h-4 w-4 text-primary" />
+                                                    <Pencil className="h-4 w-4 text-debossed-sm" />
                                                 </Button>
-                                                <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)} className="hover:bg-destructive/10">
-                                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                                <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)}>
+                                                    <Trash2 className="h-4 w-4 status-absent-text" />
                                                 </Button>
                                             </TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
                             </Table>
-                        </div>
                     )}
                 </CardContent>
             </Card>

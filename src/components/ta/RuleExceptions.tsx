@@ -300,8 +300,7 @@ export default function RuleExceptions() {
                     {isLoading ? (
                         <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>
                     ) : (
-                        <div className="rounded-md border overflow-x-auto">
-                            <Table>
+                            <Table scrollClassName="overflow-x-auto">
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Student</TableHead>
@@ -327,7 +326,7 @@ export default function RuleExceptions() {
                                             <TableCell className="max-w-[200px] truncate" title={ex.notes || ''}>{ex.notes}</TableCell>
                                             <TableCell className="text-right">
                                                 <Button variant="ghost" size="icon" onClick={() => deleteException(ex.id)}>
-                                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                                    <Trash2 className="h-4 w-4 status-absent-text" />
                                                 </Button>
                                             </TableCell>
                                         </TableRow>
@@ -341,7 +340,6 @@ export default function RuleExceptions() {
                                     )}
                                 </TableBody>
                             </Table>
-                        </div>
                     )}
                 </CardContent>
             </Card>
@@ -356,11 +354,13 @@ export default function RuleExceptions() {
                             </CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                            <Badge variant="outline">{rosterStudents.length} Roster Students</Badge>
-                            <Badge variant="outline" className={warnedCount > 0 ? 'border-[rgba(0,122,118,0.35)] bg-[rgba(0,122,118,0.12)] text-[#9be6e2]' : ''}>
+                            <Badge variant="outline" className="text-debossed-sm">
+                                {rosterStudents.length} Roster Students
+                            </Badge>
+                            <Badge variant="outline" className={warnedCount > 0 ? 'status-all-table-text' : 'text-debossed-sm'}>
                                 {warnedCount} Warned
                             </Badge>
-                            <Badge variant="outline" className={expiredCount > 0 ? 'border-red-500/40 bg-red-500/10 text-red-600' : ''}>
+                            <Badge variant="outline" className={expiredCount > 0 ? 'status-absent-table-text' : 'text-debossed-sm'}>
                                 {expiredCount} Countdown Complete
                             </Badge>
                         </div>
@@ -379,8 +379,7 @@ export default function RuleExceptions() {
                     {isRosterLoading ? (
                         <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>
                     ) : (
-                        <div className="rounded-md border overflow-x-auto">
-                            <Table>
+                            <Table scrollClassName="overflow-x-auto">
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Class</TableHead>
@@ -454,7 +453,6 @@ export default function RuleExceptions() {
                                     )}
                                 </TableBody>
                             </Table>
-                        </div>
                     )}
                 </CardContent>
             </Card>
