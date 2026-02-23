@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import type { ZoomReportLoadRequest, ZoomSessionReport } from '@/lib/zoom-session-report';
 
 import AttendanceMarking from './AttendanceMarking';
 import ConsolidatedView from './ConsolidatedView';
@@ -74,6 +75,8 @@ export default function TAPortal() {
   const navigate = useNavigate();
   const [activeModule, setActiveModule] = useState<PortalModule | null>(null);
   const [attendanceWorkspaceTab, setAttendanceWorkspaceTab] = useState<AttendanceWorkspaceTab>('zoom');
+  const [latestFinalZoomReport, setLatestFinalZoomReport] = useState<ZoomSessionReport | null>(null);
+  const [pendingZoomReportLoad, setPendingZoomReportLoad] = useState<ZoomReportLoadRequest | null>(null);
 
   const showAttendanceSwitch = activeModule === 'zoom' || activeModule === 'attendance';
 
@@ -161,7 +164,11 @@ export default function TAPortal() {
             )}
             aria-hidden={attendanceWorkspaceTab !== 'zoom'}
           >
-            <TAZoomProcess />
+            <TAZoomProcess
+              onFinalReportReady={setLatestFinalZoomReport}
+              reportLoadRequest={pendingZoomReportLoad}
+              onReportLoadHandled={() => setPendingZoomReportLoad(null)}
+            />
           </div>
           <div
             className={cn(
@@ -170,7 +177,7 @@ export default function TAPortal() {
             )}
             aria-hidden={attendanceWorkspaceTab !== 'attendance'}
           >
-            <AttendanceMarking />
+            <AttendanceMarking latestFinalZoomReport={latestFinalZoomReport} />
           </div>
         </div>
       );
@@ -178,7 +185,16 @@ export default function TAPortal() {
 
     switch (activeModule) {
       case 'sessions':
-        return <SessionManagement />;
+        return (
+          <SessionManagement
+            onOpenZoomReport={(request) => {
+              setPendingZoomReportLoad(request);
+              setLatestFinalZoomReport(request.report);
+              setAttendanceWorkspaceTab('zoom');
+              setActiveModule('zoom');
+            }}
+          />
+        );
       case 'consolidated':
         return <ConsolidatedView isActive={true} />;
       case 'exceptions':

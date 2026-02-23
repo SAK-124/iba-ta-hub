@@ -23,6 +23,7 @@ import { syncPublicAttendanceSnapshot } from '@/lib/public-attendance-sync';
 import { emitAttendanceDataUpdated, subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { Loader2, Save } from 'lucide-react';
 import { sendNtfyNotification } from '@/lib/ntfy';
+import type { ZoomSessionReport } from '@/lib/zoom-session-report';
 
 type AttendanceStatus = 'present' | 'absent' | 'excused';
 type AttendanceFilterToken = 'present' | 'absent' | 'penalized';
@@ -63,7 +64,11 @@ interface AttendanceRowWithRoster extends AttendanceRow {
 
 const AUTO_SYNC_DELAY_MS = 1200;
 
-export default function AttendanceMarking() {
+interface AttendanceMarkingProps {
+  latestFinalZoomReport?: ZoomSessionReport | null;
+}
+
+export default function AttendanceMarking({ latestFinalZoomReport = null }: AttendanceMarkingProps) {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [absentErps, setAbsentErps] = useState('');
@@ -312,6 +317,27 @@ export default function AttendanceMarking() {
       const { error: insertError } = await supabase.from('attendance').insert(newRecords);
       if (insertError) throw insertError;
 
+      let zoomReportSaved = false;
+      if (latestFinalZoomReport) {
+        const { error: reportSaveError } = await supabase
+          .from('sessions')
+          .update({
+            zoom_report: latestFinalZoomReport,
+            zoom_report_saved_at: new Date().toISOString(),
+          })
+          .eq('id', selectedSessionId);
+
+        if (reportSaveError) {
+          toast.warning('Attendance saved, but failed to store the Zoom report.', {
+            description: reportSaveError.message,
+          });
+        } else {
+          zoomReportSaved = true;
+        }
+      } else {
+        toast.warning('Attendance saved, but no final Zoom report was loaded to store for this session.');
+      }
+
       const submitMode: 'initial' | 'overwrite' =
         forceOverwrite || attendanceData.length > 0 ? 'overwrite' : 'initial';
       const absentCountSubmitted = newRecords.filter((record) => record.status === 'absent').length;
@@ -341,7 +367,7 @@ export default function AttendanceMarking() {
         }
       });
 
-      toast.success('Attendance marked successfully');
+      toast.success(zoomReportSaved ? 'Attendance marked and Zoom report saved' : 'Attendance marked successfully');
       emitAttendanceDataUpdated('attendance_marking_submit');
       scheduleCanonicalSync('attendance_marking_submit');
 

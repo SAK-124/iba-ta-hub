@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { cn } from '@/lib/utils';
+import { normalizeZoomSessionReport, type ZoomReportLoadRequest, type ZoomSessionReport } from '@/lib/zoom-session-report';
 import * as XLSX from 'xlsx';
 
 type GenericRow = Record<string, unknown>;
@@ -83,6 +84,12 @@ interface ZoomWorkspaceCache {
   filterErp?: string;
 }
 
+interface TAZoomProcessProps {
+  onFinalReportReady?: (report: ZoomSessionReport | null) => void;
+  reportLoadRequest?: ZoomReportLoadRequest | null;
+  onReportLoadHandled?: () => void;
+}
+
 const ERP_REGEX = /(\d{5})/;
 let zoomWorkspaceCache: ZoomWorkspaceCache | null = null;
 
@@ -99,6 +106,18 @@ const toRecordArray = (value: unknown): GenericRow[] => {
     return { value: row };
   });
 };
+
+const toProcessedData = (value: ProcessedData): ProcessedData => ({
+  attendance_rows: toRecordArray(value.attendance_rows),
+  issues_rows: toRecordArray(value.issues_rows),
+  absent_rows: toRecordArray(value.absent_rows),
+  penalties_rows: toRecordArray(value.penalties_rows),
+  matches_rows: toRecordArray(value.matches_rows),
+  raw_rows: toRecordArray(value.raw_rows),
+  total_class_minutes: value.total_class_minutes,
+  effective_threshold_minutes: value.effective_threshold_minutes,
+  rows: value.rows,
+});
 
 const pickFirst = (row: GenericRow, keys: string[]) => {
   for (const key of keys) {
@@ -251,7 +270,11 @@ const rowToSearchText = (row: GenericRow) =>
     .join(' ')
     .toLowerCase();
 
-export default function TAZoomProcess() {
+export default function TAZoomProcess({
+  onFinalReportReady,
+  reportLoadRequest,
+  onReportLoadHandled,
+}: TAZoomProcessProps = {}) {
   const cached = zoomWorkspaceCache;
 
   const [data, setData] = useState<ProcessedData | null>(() => cached?.data ?? null);
@@ -371,6 +394,44 @@ export default function TAZoomProcess() {
 
     return () => window.clearInterval(intervalId);
   }, [isCalculating]);
+
+  useEffect(() => {
+    if (!reportLoadRequest) return;
+
+    const normalizedReport = normalizeZoomSessionReport(reportLoadRequest.report);
+    if (!normalizedReport) {
+      toast.error('Saved Zoom report is invalid and could not be loaded.');
+      onReportLoadHandled?.();
+      return;
+    }
+
+    const processedFromSaved: ProcessedData = {
+      attendance_rows: normalizedReport.attendance_rows,
+      issues_rows: normalizedReport.issues_rows,
+      absent_rows: normalizedReport.absent_rows,
+      penalties_rows: normalizedReport.penalties_rows,
+      matches_rows: normalizedReport.matches_rows,
+      raw_rows: normalizedReport.raw_rows,
+      total_class_minutes: normalizedReport.total_class_minutes,
+      effective_threshold_minutes: normalizedReport.effective_threshold_minutes,
+      rows: normalizedReport.rows,
+    };
+
+    setData(toProcessedData(processedFromSaved));
+    setStep('results');
+    setActiveTab('attendance');
+    setFilterClass('');
+    setFilterQuery('');
+    setPenaltiesMinusOneOnly(false);
+    setIgnoredKeys(new Set());
+    setIsProcessing(false);
+    setIsCalculating(false);
+    setZoomFile(null);
+    setRosterFile(null);
+    onFinalReportReady?.(normalizedReport);
+    toast.success(`Loaded saved Zoom report for session #${reportLoadRequest.sessionNumber}`);
+    onReportLoadHandled?.();
+  }, [reportLoadRequest, onFinalReportReady, onReportLoadHandled]);
 
   const rosterErpSet = useMemo(() => new Set(Object.keys(rosterReference)), [rosterReference]);
   const rosterCount = Object.keys(rosterReference).length;
@@ -648,21 +709,21 @@ export default function TAZoomProcess() {
       }
 
       const nextData = parsedResult as ProcessedData;
-
-      setData({
-        attendance_rows: toRecordArray(nextData.attendance_rows),
-        issues_rows: toRecordArray(nextData.issues_rows),
-        absent_rows: toRecordArray(nextData.absent_rows),
-        penalties_rows: toRecordArray(nextData.penalties_rows),
-        matches_rows: toRecordArray(nextData.matches_rows),
-        raw_rows: toRecordArray(nextData.raw_rows),
-        total_class_minutes: nextData.total_class_minutes,
-        effective_threshold_minutes: nextData.effective_threshold_minutes,
-        rows: nextData.rows,
-      });
+      const nextProcessedData = toProcessedData(nextData);
+      setData(nextProcessedData);
 
       setStep(targetStep);
       setActiveTab(targetStep === 'review' ? 'matches' : 'attendance');
+
+      if (targetStep === 'results') {
+        const finalReport = normalizeZoomSessionReport({
+          ...nextProcessedData,
+          schema_version: 1,
+          generated_at: new Date().toISOString(),
+          source_zoom_file_name: zoomFile?.name,
+        });
+        onFinalReportReady?.(finalReport);
+      }
 
       toast.dismiss(loadingToast);
       toast.success(targetStep === 'review' ? 'Match analysis complete' : 'Attendance generated');
@@ -686,6 +747,7 @@ export default function TAZoomProcess() {
     event.target.value = '';
     setStep('upload');
     setData(null);
+    onFinalReportReady?.(null);
   };
 
   const renderTable = (

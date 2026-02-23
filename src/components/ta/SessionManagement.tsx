@@ -9,8 +9,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ta/ui/popo
 import { Calendar } from '@/components/ta/ui/calendar';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ta/ui/dialog';
 import { toast } from 'sonner';
-import { Loader2, Plus, Trash2, CalendarIcon, Clock, Pencil } from 'lucide-react';
+import { Loader2, Plus, Trash2, CalendarIcon, Clock, Pencil, Eye, EyeOff } from 'lucide-react';
 import { format, getDay, parse } from 'date-fns';
+import { normalizeZoomSessionReport, type ZoomReportLoadRequest } from '@/lib/zoom-session-report';
 import { cn } from '@/lib/utils';
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -22,9 +23,15 @@ interface Session {
     day_of_week: string;
     start_time?: string | null;
     end_time?: string | null;
+    zoom_report?: unknown;
+    zoom_report_saved_at?: string | null;
 }
 
-export default function SessionManagement() {
+interface SessionManagementProps {
+    onOpenZoomReport?: (request: ZoomReportLoadRequest) => void;
+}
+
+export default function SessionManagement({ onOpenZoomReport }: SessionManagementProps = {}) {
     const [sessions, setSessions] = useState<Session[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -140,6 +147,23 @@ export default function SessionManagement() {
         setEditDay(session.day_of_week);
         setEditStartTime(session.start_time || '');
         setEditEndTime(session.end_time || '');
+    };
+
+    const handleOpenSavedReport = (session: Session) => {
+        if (!onOpenZoomReport) return;
+
+        const report = normalizeZoomSessionReport(session.zoom_report);
+        if (!report) {
+            toast.error('No saved Zoom report found for this session.');
+            return;
+        }
+
+        onOpenZoomReport({
+            sessionId: session.id,
+            sessionNumber: session.session_number,
+            sessionDate: session.session_date,
+            report,
+        });
     };
 
     const handleSaveEdit = async () => {
@@ -349,32 +373,49 @@ export default function SessionManagement() {
                                         <TableHead>Date</TableHead>
                                         <TableHead>Day</TableHead>
                                         <TableHead>Time</TableHead>
-                                        <TableHead className="text-right w-28">Actions</TableHead>
+                                        <TableHead className="text-right w-36">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {sessions.map((s) => (
-                                        <TableRow key={s.id}>
-                                            <TableCell className="font-bold status-all-table-text">{s.session_number}</TableCell>
-                                            <TableCell>{format(new Date(s.session_date), 'PPP')}</TableCell>
-                                            <TableCell>{s.day_of_week}</TableCell>
-                                            <TableCell className="text-sm text-muted-foreground">
-                                                {s.start_time || s.end_time ? (
-                                                    <>
-                                                        {formatTime(s.start_time)} - {formatTime(s.end_time)}
-                                                    </>
-                                                ) : '-'}
-                                            </TableCell>
-                                            <TableCell className="text-right space-x-1">
-                                                <Button variant="ghost" size="icon" onClick={() => openEditDialog(s)}>
-                                                    <Pencil className="h-4 w-4 text-debossed-sm" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)}>
-                                                    <Trash2 className="h-4 w-4 status-absent-text" />
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
+                                    {sessions.map((s) => {
+                                        const hasSavedReport = !!normalizeZoomSessionReport(s.zoom_report);
+
+                                        return (
+                                            <TableRow key={s.id}>
+                                                <TableCell className="font-bold status-all-table-text">{s.session_number}</TableCell>
+                                                <TableCell>{format(new Date(s.session_date), 'PPP')}</TableCell>
+                                                <TableCell>{s.day_of_week}</TableCell>
+                                                <TableCell className="text-sm text-muted-foreground">
+                                                    {s.start_time || s.end_time ? (
+                                                        <>
+                                                            {formatTime(s.start_time)} - {formatTime(s.end_time)}
+                                                        </>
+                                                    ) : '-'}
+                                                </TableCell>
+                                                <TableCell className="text-right space-x-1">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => hasSavedReport && handleOpenSavedReport(s)}
+                                                        disabled={!hasSavedReport}
+                                                        title={hasSavedReport ? 'Open saved Zoom report' : 'No saved Zoom report'}
+                                                    >
+                                                        {hasSavedReport ? (
+                                                            <Eye className="h-4 w-4 text-debossed-sm" />
+                                                        ) : (
+                                                            <EyeOff className="h-4 w-4 text-muted-foreground/60" />
+                                                        )}
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(s)}>
+                                                        <Pencil className="h-4 w-4 text-debossed-sm" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)}>
+                                                        <Trash2 className="h-4 w-4 status-absent-text" />
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
                                 </TableBody>
                             </Table>
                     )}

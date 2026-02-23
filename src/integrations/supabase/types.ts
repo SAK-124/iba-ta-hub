@@ -245,6 +245,8 @@ export type Database = {
           end_time: string | null
           id: string
           start_time: string | null
+          zoom_report: Json | null
+          zoom_report_saved_at: string | null
           session_date: string
           session_number: number
         }
@@ -254,6 +256,8 @@ export type Database = {
           end_time?: string | null
           id?: string
           start_time?: string | null
+          zoom_report?: Json | null
+          zoom_report_saved_at?: string | null
           session_date: string
           session_number: number
         }
@@ -263,6 +267,8 @@ export type Database = {
           end_time?: string | null
           id?: string
           start_time?: string | null
+          zoom_report?: Json | null
+          zoom_report_saved_at?: string | null
           session_date?: string
           session_number?: number
         }
