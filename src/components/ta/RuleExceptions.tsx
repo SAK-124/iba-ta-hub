@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
 import { Button } from '@/components/ta/ui/button';
 import { Input } from '@/components/ta/ui/input';
@@ -12,23 +11,15 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ta/ui/label';
 import { Textarea } from '@/components/ta/ui/textarea';
 import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
+import {
+    createRuleException,
+    deleteRuleException,
+    listRuleExceptions,
+    type RuleExceptionRow,
+} from '@/features/attendance';
+import { listRoster, type RosterRow } from '@/features/roster';
 
-interface RuleExceptionRow {
-    id: string;
-    erp: string;
-    student_name: string | null;
-    class_no: string | null;
-    issue_type: string;
-    assigned_day: string;
-    notes: string | null;
-}
-
-interface RosterStudentRow {
-    id: string;
-    erp: string;
-    student_name: string;
-    class_no: string;
-}
+type RosterStudentRow = Pick<RosterRow, 'id' | 'erp' | 'student_name' | 'class_no'>;
 
 type CameraWarningsMap = Record<string, number>;
 
@@ -94,33 +85,28 @@ export default function RuleExceptions() {
 
     const fetchExceptions = async () => {
         setIsLoading(true);
-        const { data, error } = await supabase
-            .from('rule_exceptions')
-            .select('*')
-            .order('created_at', { ascending: false });
-
-        if (!error && data) {
+        try {
+            const data = await listRuleExceptions();
             setExceptions(data as unknown as RuleExceptionRow[]);
+        } catch {
+            toast.error('Failed to load exceptions');
         }
         setIsLoading(false);
     };
 
     const fetchRosterStudents = async () => {
         setIsRosterLoading(true);
-        const { data, error } = await supabase
-            .from('students_roster')
-            .select('id, erp, student_name, class_no')
-            .order('class_no', { ascending: true })
-            .order('student_name', { ascending: true });
-
-        if (error) {
-            toast.error(`Failed to load roster: ${error.message}`);
+        try {
+            const rosterData = await listRoster();
+            const data = rosterData.rows
+                .map((row) => ({ id: row.id, erp: row.erp, student_name: row.student_name, class_no: row.class_no }))
+                .sort((a, b) => a.class_no.localeCompare(b.class_no) || a.student_name.localeCompare(b.student_name));
+            setRosterStudents(data as RosterStudentRow[]);
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            toast.error(`Failed to load roster: ${message}`);
             setRosterStudents([]);
-            setIsRosterLoading(false);
-            return;
         }
-
-        setRosterStudents((data || []) as RosterStudentRow[]);
         setIsRosterLoading(false);
     };
 
@@ -129,8 +115,7 @@ export default function RuleExceptions() {
         setIsAdding(true);
 
         try {
-            // Fetch student name first
-            const { data: student } = await supabase.from('students_roster').select('student_name, class_no').eq('erp', newErp).single();
+            const student = rosterStudents.find((item) => item.erp === newErp);
 
             const payload = {
                 erp: newErp,
@@ -141,8 +126,7 @@ export default function RuleExceptions() {
                 notes: newNotes
             };
 
-            const { error } = await supabase.from('rule_exceptions').insert(payload);
-            if (error) throw error;
+            await createRuleException(payload);
 
             toast.success('Exception added');
             setOpenDialog(false);
@@ -159,12 +143,12 @@ export default function RuleExceptions() {
     };
 
     const deleteException = async (id: string) => {
-        const { error } = await supabase.from('rule_exceptions').delete().eq('id', id);
-        if (error) {
-            toast.error('Failed to delete');
-        } else {
+        try {
+            await deleteRuleException(id);
             toast.success('Removed exception');
             setExceptions(prev => prev.filter(e => e.id !== id));
+        } catch {
+            toast.error('Failed to delete');
         }
     };
 

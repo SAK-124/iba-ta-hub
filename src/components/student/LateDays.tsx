@@ -4,7 +4,6 @@ import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
 import { useERP } from '@/lib/erp-context';
-import { supabase } from '@/integrations/supabase/client';
 import { Tables } from '@/integrations/supabase/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { sendNtfyNotification } from '@/lib/ntfy';
+import { claimLateDays, listStudentLateDaysData } from '@/features/late-days';
 
 type LateDayAssignment = Tables<'late_day_assignments'>;
 type LateDayClaim = Tables<'late_day_claims'>;
@@ -181,44 +181,20 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
 
     setIsLoading(true);
 
-    const [assignmentResponse, claimsResponse, adjustmentResponse] = await Promise.all([
-      supabase
-        .from('late_day_assignments')
-        .select('*')
-        .order('active', { ascending: false })
-        .order('due_at', { ascending: true, nullsFirst: false }),
-      supabase
-        .from('late_day_claims')
-        .select('*')
-        .order('claimed_at', { ascending: false }),
-      supabase
-        .from('late_day_adjustments')
-        .select('*')
-        .order('created_at', { ascending: false }),
-    ]);
-
-    if (assignmentResponse.error) {
-      toast.error(`Failed to load late-day assignments: ${assignmentResponse.error.message}`);
+    try {
+      const data = await listStudentLateDaysData();
+      setAssignments(data.assignments ?? []);
+      setClaims(data.claims ?? []);
+      setAdjustments(data.adjustments ?? []);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to load late-day data: ${message}`);
       setAssignments([]);
-    } else {
-      setAssignments(assignmentResponse.data ?? []);
-    }
-
-    if (claimsResponse.error) {
-      toast.error(`Failed to load late-day claims: ${claimsResponse.error.message}`);
       setClaims([]);
-    } else {
-      setClaims(claimsResponse.data ?? []);
-    }
-
-    if (adjustmentResponse.error) {
-      toast.error(`Failed to load late-day grants: ${adjustmentResponse.error.message}`);
       setAdjustments([]);
-    } else {
-      setAdjustments(adjustmentResponse.data ?? []);
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   useEffect(() => {
@@ -251,18 +227,16 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
     }
 
     setIsClaiming(true);
-    const { data, error } = await supabase.rpc('claim_late_days', {
-      p_assignment_id: selectedSummary.assignment.id,
-      p_days: days,
-    });
-
-    if (error) {
-      toast.error(error.message);
+    let payload: ClaimLateDaysResult | null = null;
+    try {
+      const result = await claimLateDays(selectedSummary.assignment.id, days);
+      payload = (result.data ?? null) as ClaimLateDaysResult | null;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(message);
       setIsClaiming(false);
       return;
     }
-
-    const payload = (data ?? null) as ClaimLateDaysResult | null;
     if (payload?.claim) {
       setClaims((prev) => [payload.claim as LateDayClaim, ...prev]);
     } else {

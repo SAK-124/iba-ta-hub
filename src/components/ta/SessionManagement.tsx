@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ta/ui/button';
 import { Input } from '@/components/ta/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ta/ui/select';
@@ -13,19 +12,17 @@ import { Loader2, Plus, Trash2, CalendarIcon, Clock, Pencil, Eye, EyeOff } from 
 import { format, getDay, parse } from 'date-fns';
 import { normalizeZoomSessionReport, type ZoomReportLoadRequest } from '@/lib/zoom-session-report';
 import { cn } from '@/lib/utils';
+import {
+    createSession,
+    deleteSession,
+    listSessions,
+    updateSession,
+    type SessionRow,
+} from '@/features/sessions';
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-interface Session {
-    id: string;
-    session_number: number;
-    session_date: string;
-    day_of_week: string;
-    start_time?: string | null;
-    end_time?: string | null;
-    zoom_report?: unknown;
-    zoom_report_saved_at?: string | null;
-}
+type Session = SessionRow;
 
 interface SessionManagementProps {
     onOpenZoomReport?: (request: ZoomReportLoadRequest) => void;
@@ -79,8 +76,8 @@ export default function SessionManagement({ onOpenZoomReport }: SessionManagemen
 
     const fetchSessions = async () => {
         setIsLoading(true);
-        const { data } = await supabase.from('sessions').select('*').order('session_number', { ascending: false });
-        if (data) setSessions(data as Session[]);
+        const data = await listSessions();
+        setSessions(data as Session[]);
         setIsLoading(false);
     };
 
@@ -95,25 +92,21 @@ export default function SessionManagement({ onOpenZoomReport }: SessionManagemen
 
         setIsCreating(true);
         try {
-            const insertData: any = {
+            const insertData = {
                 session_number: parseInt(sessionNum),
                 session_date: format(selectedDate, 'yyyy-MM-dd'),
                 day_of_week: finalDay,
+                start_time: startTime || undefined,
+                end_time: endTime || undefined,
             };
-
-            // Only add times if they have values
-            if (startTime) insertData.start_time = startTime;
-            if (endTime) insertData.end_time = endTime;
-
-            const { error } = await supabase.from('sessions').insert(insertData);
-
-            if (error) throw error;
+            await createSession(insertData);
 
             toast.success('Session created');
             resetForm();
-            fetchSessions();
-        } catch (error: any) {
-            toast.error('Failed to create session: ' + error.message);
+            await fetchSessions();
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            toast.error('Failed to create session: ' + message);
         } finally {
             setIsCreating(false);
         }
@@ -131,12 +124,12 @@ export default function SessionManagement({ onOpenZoomReport }: SessionManagemen
 
     const handleDelete = async (id: string) => {
         if (!confirm('Are you sure? This will delete the session. Attendance data will remain but become orphaned.')) return;
-        const { error } = await supabase.from('sessions').delete().eq('id', id);
-        if (error) {
-            toast.error('Failed to delete');
-        } else {
+        try {
+            await deleteSession(id);
             toast.success('Session deleted');
-            fetchSessions();
+            await fetchSessions();
+        } catch {
+            toast.error('Failed to delete');
         }
     };
 
@@ -171,26 +164,21 @@ export default function SessionManagement({ onOpenZoomReport }: SessionManagemen
 
         setIsSaving(true);
         try {
-            const updateData: any = {
+            const updateData = {
                 session_number: parseInt(editSessionNum),
                 session_date: format(editDate, 'yyyy-MM-dd'),
                 day_of_week: editDay,
                 start_time: editStartTime || null,
                 end_time: editEndTime || null,
             };
-
-            const { error } = await supabase
-                .from('sessions')
-                .update(updateData)
-                .eq('id', editingSession.id);
-
-            if (error) throw error;
+            await updateSession(editingSession.id, updateData);
 
             toast.success('Session updated (attendance data preserved)');
             setEditingSession(null);
-            fetchSessions();
-        } catch (error: any) {
-            toast.error('Failed to update: ' + error.message);
+            await fetchSessions();
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            toast.error('Failed to update: ' + message);
         } finally {
             setIsSaving(false);
         }

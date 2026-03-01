@@ -20,11 +20,11 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
 import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { cn } from '@/lib/utils';
 import { normalizeZoomSessionReport, type ZoomReportLoadRequest, type ZoomSessionReport } from '@/lib/zoom-session-report';
 import * as XLSX from 'xlsx';
+import { getCurrentSessionEmail, listRosterReference } from '@/features/zoom';
 
 type GenericRow = Record<string, unknown>;
 
@@ -322,15 +322,17 @@ export default function TAZoomProcess({
   };
 
   const loadReferenceData = async () => {
-    const rosterRes = await supabase.from('students_roster').select('erp, student_name, class_no');
-
-    if (rosterRes.error) {
-      toast.error(`Failed to load roster reference: ${rosterRes.error.message}`);
+    let rosterRows: RosterReference[];
+    try {
+      rosterRows = await listRosterReference();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to load roster reference: ${message}`);
       return;
     }
 
     const map: Record<string, RosterReference> = {};
-    for (const row of (rosterRes.data || []) as RosterReference[]) {
+    for (const row of rosterRows) {
       map[row.erp] = row;
     }
     setRosterReference(map);
@@ -576,27 +578,12 @@ export default function TAZoomProcess({
 
   const fetchSavedRosterBlob = async (): Promise<Blob | null> => {
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-
-      if (sessionError) {
-        throw new Error(`Authentication error: ${sessionError.message}`);
-      }
-
-      if (!sessionData?.session) {
+      const actorEmail = await getCurrentSessionEmail();
+      if (!actorEmail) {
         throw new Error('Not authenticated. Please log in again.');
       }
 
-      const { data: students, error } = await supabase
-        .from('students_roster')
-        .select('class_no, student_name, erp');
-
-      if (error) {
-        if (error.code === 'PGRST301' || error.message.includes('permission')) {
-          throw new Error('Permission denied. You may not have TA access.');
-        }
-        throw new Error(`Database query failed: ${error.message}`);
-      }
-
+      const students = await listRosterReference();
       if (!students || students.length === 0) {
         throw new Error('No students found in saved roster. Upload roster first in Roster Management.');
       }

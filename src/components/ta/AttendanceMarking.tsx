@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ta/ui/button';
 import { Textarea } from '@/components/ta/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ta/ui/select';
@@ -19,48 +18,29 @@ import {
   AlertDialogTitle,
 } from '@/components/ta/ui/alert-dialog';
 import { toast } from 'sonner';
-import { syncPublicAttendanceSnapshot } from '@/lib/public-attendance-sync';
 import { emitAttendanceDataUpdated, subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { Loader2, Save } from 'lucide-react';
 import { sendNtfyNotification } from '@/lib/ntfy';
 import type { ZoomSessionReport } from '@/lib/zoom-session-report';
+import {
+  deleteAttendanceBySession,
+  insertAttendance,
+  listAttendanceBySession,
+  listRoster,
+  listSessions,
+  updateAttendancePenalty,
+  updateAttendanceStatus,
+  updateSessionZoomReport,
+  upsertAttendance,
+  type AttendanceInsert,
+  type AttendanceRowWithRoster as AttendanceRow,
+  type AttendanceStatus,
+  type RosterRow,
+  type SessionRow,
+} from '@/features/attendance';
+import { syncPublicAttendance } from '@/features/public-attendance';
 
-type AttendanceStatus = 'present' | 'absent' | 'excused';
 type AttendanceFilterToken = 'present' | 'absent' | 'penalized';
-
-interface SessionRow {
-  id: string;
-  session_number: number;
-  session_date: string;
-}
-
-interface RosterRow {
-  id: string;
-  class_no: string;
-  student_name: string;
-  erp: string;
-}
-
-interface AttendanceRow {
-  id: string;
-  session_id: string;
-  erp: string;
-  status: AttendanceStatus;
-  naming_penalty: boolean;
-  student_name?: string;
-  class_no?: string;
-  students_roster?: {
-    student_name?: string;
-    class_no?: string;
-  } | null;
-}
-
-interface AttendanceRowWithRoster extends AttendanceRow {
-  students_roster?: {
-    student_name?: string;
-    class_no?: string;
-  } | null;
-}
 
 const AUTO_SYNC_DELAY_MS = 1200;
 
@@ -124,49 +104,35 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
   }, [selectedSessionId]);
 
   const fetchSessions = async () => {
-    const { data, error } = await supabase
-      .from('sessions')
-      .select('*')
-      .order('session_number', { ascending: false });
-
-    if (error) {
-      toast.error(`Failed to load sessions: ${error.message}`);
+    try {
+      const data = await listSessions();
+      setSessions((data || []) as SessionRow[]);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to load sessions: ${message}`);
       return;
     }
-
-    setSessions((data || []) as SessionRow[]);
   };
 
   const fetchRoster = async (): Promise<RosterRow[]> => {
-    const { data, error } = await supabase.from('students_roster').select('*');
-
-    if (error) {
-      toast.error(`Failed to load roster: ${error.message}`);
+    try {
+      const nextRoster = await listRoster();
+      setRoster(nextRoster);
+      return nextRoster;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to load roster: ${message}`);
       return [];
     }
-
-    const nextRoster = (data || []) as RosterRow[];
-    setRoster(nextRoster);
-    return nextRoster;
   };
 
   const loadSessionAttendanceRows = async (sessionId: string) => {
-    const { data, error } = await supabase
-      .from('attendance')
-      .select('*, students_roster(student_name, class_no)')
-      .eq('session_id', sessionId);
-
-    if (error) {
+    try {
+      const rows = await listAttendanceBySession(sessionId);
+      return { rows, error: null };
+    } catch (error: unknown) {
       return { rows: [] as AttendanceRow[], error };
     }
-
-    const rows = ((data || []) as AttendanceRowWithRoster[]).map((row) => ({
-      ...row,
-      student_name: row.students_roster?.student_name,
-      class_no: row.students_roster?.class_no,
-    }));
-
-    return { rows, error: null };
   };
 
   const backfillMissingRosterRowsForSession = async (
@@ -186,19 +152,18 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
       return false;
     }
 
-    const payload = missingStudents.map((student) => ({
+    const payload: AttendanceInsert[] = missingStudents.map((student) => ({
       session_id: sessionId,
       erp: student.erp,
       status: 'absent',
       naming_penalty: false,
     }));
 
-    const { error } = await supabase
-      .from('attendance')
-      .upsert(payload as never, { onConflict: 'session_id,erp', ignoreDuplicates: true });
-
-    if (error) {
-      toast.error(`Failed to backfill missing students: ${error.message}`);
+    try {
+      await upsertAttendance(payload);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to backfill missing students: ${message}`);
       return false;
     }
 
@@ -250,7 +215,7 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
 
     autoSyncTimerRef.current = setTimeout(async () => {
       try {
-        const { ok } = await syncPublicAttendanceSnapshot({ source });
+        const { ok } = await syncPublicAttendance({ source });
 
         if (!ok) {
           toast.error('Auto-sync to Google Sheet failed. Use Sync to Sheet to retry.');
@@ -266,7 +231,7 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
     setIsSyncing(true);
 
     try {
-      const { ok } = await syncPublicAttendanceSnapshot({ source: 'attendance_marking_manual' });
+      const { ok } = await syncPublicAttendance({ source: 'attendance_marking_manual' });
 
       if (!ok) {
         toast.error('Failed to sync to Google Sheet');
@@ -302,7 +267,7 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
         .filter(Boolean);
       const absentSet = new Set(absentList);
 
-      const newRecords = roster.map((student) => ({
+      const newRecords: AttendanceInsert[] = roster.map((student) => ({
         session_id: selectedSessionId,
         erp: student.erp,
         status: absentSet.has(student.erp.toLowerCase()) ? 'absent' : 'present',
@@ -310,29 +275,21 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
       }));
 
       if (forceOverwrite || attendanceData.length > 0) {
-        const { error: deleteError } = await supabase.from('attendance').delete().eq('session_id', selectedSessionId);
-        if (deleteError) throw deleteError;
+        await deleteAttendanceBySession(selectedSessionId);
       }
 
-      const { error: insertError } = await supabase.from('attendance').insert(newRecords);
-      if (insertError) throw insertError;
+      await insertAttendance(newRecords);
 
       let zoomReportSaved = false;
       if (latestFinalZoomReport) {
-        const { error: reportSaveError } = await supabase
-          .from('sessions')
-          .update({
-            zoom_report: latestFinalZoomReport,
-            zoom_report_saved_at: new Date().toISOString(),
-          })
-          .eq('id', selectedSessionId);
-
-        if (reportSaveError) {
-          toast.warning('Attendance saved, but failed to store the Zoom report.', {
-            description: reportSaveError.message,
-          });
-        } else {
+        try {
+          await updateSessionZoomReport(selectedSessionId, latestFinalZoomReport, new Date().toISOString());
           zoomReportSaved = true;
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          toast.warning('Attendance saved, but failed to store the Zoom report.', {
+            description: message,
+          });
         }
       } else {
         toast.warning('Attendance saved, but no final Zoom report was loaded to store for this session.');
@@ -389,9 +346,9 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
 
     setAttendanceData((prev) => prev.map((row) => (row.id === record.id ? { ...row, status: nextStatus } : row)));
 
-    const { error } = await supabase.from('attendance').update({ status: nextStatus }).eq('id', record.id);
-
-    if (error) {
+    try {
+      await updateAttendanceStatus(record.id, nextStatus);
+    } catch {
       toast.error('Failed to update status');
       setAttendanceData((prev) => prev.map((row) => (row.id === record.id ? { ...row, status: record.status } : row)));
       return;
@@ -404,12 +361,9 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
   const toggleNamingPenalty = async (record: AttendanceRow, checked: boolean) => {
     setAttendanceData((prev) => prev.map((row) => (row.id === record.id ? { ...row, naming_penalty: checked } : row)));
 
-    const { error } = await supabase
-      .from('attendance')
-      .update({ naming_penalty: checked } as never)
-      .eq('id', record.id);
-
-    if (error) {
+    try {
+      await updateAttendancePenalty(record.id, checked);
+    } catch {
       toast.error('Failed to update naming penalty');
       setAttendanceData((prev) => prev.map((row) => (row.id === record.id ? { ...row, naming_penalty: !checked } : row)));
       return;

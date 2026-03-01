@@ -1,50 +1,44 @@
 import { useEffect, useState } from 'react';
 import { useERP } from '@/lib/erp-context';
-import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
 import { Loader2 } from 'lucide-react';
+import {
+  listTicketsByErp,
+  removeTicketChannel,
+  subscribeMyTickets,
+  type TicketRow,
+} from '@/features/tickets';
 
 export default function MyIssues() {
   const { erp } = useERP();
-  const [tickets, setTickets] = useState<any[]>([]);
+  const [tickets, setTickets] = useState<TicketRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchTickets = async () => {
       if (!erp) return;
       setIsLoading(true);
-      const { data, error } = await supabase
-        .from('tickets')
-        .select('*')
-        .eq('entered_erp', erp)
-        .order('created_at', { ascending: false });
-
-      if (!error && data) {
-        setTickets(data);
-      }
+      const data = await listTicketsByErp(erp);
+      setTickets(data);
       setIsLoading(false);
     };
 
-    fetchTickets();
+    void fetchTickets();
 
     // Subscribe to realtime updates for this ERP's tickets
-    const channel = supabase
-      .channel('my-tickets')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'tickets', filter: `entered_erp=eq.${erp}` },
-        (payload) => {
-          // Update the specific ticket in state
-          setTickets(prev => prev.map(t => t.id === payload.new.id ? payload.new : t));
-        }
-      )
-      .subscribe();
+    if (!erp) {
+      return;
+    }
+
+    const channel = subscribeMyTickets(erp, (payload) => {
+      setTickets((prev) => prev.map((ticket) => (ticket.id === payload.new.id ? payload.new : ticket)));
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      void removeTicketChannel(channel);
     };
   }, [erp]);
 

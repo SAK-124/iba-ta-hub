@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ta/ui/button';
 import { Textarea } from '@/components/ta/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
@@ -32,6 +31,14 @@ import { Loader2, Upload, Pencil, Trash2, Plus, Search } from 'lucide-react';
 import { normalizeName } from '@/lib/utils';
 import { emitRosterDataUpdated } from '@/lib/data-sync-events';
 import { applyTaTestStudentToRoster, fetchTaTestStudentSettings, TEST_STUDENT_ERP } from '@/lib/test-student-settings';
+import {
+    createRosterStudent,
+    deleteRosterStudent,
+    listRoster,
+    replaceRoster,
+    updateRosterStudent,
+    type RosterInsert,
+} from '@/features/roster';
 
 type StudentRow = {
     id?: string;
@@ -61,11 +68,11 @@ export default function RosterManagement() {
         try {
             // Fetch more for search (limit 1000)
             const [rosterResponse, testStudentSettings] = await Promise.all([
-                supabase.from('students_roster').select('*', { count: 'exact' }).limit(1000),
+                listRoster(1000),
                 fetchTaTestStudentSettings(),
             ]);
 
-            const data = (rosterResponse.data || []) as StudentRow[];
+            const data = rosterResponse.rows as StudentRow[];
             const mergedRows = applyTaTestStudentToRoster(data, testStudentSettings);
 
             setCount(mergedRows.length);
@@ -80,7 +87,7 @@ export default function RosterManagement() {
         setIsUploading(true);
         try {
             const lines = rosterText.trim().split('\n');
-            const parsedStudents = [];
+            const parsedStudents: RosterInsert[] = [];
             const errors = [];
 
             for (const line of lines) {
@@ -104,12 +111,7 @@ export default function RosterManagement() {
             }
 
             // Delete existing roster
-            const { error: deleteError } = await supabase.from('students_roster').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-            if (deleteError) throw deleteError;
-
-            // Insert new
-            const { error: insertError } = await supabase.from('students_roster').insert(parsedStudents);
-            if (insertError) throw insertError;
+            await replaceRoster(parsedStudents);
 
             toast.success(`Successfully uploaded ${parsedStudents.length} students.`);
             if (errors.length > 0) {
@@ -121,8 +123,9 @@ export default function RosterManagement() {
             await fetchRoster();
             emitRosterDataUpdated('roster_management_replace');
 
-        } catch (error: any) {
-            toast.error('Failed to upload roster: ' + error.message);
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            toast.error('Failed to upload roster: ' + message);
         } finally {
             setIsUploading(false);
         }
@@ -143,28 +146,18 @@ export default function RosterManagement() {
         try {
             if (currentStudent) {
                 // Update
-                const { error } = await supabase
-                    .from('students_roster')
-                    .update({
-                        student_name: normalizeName(formData.student_name),
-                        erp: formData.erp,
-                        class_no: formData.class_no
-                    })
-                    .eq('id', currentStudent.id);
-
-                if (error) throw error;
+                await updateRosterStudent(currentStudent.id, {
+                    student_name: normalizeName(formData.student_name),
+                    erp: formData.erp,
+                    class_no: formData.class_no,
+                });
                 toast.success('Student updated');
             } else {
-                // Insert
-                const { error } = await supabase
-                    .from('students_roster')
-                    .insert([{
-                        student_name: normalizeName(formData.student_name),
-                        erp: formData.erp,
-                        class_no: formData.class_no
-                    }]);
-
-                if (error) throw error;
+                await createRosterStudent({
+                    student_name: normalizeName(formData.student_name),
+                    erp: formData.erp,
+                    class_no: formData.class_no,
+                });
                 toast.success('Student added');
             }
 
@@ -194,8 +187,7 @@ export default function RosterManagement() {
         if (!confirm('Are you sure you want to delete this student?')) return;
 
         try {
-            const { error } = await supabase.from('students_roster').delete().eq('id', student.id);
-            if (error) throw error;
+            await deleteRosterStudent(student.id);
             toast.success('Student deleted');
             await fetchRoster();
             emitRosterDataUpdated('roster_management_delete');

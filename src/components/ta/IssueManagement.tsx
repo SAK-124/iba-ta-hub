@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
 import { Badge } from '@/components/ta/ui/badge';
 import { Button } from '@/components/ta/ui/button';
@@ -31,9 +30,20 @@ import {
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
+import {
+    addRuleExceptionFromTicket,
+    deleteTicket as deleteTicketById,
+    listTickets,
+    removeTicketChannel,
+    subscribeAllTickets,
+    toggleTicketStatus,
+    updateTicketResponse,
+    type TicketRealtimePayload,
+    type TicketWithStudentName,
+} from '@/features/tickets';
 
 export default function IssueManagement() {
-    const [tickets, setTickets] = useState<any[]>([]);
+    const [tickets, setTickets] = useState<TicketWithStudentName[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState<string>('all');
     const [filterGroup, setFilterGroup] = useState<string>('all');
@@ -43,20 +53,13 @@ export default function IssueManagement() {
     useEffect(() => {
         void fetchTickets();
 
-        const channel = supabase
-            .channel('ta-tickets')
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'tickets' },
-                (payload) => {
-                    if (payload.eventType === 'INSERT') {
-                        setTickets(prev => [payload.new, ...prev]);
-                    } else if (payload.eventType === 'UPDATE') {
-                        setTickets(prev => prev.map(t => t.id === payload.new.id ? payload.new : t));
-                    }
-                }
-            )
-            .subscribe();
+        const channel = subscribeAllTickets((payload: TicketRealtimePayload) => {
+            if (payload.eventType === 'INSERT') {
+                void fetchTickets();
+            } else if (payload.eventType === 'UPDATE') {
+                void fetchTickets();
+            }
+        });
 
         const unsubscribeRoster = subscribeRosterDataUpdated(() => {
             void fetchTickets();
@@ -64,54 +67,35 @@ export default function IssueManagement() {
 
         return () => {
             unsubscribeRoster();
-            supabase.removeChannel(channel);
+            void removeTicketChannel(channel);
         };
     }, []);
 
     const fetchTickets = async () => {
         setIsLoading(true);
-        const { data: ticketsData, error } = await supabase
-            .from('tickets')
-            .select('*')
-            .order('created_at', { ascending: false });
-
-        if (!error && ticketsData) {
-            // Fetch names for these ERPs
-            const erps = [...new Set(ticketsData.map(t => t.entered_erp))];
-            const { data: rosterData } = await supabase
-                .from('students_roster')
-                .select('erp, student_name')
-                .in('erp', erps);
-
-            const nameMap = new Map();
-            rosterData?.forEach(r => nameMap.set(r.erp, r.student_name));
-
-            const augmentedTickets = ticketsData.map(t => ({
-                ...t,
-                real_name: nameMap.get(t.entered_erp) || t.roster_name || 'Unknown'
-            }));
-
-            setTickets(augmentedTickets);
-        }
+        const nextTickets = await listTickets();
+        setTickets(nextTickets);
         setIsLoading(false);
     };
 
-    const toggleStatus = async (ticket: any) => {
-        const { error } = await supabase.from('tickets').update({ status: ticket.status === 'pending' ? 'resolved' : 'pending' }).eq('id', ticket.id);
-        if (error) toast.error('Failed to update status');
-        else {
+    const toggleStatus = async (ticket: TicketWithStudentName) => {
+        try {
+            await toggleTicketStatus(ticket);
             toast.success('Status updated');
-            fetchTickets();
+            await fetchTickets();
+        } catch {
+            toast.error('Failed to update status');
         }
     };
 
     const deleteTicket = async (id: string) => {
         if (!confirm('Are you sure you want to delete this ticket?')) return;
-        const { error } = await supabase.from('tickets').delete().eq('id', id);
-        if (error) toast.error('Failed to delete ticket');
-        else {
+        try {
+            await deleteTicketById(id);
             toast.success('Ticket deleted');
-            fetchTickets();
+            await fetchTickets();
+        } catch {
+            toast.error('Failed to delete ticket');
         }
     };
 
@@ -290,9 +274,12 @@ export default function IssueManagement() {
                                                             }}
                                                             onBlur={async (e) => {
                                                                 const val = e.target.value;
-                                                                const { error } = await supabase.from('tickets').update({ ta_response: val }).eq('id', ticket.id);
-                                                                if (error) toast.error('Failed to save response');
-                                                                else toast.success('Internal response persistent');
+                                                                try {
+                                                                    await updateTicketResponse(ticket.id, val);
+                                                                    toast.success('Internal response persistent');
+                                                                } catch {
+                                                                    toast.error('Failed to save response');
+                                                                }
                                                             }}
                                                         />
                                                         <p className="text-[9px] text-muted-foreground italic text-right">Drafting is auto-saved on blur.</p>
@@ -313,16 +300,19 @@ export default function IssueManagement() {
                                                                 variant="outline"
                                                                 className="w-full h-12 rounded-xl font-bold uppercase tracking-tight"
                                                                 onClick={async () => {
-                                                                    const { error } = await supabase.from('rule_exceptions' as any).insert({
-                                                                        erp: ticket.entered_erp,
-                                                                        student_name: ticket.real_name || ticket.roster_name || 'Unknown',
-                                                                        class_no: ticket.roster_class_no,
-                                                                        issue_type: 'camera_excused',
-                                                                        assigned_day: 'both',
-                                                                        notes: 'Added from ticket: ' + ticket.category
-                                                                    });
-                                                                    if (error) toast.error('Failed to add exception');
-                                                                    else toast.success('Added to Rule Exceptions');
+                                                                    try {
+                                                                        await addRuleExceptionFromTicket({
+                                                                            erp: ticket.entered_erp,
+                                                                            student_name: ticket.real_name || ticket.roster_name || 'Unknown',
+                                                                            class_no: ticket.roster_class_no,
+                                                                            issue_type: 'camera_excused',
+                                                                            assigned_day: 'both',
+                                                                            notes: 'Added from ticket: ' + ticket.category,
+                                                                        });
+                                                                        toast.success('Added to Rule Exceptions');
+                                                                    } catch {
+                                                                        toast.error('Failed to add exception');
+                                                                    }
                                                                 }}
                                                             >
                                                                 Escalate to Exception

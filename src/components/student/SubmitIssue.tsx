@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useERP } from '@/lib/erp-context';
 import { useAuth } from '@/lib/auth';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,6 +15,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { CalendarIcon, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { sendNtfyNotification } from '@/lib/ntfy';
+import { getAppSettings, fetchIssueFormOptions } from '@/features/settings';
+import { createTicket, type CreateTicketInput } from '@/features/tickets';
 
 export default function SubmitIssue() {
   const { erp, studentName, classNo } = useERP();
@@ -49,17 +50,13 @@ export default function SubmitIssue() {
   useEffect(() => {
     // Fetch dropdown data
     const fetchData = async () => {
-      const { data: subs } = await supabase.from('submissions_list').select('id, label').eq('active', true).order('sort_order');
-      if (subs) setSubmissions(subs);
-
-      const { data: pens } = await supabase.from('penalty_types').select('id, label').eq('active', true);
-      if (pens) setPenaltyTypes(pens);
-
-      const { data: sess } = await supabase.from('sessions').select('id, session_number, session_date').order('session_number', { ascending: false });
-      if (sess) setSessions(sess);
+      const options = await fetchIssueFormOptions();
+      setSubmissions(options.submissions);
+      setPenaltyTypes(options.penaltyTypes);
+      setSessions(options.sessions);
     };
 
-    fetchData();
+    void fetchData();
   }, []);
 
   const handleSubmit = async () => {
@@ -85,26 +82,21 @@ export default function SubmitIssue() {
     }
 
     try {
-      const { data: settings, error: settingsError } = await supabase
-        .from('app_settings')
-        .select('tickets_enabled')
-        .single();
-
-      if (settingsError) {
-        throw settingsError;
-      }
+      const settings = await getAppSettings();
 
       if (settings?.tickets_enabled === false) {
         toast.error('Ticket submissions are currently disabled. Please email the TAs directly.');
         return;
       }
 
-      const ticketData: any = {
+      const ticketData: CreateTicketInput = {
         entered_erp: erp,
         roster_name: studentName,
         roster_class_no: classNo,
         created_by_email: user.email,
-        status: 'pending'
+        status: 'pending',
+        group_type: '',
+        category: '',
       };
 
       console.log('[SubmitIssue] Payload:', ticketData);
@@ -121,7 +113,7 @@ export default function SubmitIssue() {
               duration,
               days: duration !== 'one_day' ? days : undefined,
               weeks: duration === 'recurring' ? weeks : undefined,
-              date: duration === 'one_day' ? date : undefined
+              date: duration === 'one_day' ? date?.toISOString() : undefined
             };
           } else {
             ticketData.subcategory = 'camera_not_working';
@@ -158,9 +150,7 @@ export default function SubmitIssue() {
         }
       }
 
-      const { error } = await supabase.from('tickets').insert(ticketData);
-
-      if (error) throw error;
+      await createTicket(ticketData);
 
       const notificationMessage = [
         'Event: New Ticket',
@@ -190,9 +180,10 @@ export default function SubmitIssue() {
       setReason('');
       setQuery('');
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
       console.error('Submit Ticket Error:', error);
-      toast.error('Failed to submit ticket: ' + (error.message || 'Unknown error'));
+      toast.error('Failed to submit ticket: ' + message);
     } finally {
       setIsSubmitting(false);
     }

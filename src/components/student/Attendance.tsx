@@ -1,80 +1,42 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useERP } from '@/lib/erp-context';
-import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
+import { listAttendanceHistoryByErp, type AttendanceHistoryRecord } from '@/features/attendance';
 
 interface AttendanceProps {
   canAccess: boolean | null;
   isBlocked: boolean | null | undefined;
 }
 
-interface AttendanceRecord {
-  session_id: string;
-  session_number: number;
-  session_date: string;
-  day_of_week: string;
-  status: string;
-}
-
 export default function Attendance({ canAccess, isBlocked }: AttendanceProps) {
   const { erp } = useERP();
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [records, setRecords] = useState<AttendanceHistoryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [totalAbsences, setTotalAbsences] = useState(0);
 
-  useEffect(() => {
-    if (canAccess && erp) {
-      fetchAttendance();
-    }
-  }, [canAccess, erp]);
-
-  const fetchAttendance = async () => {
+  const fetchAttendance = useCallback(async () => {
     if (!erp) return;
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('attendance')
-        .select(`
-          session_id,
-          status,
-          sessions!inner (
-            session_number,
-            session_date,
-            day_of_week
-          )
-        `)
-        .eq('erp', erp)
-        .order('sessions(session_number)', { ascending: true });
-
-      if (error) throw error;
-
-      const formattedRecords = (data || []).map((record: {
-        session_id: string;
-        status: string;
-        sessions: {
-          session_number: number;
-          session_date: string;
-          day_of_week: string;
-        };
-      }) => ({
-        session_id: record.session_id,
-        session_number: record.sessions.session_number,
-        session_date: record.sessions.session_date,
-        day_of_week: record.sessions.day_of_week,
-        status: record.status
-      }));
+      const formattedRecords = await listAttendanceHistoryByErp(erp);
 
       setRecords(formattedRecords);
-      setTotalAbsences(formattedRecords.filter((r: AttendanceRecord) => r.status === 'absent').length);
+      setTotalAbsences(formattedRecords.filter((r) => r.status === 'absent').length);
     } catch (error) {
       console.error('Error fetching attendance:', error);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [erp]);
+
+  useEffect(() => {
+    if (canAccess && erp) {
+      void fetchAttendance();
+    }
+  }, [canAccess, erp, fetchAttendance]);
 
   if (!erp) {
     return (

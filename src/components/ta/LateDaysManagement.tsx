@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
 import { Tables } from '@/integrations/supabase/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
 import { Input } from '@/components/ta/ui/input';
@@ -11,6 +10,15 @@ import { Badge } from '@/components/ta/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ta/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
 import { Textarea } from '@/components/ta/ui/textarea';
+import {
+  archiveLateDayAssignment,
+  createLateDayAssignment,
+  deleteLateDayClaim,
+  listLateDaysAdminData,
+  taAddLateDay,
+  updateLateDayAssignment,
+} from '@/features/late-days';
+import { listRoster } from '@/features/roster';
 
 type LateDayAssignment = Tables<'late_day_assignments'>;
 type LateDayClaim = Tables<'late_day_claims'>;
@@ -170,57 +178,23 @@ export default function LateDaysManagement() {
 
   const fetchLateDaysData = async () => {
     setIsLoading(true);
-
-    const [assignmentResponse, claimResponse, rosterResponse, adjustmentsResponse] = await Promise.all([
-      supabase
-        .from('late_day_assignments')
-        .select('*')
-        .order('active', { ascending: false })
-        .order('due_at', { ascending: true, nullsFirst: false }),
-      supabase
-        .from('late_day_claims')
-        .select('*')
-        .order('claimed_at', { ascending: false }),
-      supabase
-        .from('students_roster')
-        .select('id, erp, student_name, class_no')
-        .order('class_no', { ascending: true })
-        .order('student_name', { ascending: true }),
-      supabase
-        .from('late_day_adjustments')
-        .select('*')
-        .order('created_at', { ascending: false }),
-    ]);
-
-    if (assignmentResponse.error) {
-      toast.error(`Failed to load assignments: ${assignmentResponse.error.message}`);
+    try {
+      const [lateDaysData, rosterData] = await Promise.all([listLateDaysAdminData(), listRoster()]);
+      setAssignments(lateDaysData.assignments ?? []);
+      setClaims(lateDaysData.claims ?? []);
+      setAdjustments(lateDaysData.adjustments ?? []);
+      setRosterStudents((rosterData.rows ?? [])
+        .sort((a, b) => a.class_no.localeCompare(b.class_no) || a.student_name.localeCompare(b.student_name)) as RosterStudent[]);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to load late-day data: ${message}`);
       setAssignments([]);
-    } else {
-      setAssignments(assignmentResponse.data ?? []);
-    }
-
-    if (claimResponse.error) {
-      toast.error(`Failed to load claims: ${claimResponse.error.message}`);
       setClaims([]);
-    } else {
-      setClaims(claimResponse.data ?? []);
-    }
-
-    if (rosterResponse.error) {
-      toast.error(`Failed to load roster: ${rosterResponse.error.message}`);
       setRosterStudents([]);
-    } else {
-      setRosterStudents((rosterResponse.data ?? []) as RosterStudent[]);
-    }
-
-    if (adjustmentsResponse.error) {
-      toast.error(`Failed to load grants: ${adjustmentsResponse.error.message}`);
       setAdjustments([]);
-    } else {
-      setAdjustments(adjustmentsResponse.data ?? []);
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   useEffect(() => {
@@ -240,27 +214,22 @@ export default function LateDaysManagement() {
     }
 
     setIsCreatingAssignment(true);
-    const { error } = await supabase.from('late_day_assignments').insert({
-      title: newTitle.trim(),
-      due_at: newDueAt ? toIsoFromLocalDateTime(newDueAt) : null,
-      active: true,
-    });
-
-    if (error) {
-      if (error.message.includes('null value in column "due_at"')) {
+    try {
+      await createLateDayAssignment(newTitle.trim(), newDueAt ? toIsoFromLocalDateTime(newDueAt) : null);
+      toast.success(newDueAt ? 'Assignment added.' : 'Assignment added without deadline.');
+      setNewTitle('');
+      setNewDueAt('');
+      await fetchLateDaysData();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      if (message.includes('null value in column "due_at"')) {
         toast.error('Database schema is outdated. Run: ALTER TABLE public.late_day_assignments ALTER COLUMN due_at DROP NOT NULL;');
       } else {
-        toast.error(`Failed to create assignment: ${error.message}`);
+        toast.error(`Failed to create assignment: ${message}`);
       }
+    } finally {
       setIsCreatingAssignment(false);
-      return;
     }
-
-    toast.success(newDueAt ? 'Assignment added.' : 'Assignment added without deadline.');
-    setNewTitle('');
-    setNewDueAt('');
-    setIsCreatingAssignment(false);
-    await fetchLateDaysData();
   };
 
   const openEditDialog = (assignment: LateDayAssignment) => {
@@ -283,65 +252,55 @@ export default function LateDaysManagement() {
     }
 
     setIsSavingEdit(true);
-    const { error } = await supabase
-      .from('late_day_assignments')
-      .update({
+    try {
+      await updateLateDayAssignment(editingAssignment.id, {
         title: editTitle.trim(),
         due_at: editDueAt ? toIsoFromLocalDateTime(editDueAt) : null,
-      })
-      .eq('id', editingAssignment.id);
-
-    if (error) {
-      if (error.message.includes('null value in column "due_at"')) {
+      });
+      toast.success(editDueAt ? 'Assignment updated.' : 'Assignment updated. Deadline cleared.');
+      closeEditDialog();
+      await fetchLateDaysData();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      if (message.includes('null value in column "due_at"')) {
         toast.error('Database schema is outdated. Run: ALTER TABLE public.late_day_assignments ALTER COLUMN due_at DROP NOT NULL;');
       } else {
-        toast.error(`Failed to update assignment: ${error.message}`);
+        toast.error(`Failed to update assignment: ${message}`);
       }
+    } finally {
       setIsSavingEdit(false);
-      return;
     }
-
-    toast.success(editDueAt ? 'Assignment updated.' : 'Assignment updated. Deadline cleared.');
-    setIsSavingEdit(false);
-    closeEditDialog();
-    await fetchLateDaysData();
   };
 
   const handleArchiveAssignment = async (assignment: LateDayAssignment) => {
     if (!assignment.active) return;
     if (!confirm('Archive this assignment? It will be hidden from students but claim history is preserved.')) return;
 
-    const { error } = await supabase
-      .from('late_day_assignments')
-      .update({ active: false })
-      .eq('id', assignment.id);
-
-    if (error) {
-      toast.error(`Failed to archive assignment: ${error.message}`);
+    try {
+      await archiveLateDayAssignment(assignment.id);
+      toast.success('Assignment archived.');
+      await fetchLateDaysData();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to archive assignment: ${message}`);
       return;
     }
-
-    toast.success('Assignment archived.');
-    await fetchLateDaysData();
   };
 
   const handleDeleteClaim = async (claimId: string) => {
     if (!confirm('Delete this claim row? This will return those late days to the student balance.')) return;
 
     setDeletingClaimId(claimId);
-    const { error } = await supabase
-      .from('late_day_claims')
-      .delete()
-      .eq('id', claimId);
-
-    if (error) {
-      toast.error(`Failed to delete claim: ${error.message}`);
+    try {
+      await deleteLateDayClaim(claimId);
+      toast.success('Claim deleted.');
+      setClaims((prev) => prev.filter((claim) => claim.id !== claimId));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to delete claim: ${message}`);
       setDeletingClaimId(null);
       return;
     }
-
-    toast.success('Claim deleted.');
-    setClaims((prev) => prev.filter((claim) => claim.id !== claimId));
     setDeletingClaimId(null);
   };
 
@@ -370,27 +329,22 @@ export default function LateDaysManagement() {
     }
 
     setIsGranting(true);
-    const { data, error } = await supabase.rpc('ta_add_late_day', {
-      p_student_erp: grantTarget.erp,
-      p_days: days,
-      p_reason: grantReason.trim() ? grantReason.trim() : null,
-    });
-
-    if (error) {
-      toast.error(`Failed to add late day: ${error.message}`);
+    try {
+      const result = await taAddLateDay(grantTarget.erp, days, grantReason.trim() ? grantReason.trim() : undefined);
+      const payload = (result.data ?? null) as GrantRpcResult | null;
+      toast.success(
+        typeof payload?.remaining_late_days === 'number'
+          ? `Late days added. New remaining: ${payload.remaining_late_days}`
+          : 'Late days added.'
+      );
+      closeGrantDialog();
+      await fetchLateDaysData();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to add late day: ${message}`);
+    } finally {
       setIsGranting(false);
-      return;
     }
-
-    const payload = (data ?? null) as GrantRpcResult | null;
-    toast.success(
-      typeof payload?.remaining_late_days === 'number'
-        ? `Late days added. New remaining: ${payload.remaining_late_days}`
-        : 'Late days added.'
-    );
-    setIsGranting(false);
-    closeGrantDialog();
-    await fetchLateDaysData();
   };
 
   if (isLoading) {

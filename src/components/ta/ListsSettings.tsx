@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { Switch } from '@/components/ta/ui/switch';
 import { Label } from '@/components/ta/ui/label';
 import { Input } from '@/components/ta/ui/input';
@@ -11,28 +10,21 @@ import { Loader2, Trash2, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { emitRosterDataUpdated } from '@/lib/data-sync-events';
 import { TEST_STUDENT_ERP } from '@/lib/test-student-settings';
-
-type AppSettings = {
-    id: string;
-    roster_verification_enabled: boolean;
-    tickets_enabled: boolean;
-    show_test_student_in_ta: boolean;
-    test_student_overrides: Record<string, unknown>;
-};
-
-type TaEmailRow = {
-    id: string;
-    email: string;
-    active: boolean;
-    created_at: string;
-};
-
-type SubmissionRow = {
-    id: string;
-    label: string;
-    active: boolean;
-    sort_order: number | null;
-};
+import {
+    addSubmission as createSubmission,
+    addTaAllowlistEmail,
+    deactivateSubmission,
+    deactivateTaAllowlistEmail,
+    getAppSettings,
+    getMyTaPassword,
+    listSubmissions,
+    listTaAllowlist,
+    setMyTaPassword,
+    updateAppSettings,
+    type AppSettingsRow,
+    type SubmissionRow,
+    type TaAllowlistRow,
+} from '@/features/settings';
 
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
     value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -48,8 +40,8 @@ const DEFAULT_TEST_STUDENT_OVERRIDES = {
 
 export default function ListsSettings() {
     const { user } = useAuth();
-    const [settings, setSettings] = useState<AppSettings | null>(null);
-    const [taEmails, setTaEmails] = useState<TaEmailRow[]>([]);
+    const [settings, setSettings] = useState<AppSettingsRow | null>(null);
+    const [taEmails, setTaEmails] = useState<TaAllowlistRow[]>([]);
     const [newTaEmail, setNewTaEmail] = useState('');
 
     const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
@@ -83,14 +75,10 @@ export default function ListsSettings() {
         const loadMyPassword = async () => {
             setIsPasswordLoading(true);
             try {
-                const { data, error } = await supabase.rpc('get_my_ta_password');
-
-                if (error) {
-                    toast.error('Failed to load your password');
-                    return;
-                }
-
+                const data = await getMyTaPassword();
                 setCurrentPassword(data ?? null);
+            } catch {
+                toast.error('Failed to load your password');
             } finally {
                 setIsPasswordLoading(false);
             }
@@ -100,7 +88,7 @@ export default function ListsSettings() {
     }, [user?.email]);
 
     const fetchSettings = async () => {
-        const { data } = await supabase.from('app_settings').select('*').single();
+        const data = await getAppSettings();
         if (data) {
             const rawOverrides = isObjectRecord(data.test_student_overrides) ? data.test_student_overrides : {};
             const mergedOverrides = {
@@ -125,66 +113,51 @@ export default function ListsSettings() {
     };
 
     const fetchTaList = async () => {
-        const { data, error } = await supabase
-            .from('ta_allowlist')
-            .select('id, email, active, created_at')
-            .eq('active', true)
-            .order('email');
-
-        if (error) {
+        try {
+            const data = await listTaAllowlist(true);
+            setTaEmails((data || []) as TaAllowlistRow[]);
+        } catch {
             toast.error('Failed to load TA list');
-            return;
         }
-
-        setTaEmails((data || []) as TaEmailRow[]);
     };
 
     const fetchSubmissions = async () => {
-        const { data, error } = await supabase
-            .from('submissions_list')
-            .select('*')
-            .eq('active', true)
-            .order('sort_order');
-
-        if (error) {
+        try {
+            const data = await listSubmissions(true);
+            setSubmissions((data || []) as SubmissionRow[]);
+        } catch {
             toast.error('Failed to load submission list');
-            return;
         }
-
-        setSubmissions((data || []) as SubmissionRow[]);
     };
 
     const toggleRosterVerification = async (checked: boolean) => {
         if (!settings) return;
-        const { error } = await supabase.from('app_settings').update({ roster_verification_enabled: checked }).eq('id', settings.id);
-        if (error) {
-            toast.error('Failed to update settings');
-        } else {
+        try {
+            await updateAppSettings(settings.id, { roster_verification_enabled: checked });
             setSettings({ ...settings, roster_verification_enabled: checked });
             toast.success('Roster verification ' + (checked ? 'enabled' : 'disabled'));
+        } catch {
+            toast.error('Failed to update settings');
         }
     };
 
     const toggleStudentTickets = async (checked: boolean) => {
         if (!settings) return;
-        const { error } = await supabase.from('app_settings').update({ tickets_enabled: checked }).eq('id', settings.id);
-        if (error) {
-            toast.error('Failed to update settings');
-        } else {
+        try {
+            await updateAppSettings(settings.id, { tickets_enabled: checked });
             setSettings({ ...settings, tickets_enabled: checked });
             toast.success('Student ticketing ' + (checked ? 'enabled' : 'disabled'));
+        } catch {
+            toast.error('Failed to update settings');
         }
     };
 
     const toggleShowTestStudentInTa = async (checked: boolean) => {
         if (!settings) return;
 
-        const { error } = await supabase
-            .from('app_settings')
-            .update({ show_test_student_in_ta: checked })
-            .eq('id', settings.id);
-
-        if (error) {
+        try {
+            await updateAppSettings(settings.id, { show_test_student_in_ta: checked });
+        } catch {
             toast.error('Failed to update test student visibility');
             return;
         }
@@ -249,15 +222,7 @@ export default function ListsSettings() {
 
         setIsSavingTestStudent(true);
         try {
-            const { error } = await supabase
-                .from('app_settings')
-                .update({ test_student_overrides: overridesPayload })
-                .eq('id', settings.id);
-
-            if (error) {
-                toast.error('Failed to save test student overrides');
-                return;
-            }
+            await updateAppSettings(settings.id, { test_student_overrides: overridesPayload });
 
             setSettings({
                 ...settings,
@@ -272,13 +237,13 @@ export default function ListsSettings() {
 
     const addTa = async () => {
         if (!newTaEmail) return;
-        const { error } = await supabase.from('ta_allowlist').insert({ email: newTaEmail, active: true });
-        if (error) {
-            toast.error('Failed to add TA');
-        } else {
+        try {
+            await addTaAllowlistEmail({ email: newTaEmail, active: true });
             toast.success('TA added');
             setNewTaEmail('');
             void fetchTaList();
+        } catch {
+            toast.error('Failed to add TA');
         }
     };
 
@@ -287,34 +252,34 @@ export default function ListsSettings() {
             toast.error('Cannot remove master admin');
             return;
         }
-        const { error } = await supabase.from('ta_allowlist').update({ active: false }).eq('id', id);
-        if (error) {
-            toast.error('Failed to remove TA');
-        } else {
+        try {
+            await deactivateTaAllowlistEmail(id);
             toast.success('TA removed');
             void fetchTaList();
+        } catch {
+            toast.error('Failed to remove TA');
         }
     };
 
     const addSubmission = async () => {
         if (!newSubLabel) return;
-        const { error } = await supabase.from('submissions_list').insert({ label: newSubLabel, active: true, sort_order: submissions.length + 1 });
-        if (error) {
-            toast.error('Failed to add submission');
-        } else {
+        try {
+            await createSubmission({ label: newSubLabel, active: true, sort_order: submissions.length + 1 });
             toast.success('Submission added');
             setNewSubLabel('');
             void fetchSubmissions();
+        } catch {
+            toast.error('Failed to add submission');
         }
     };
 
     const removeSubmission = async (id: string) => {
-        const { error } = await supabase.from('submissions_list').update({ active: false }).eq('id', id);
-        if (error) {
-            toast.error('Failed to remove');
-        } else {
+        try {
+            await deactivateSubmission(id);
             toast.success('Removed');
             void fetchSubmissions();
+        } catch {
+            toast.error('Failed to remove');
         }
     };
 
@@ -341,25 +306,16 @@ export default function ListsSettings() {
 
         setIsUpdatingPassword(true);
         try {
-            const { error: authError } = await supabase.auth.updateUser({ password: newPassword });
-            if (authError) {
-                toast.error(`Failed to update login password: ${authError.message}`);
-                return;
-            }
-
-            const { error: syncError } = await supabase.rpc('set_my_ta_password', { new_password: newPassword });
-            if (syncError) {
-                toast.warning(
-                    'Login password updated, but failed to sync visible password. Please retry from settings.'
-                );
-                return;
-            }
+            await setMyTaPassword(newPassword);
 
             setCurrentPassword(newPassword);
             setShowCurrentPassword(false);
             setNewPassword('');
             setConfirmPassword('');
             toast.success('Password updated successfully');
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Please retry from settings.';
+            toast.error(`Failed to update password: ${message}`);
         } finally {
             setIsUpdatingPassword(false);
         }

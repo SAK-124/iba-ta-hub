@@ -1,8 +1,12 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState } from 'react';
 import { Button } from '@/components/ta/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
 import { Loader2, Download } from 'lucide-react';
+import { listRoster } from '@/features/roster';
+import { listAttendanceWithSessionNumbers } from '@/features/attendance';
+import { listSessions } from '@/features/sessions';
+import type { AttendanceWithSessionNumber, SessionRow } from '@/features/attendance';
+import type { RosterRow } from '@/features/roster';
 
 export default function ExportData() {
     const [isExporting, setIsExporting] = useState(false);
@@ -11,13 +15,14 @@ export default function ExportData() {
         setIsExporting(true);
         try {
             // 1. Fetch data
-            const { data: roster } = await supabase.from('students_roster').select('*').order('erp');
-            const { data: attendance } = await supabase.from('attendance').select('*, sessions(session_number)');
-            const { data: sessions } = await supabase.from('sessions').select('*').order('session_number');
-
-            if (!roster || !attendance || !sessions) {
-                throw new Error('Failed to fetch data');
-            }
+            const [{ rows: rosterRows }, attendanceRows, rawSessions] = await Promise.all([
+                listRoster(),
+                listAttendanceWithSessionNumbers(),
+                listSessions(),
+            ]);
+            const roster: RosterRow[] = [...rosterRows].sort((a, b) => a.erp.localeCompare(b.erp));
+            const sessions: SessionRow[] = [...rawSessions].sort((a, b) => a.session_number - b.session_number);
+            const attendance: AttendanceWithSessionNumber[] = attendanceRows;
 
             // 2. Process data
             // Rows: students
@@ -30,11 +35,11 @@ export default function ExportData() {
             const absenceCount = new Map(); // erp -> count
             const penaltyCount = new Map(); // erp -> count (naming penalties)
 
-            attendance.forEach((rec: any) => {
+            attendance.forEach((rec) => {
                 const sNum = rec.sessions?.session_number;
                 if (sNum) {
                     if (!attendanceMap.has(rec.erp)) attendanceMap.set(rec.erp, {});
-                    attendanceMap.get(rec.erp)[sNum] = rec.status;
+                    (attendanceMap.get(rec.erp) as Record<number, string>)[sNum] = rec.status;
 
                     if (rec.status === 'absent') {
                         absenceCount.set(rec.erp, (absenceCount.get(rec.erp) || 0) + 1);
@@ -84,7 +89,7 @@ export default function ExportData() {
             link.click();
             document.body.removeChild(link);
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error(error);
             alert('Export failed');
         } finally {

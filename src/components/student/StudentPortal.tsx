@@ -8,8 +8,9 @@ import SubmitIssue from './SubmitIssue';
 import MyIssues from './MyIssues';
 import AttendanceView from './AttendanceView';
 import LateDays from './LateDays';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { useAppSettingsQuery } from '@/features/settings';
+import { useLateDaysSummary } from '@/features/late-days';
 
 type StudentPortalTab = 'submit' | 'issues' | 'attendance' | 'late-days';
 
@@ -21,33 +22,16 @@ interface LateDaysSummary {
 export default function StudentPortal() {
   const { erp, isVerified, studentName, isLoading } = useERP();
   const { user } = useAuth();
-  const [ticketsEnabled, setTicketsEnabled] = useState(true);
-  const [isSettingsLoading, setIsSettingsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<StudentPortalTab>('attendance');
   const [hasInitializedTab, setHasInitializedTab] = useState(false);
-  const [lateDaysRemaining, setLateDaysRemaining] = useState(3);
-  const [lateDaysTotal, setLateDaysTotal] = useState(3);
-  const [isLateDaysLoading, setIsLateDaysLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchFeatureFlags = async () => {
-      const { data, error } = await supabase
-        .from('app_settings')
-        .select('tickets_enabled')
-        .single();
-
-      if (error) {
-        console.error('Failed to load app settings:', error);
-        setTicketsEnabled(true);
-      } else {
-        setTicketsEnabled(data?.tickets_enabled ?? true);
-      }
-
-      setIsSettingsLoading(false);
-    };
-
-    void fetchFeatureFlags();
-  }, []);
+  const { data: appSettings, isLoading: isSettingsLoading } = useAppSettingsQuery();
+  const ticketsEnabled = appSettings?.tickets_enabled ?? true;
+  const { data: lateDaysSummary, isLoading: isLateDaysLoading } = useLateDaysSummary(
+    isVerified ? user?.email ?? null : null,
+    isVerified ? erp : null,
+  );
+  const lateDaysRemaining = lateDaysSummary.remaining;
+  const lateDaysTotal = lateDaysSummary.totalAllowance;
 
   useEffect(() => {
     if (!isSettingsLoading && !hasInitializedTab) {
@@ -56,49 +40,8 @@ export default function StudentPortal() {
     }
   }, [isSettingsLoading, ticketsEnabled, hasInitializedTab]);
 
-  useEffect(() => {
-    const fetchLateDaySummary = async () => {
-      if (!isVerified || !user?.email || !erp) {
-        setLateDaysRemaining(3);
-        setLateDaysTotal(3);
-        setIsLateDaysLoading(false);
-        return;
-      }
-
-      setIsLateDaysLoading(true);
-
-      const [{ data: claims, error: claimsError }, { data: adjustments, error: adjustmentsError }] = await Promise.all([
-        supabase
-          .from('late_day_claims')
-          .select('days_used')
-          .eq('student_email', user.email),
-        supabase
-          .from('late_day_adjustments')
-          .select('days_delta')
-          .eq('student_erp', erp),
-      ]);
-
-      if (claimsError || adjustmentsError) {
-        console.error('Failed to load late-day summary:', claimsError || adjustmentsError);
-        setLateDaysRemaining(3);
-        setLateDaysTotal(3);
-      } else {
-        const used = (claims ?? []).reduce((sum, claim) => sum + claim.days_used, 0);
-        const granted = (adjustments ?? []).reduce((sum, adjustment) => sum + adjustment.days_delta, 0);
-        const total = 3 + granted;
-        setLateDaysTotal(total);
-        setLateDaysRemaining(Math.max(total - used, 0));
-      }
-
-      setIsLateDaysLoading(false);
-    };
-
-    void fetchLateDaySummary();
-  }, [isVerified, user?.email, erp]);
-
-  const handleLateDaysSummaryChange = (summary: LateDaysSummary) => {
-    setLateDaysRemaining(summary.remaining);
-    setLateDaysTotal(summary.totalAllowance);
+  const handleLateDaysSummaryChange = (_summary: LateDaysSummary) => {
+    // Keep callback for LateDays component contract; source of truth is feature hook above.
   };
 
   if (isLoading || isSettingsLoading) {

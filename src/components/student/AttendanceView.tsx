@@ -1,36 +1,17 @@
-import { useEffect, useState } from 'react';
 import { useERP } from '@/lib/erp-context';
-import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
+import { useStudentAttendanceQuery, type StudentAttendanceRecord } from '@/features/attendance';
 
 export default function AttendanceView() {
     const { erp } = useERP();
-    const [attendance, setAttendance] = useState<any[]>([]);
-    const [totalAbsences, setTotalAbsences] = useState(0);
-    const [totalNamingPenalties, setTotalNamingPenalties] = useState(0);
-    const [isLoading, setIsLoading] = useState(true);
-
-    useEffect(() => {
-        const fetchAttendance = async () => {
-            if (!erp) return;
-            setIsLoading(true);
-            const { data, error } = await supabase.rpc('get_student_attendance' as any, { student_erp: erp });
-
-            if (!error && data) {
-                const result = data as { records: any[], total_absences: number, total_naming_penalties: number };
-                setAttendance(result.records);
-                setTotalAbsences(result.total_absences);
-                setTotalNamingPenalties(result.total_naming_penalties || 0);
-            }
-            setIsLoading(false);
-        };
-
-        fetchAttendance();
-    }, [erp]);
+    const { data: summary, isLoading } = useStudentAttendanceQuery(erp);
+    const attendance = summary.records;
+    const totalAbsences = summary.total_absences;
+    const totalNamingPenalties = summary.total_naming_penalties;
 
     if (isLoading) {
         return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
@@ -101,7 +82,7 @@ export default function AttendanceView() {
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    attendance.map((record) => (
+                                    attendance.map((record: StudentAttendanceRecord) => (
                                         <TableRow key={record.session_number}>
                                             <TableCell className="font-medium">{record.session_number}</TableCell>
                                             <TableCell>{format(new Date(record.session_date), 'PPP')}</TableCell>
