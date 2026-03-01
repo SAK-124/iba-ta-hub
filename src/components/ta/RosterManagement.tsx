@@ -31,18 +31,26 @@ import { Badge } from '@/components/ta/ui/badge';
 import { Loader2, Upload, Pencil, Trash2, Plus, Search } from 'lucide-react';
 import { normalizeName } from '@/lib/utils';
 import { emitRosterDataUpdated } from '@/lib/data-sync-events';
+import { applyTaTestStudentToRoster, fetchTaTestStudentSettings, TEST_STUDENT_ERP } from '@/lib/test-student-settings';
+
+type StudentRow = {
+    id?: string;
+    class_no: string;
+    student_name: string;
+    erp: string;
+};
 
 export default function RosterManagement() {
     const [rosterText, setRosterText] = useState('');
     const [isUploading, setIsUploading] = useState(false);
-    const [students, setStudents] = useState<any[]>([]);
+    const [students, setStudents] = useState<StudentRow[]>([]);
     const [count, setCount] = useState(0);
     const [searchQuery, setSearchQuery] = useState('');
 
     // Editing State
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
-    const [currentStudent, setCurrentStudent] = useState<any>(null); // null = adding, object = editing
+    const [currentStudent, setCurrentStudent] = useState<StudentRow | null>(null); // null = adding, object = editing
     const [formData, setFormData] = useState({ student_name: '', erp: '', class_no: '' });
 
     useEffect(() => {
@@ -50,10 +58,22 @@ export default function RosterManagement() {
     }, []);
 
     const fetchRoster = async () => {
-        // Fetch more for search (limit 1000)
-        const { count, data } = await supabase.from('students_roster').select('*', { count: 'exact' }).limit(1000);
-        setCount(count || 0);
-        setStudents(data || []);
+        try {
+            // Fetch more for search (limit 1000)
+            const [rosterResponse, testStudentSettings] = await Promise.all([
+                supabase.from('students_roster').select('*', { count: 'exact' }).limit(1000),
+                fetchTaTestStudentSettings(),
+            ]);
+
+            const data = (rosterResponse.data || []) as StudentRow[];
+            const mergedRows = applyTaTestStudentToRoster(data, testStudentSettings);
+
+            setCount(mergedRows.length);
+            setStudents(mergedRows);
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            toast.error('Failed to load roster: ' + message);
+        }
     };
 
     const parseAndUpload = async () => {
@@ -114,6 +134,11 @@ export default function RosterManagement() {
             return;
         }
 
+        if (formData.erp.trim() === TEST_STUDENT_ERP) {
+            toast.error('Test student is managed from Lists & Settings');
+            return;
+        }
+
         setIsSaving(true);
         try {
             if (currentStudent) {
@@ -147,24 +172,36 @@ export default function RosterManagement() {
             await fetchRoster();
             emitRosterDataUpdated(currentStudent ? 'roster_management_edit' : 'roster_management_add');
 
-        } catch (error: any) {
-            toast.error('Failed to save: ' + error.message);
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            toast.error('Failed to save: ' + message);
         } finally {
             setIsSaving(false);
         }
     };
 
-    const handleDeleteStudent = async (id: string) => {
+    const handleDeleteStudent = async (student: StudentRow) => {
+        if (student.erp === TEST_STUDENT_ERP) {
+            toast.error('Test student is managed from Lists & Settings');
+            return;
+        }
+
+        if (!student.id) {
+            toast.error('Cannot delete this entry');
+            return;
+        }
+
         if (!confirm('Are you sure you want to delete this student?')) return;
 
         try {
-            const { error } = await supabase.from('students_roster').delete().eq('id', id);
+            const { error } = await supabase.from('students_roster').delete().eq('id', student.id);
             if (error) throw error;
             toast.success('Student deleted');
             await fetchRoster();
             emitRosterDataUpdated('roster_management_delete');
-        } catch (error: any) {
-            toast.error('Failed to delete: ' + error.message);
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            toast.error('Failed to delete: ' + message);
         }
     };
 
@@ -174,7 +211,12 @@ export default function RosterManagement() {
         setIsDialogOpen(true);
     };
 
-    const openEditDialog = (student: any) => {
+    const openEditDialog = (student: StudentRow) => {
+        if (student.erp === TEST_STUDENT_ERP) {
+            toast.error('Edit test student details from Lists & Settings');
+            return;
+        }
+
         setCurrentStudent(student);
         setFormData({
             student_name: student.student_name,
@@ -283,7 +325,7 @@ export default function RosterManagement() {
                                 </TableHeader>
                                 <TableBody>
                                     {filteredStudents.map((s) => (
-                                        <TableRow key={s.id} className="transition-colors group">
+                                        <TableRow key={s.id ?? `erp-${s.erp}`} className="transition-colors group">
                                             <TableCell className="py-4 px-6">
                                                 <Badge variant="outline" className="font-mono text-[10px]">
                                                     CL-{s.class_no}
@@ -297,12 +339,18 @@ export default function RosterManagement() {
                                             </TableCell>
                                             <TableCell className="py-4 px-6 text-right">
                                                 <div className="flex justify-end gap-1">
-                                                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => openEditDialog(s)}>
-                                                        <Pencil className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => handleDeleteStudent(s.id)}>
-                                                        <Trash2 className="h-4 w-4 status-absent-text" />
-                                                    </Button>
+                                                    {s.erp === TEST_STUDENT_ERP ? (
+                                                        <span className="text-[10px] text-muted-foreground">Edit in Settings</span>
+                                                    ) : (
+                                                        <>
+                                                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => openEditDialog(s)}>
+                                                                <Pencil className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => handleDeleteStudent(s)}>
+                                                                <Trash2 className="h-4 w-4 status-absent-text" />
+                                                            </Button>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </TableCell>
                                         </TableRow>

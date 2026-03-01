@@ -3,16 +3,21 @@ import { supabase } from '@/integrations/supabase/client';
 import { Switch } from '@/components/ta/ui/switch';
 import { Label } from '@/components/ta/ui/label';
 import { Input } from '@/components/ta/ui/input';
+import { Textarea } from '@/components/ta/ui/textarea';
 import { Button } from '@/components/ta/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
 import { toast } from 'sonner';
 import { Loader2, Trash2, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
+import { emitRosterDataUpdated } from '@/lib/data-sync-events';
+import { TEST_STUDENT_ERP } from '@/lib/test-student-settings';
 
 type AppSettings = {
     id: string;
     roster_verification_enabled: boolean;
     tickets_enabled: boolean;
+    show_test_student_in_ta: boolean;
+    test_student_overrides: Record<string, unknown>;
 };
 
 type TaEmailRow = {
@@ -29,6 +34,18 @@ type SubmissionRow = {
     sort_order: number | null;
 };
 
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+    value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const DEFAULT_TEST_STUDENT_OVERRIDES = {
+    class_no: 'TEST',
+    student_name: 'Test Student',
+    total_absences: 0,
+    total_penalties: 0,
+    session_status: {},
+    penalty_entries: [],
+};
+
 export default function ListsSettings() {
     const { user } = useAuth();
     const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -43,6 +60,13 @@ export default function ListsSettings() {
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+    const [testStudentClassNo, setTestStudentClassNo] = useState(DEFAULT_TEST_STUDENT_OVERRIDES.class_no);
+    const [testStudentName, setTestStudentName] = useState(DEFAULT_TEST_STUDENT_OVERRIDES.student_name);
+    const [testStudentAbsences, setTestStudentAbsences] = useState(String(DEFAULT_TEST_STUDENT_OVERRIDES.total_absences));
+    const [testStudentPenalties, setTestStudentPenalties] = useState(String(DEFAULT_TEST_STUDENT_OVERRIDES.total_penalties));
+    const [testStudentSessionStatusJson, setTestStudentSessionStatusJson] = useState('{}');
+    const [testStudentPenaltyEntriesJson, setTestStudentPenaltyEntriesJson] = useState('[]');
+    const [isSavingTestStudent, setIsSavingTestStudent] = useState(false);
 
     useEffect(() => {
         fetchSettings();
@@ -78,10 +102,25 @@ export default function ListsSettings() {
     const fetchSettings = async () => {
         const { data } = await supabase.from('app_settings').select('*').single();
         if (data) {
+            const rawOverrides = isObjectRecord(data.test_student_overrides) ? data.test_student_overrides : {};
+            const mergedOverrides = {
+                ...DEFAULT_TEST_STUDENT_OVERRIDES,
+                ...rawOverrides,
+            };
+
             setSettings({
                 ...data,
-                tickets_enabled: data.tickets_enabled ?? true
+                tickets_enabled: data.tickets_enabled ?? true,
+                show_test_student_in_ta: data.show_test_student_in_ta ?? false,
+                test_student_overrides: rawOverrides,
             });
+
+            setTestStudentClassNo(String(mergedOverrides.class_no ?? DEFAULT_TEST_STUDENT_OVERRIDES.class_no));
+            setTestStudentName(String(mergedOverrides.student_name ?? DEFAULT_TEST_STUDENT_OVERRIDES.student_name));
+            setTestStudentAbsences(String(Number(mergedOverrides.total_absences ?? DEFAULT_TEST_STUDENT_OVERRIDES.total_absences)));
+            setTestStudentPenalties(String(Number(mergedOverrides.total_penalties ?? DEFAULT_TEST_STUDENT_OVERRIDES.total_penalties)));
+            setTestStudentSessionStatusJson(JSON.stringify(mergedOverrides.session_status ?? {}, null, 2));
+            setTestStudentPenaltyEntriesJson(JSON.stringify(mergedOverrides.penalty_entries ?? [], null, 2));
         }
     };
 
@@ -134,6 +173,100 @@ export default function ListsSettings() {
         } else {
             setSettings({ ...settings, tickets_enabled: checked });
             toast.success('Student ticketing ' + (checked ? 'enabled' : 'disabled'));
+        }
+    };
+
+    const toggleShowTestStudentInTa = async (checked: boolean) => {
+        if (!settings) return;
+
+        const { error } = await supabase
+            .from('app_settings')
+            .update({ show_test_student_in_ta: checked })
+            .eq('id', settings.id);
+
+        if (error) {
+            toast.error('Failed to update test student visibility');
+            return;
+        }
+
+        setSettings({ ...settings, show_test_student_in_ta: checked });
+        emitRosterDataUpdated('lists_settings_test_student_visibility');
+        toast.success(`Test student visibility in TA modules ${checked ? 'enabled' : 'disabled'}`);
+    };
+
+    const saveTestStudentOverrides = async () => {
+        if (!settings) return;
+
+        const normalizedAbsences = Math.max(0, Number(testStudentAbsences) || 0);
+        const normalizedPenalties = Math.max(0, Number(testStudentPenalties) || 0);
+        const normalizedClassNo = testStudentClassNo.trim() || DEFAULT_TEST_STUDENT_OVERRIDES.class_no;
+        const normalizedStudentName = testStudentName.trim() || DEFAULT_TEST_STUDENT_OVERRIDES.student_name;
+
+        let parsedSessionStatus: Record<string, string> = {};
+        let parsedPenaltyEntries: unknown[] = [];
+
+        try {
+            const sessionStatusInput = testStudentSessionStatusJson.trim() || '{}';
+            const parsed = JSON.parse(sessionStatusInput) as unknown;
+            if (!isObjectRecord(parsed)) {
+                toast.error('Session status JSON must be an object');
+                return;
+            }
+
+            parsedSessionStatus = Object.entries(parsed).reduce<Record<string, string>>((acc, [key, value]) => {
+                if (typeof value === 'string') {
+                    acc[String(key)] = value;
+                }
+                return acc;
+            }, {});
+        } catch {
+            toast.error('Session status JSON is invalid');
+            return;
+        }
+
+        try {
+            const penaltyEntriesInput = testStudentPenaltyEntriesJson.trim() || '[]';
+            const parsed = JSON.parse(penaltyEntriesInput) as unknown;
+            if (!Array.isArray(parsed)) {
+                toast.error('Penalty entries JSON must be an array');
+                return;
+            }
+            parsedPenaltyEntries = parsed;
+        } catch {
+            toast.error('Penalty entries JSON is invalid');
+            return;
+        }
+
+        const overridesPayload: Record<string, unknown> = {
+            erp: TEST_STUDENT_ERP,
+            class_no: normalizedClassNo,
+            student_name: normalizedStudentName,
+            total_absences: normalizedAbsences,
+            total_penalties: normalizedPenalties,
+            session_status: parsedSessionStatus,
+            penalty_entries: parsedPenaltyEntries,
+        };
+
+        setIsSavingTestStudent(true);
+        try {
+            const { error } = await supabase
+                .from('app_settings')
+                .update({ test_student_overrides: overridesPayload })
+                .eq('id', settings.id);
+
+            if (error) {
+                toast.error('Failed to save test student overrides');
+                return;
+            }
+
+            setSettings({
+                ...settings,
+                test_student_overrides: overridesPayload,
+            });
+            emitRosterDataUpdated('lists_settings_test_student_overrides');
+            toast.success('Test student overrides saved');
+        } finally {
+            setIsSavingTestStudent(false);
         }
     };
 
@@ -272,6 +405,104 @@ export default function ListsSettings() {
                             onCheckedChange={toggleStudentTickets}
                         />
                     </div>
+                </CardContent>
+            </Card>
+
+            <Card className="ta-module-card">
+                <CardHeader>
+                    <CardTitle>Test Student (00000)</CardTitle>
+                    <CardDescription>
+                        Configure manual overrides for the test student in TA modules. Public board will always hide ERP 00000.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between space-x-2">
+                        <Label htmlFor="show-test-student-ta" className="flex flex-col space-y-1">
+                            <span>Show in TA Roster & Consolidated View</span>
+                            <span className="font-normal text-xs text-muted-foreground">
+                                Controls visibility only in TA modules.
+                            </span>
+                        </Label>
+                        <Switch
+                            id="show-test-student-ta"
+                            checked={settings.show_test_student_in_ta}
+                            onCheckedChange={toggleShowTestStudentInTa}
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                            <Label htmlFor="test-student-class">Class No</Label>
+                            <Input
+                                id="test-student-class"
+                                value={testStudentClassNo}
+                                onChange={(event) => setTestStudentClassNo(event.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="test-student-erp">ERP</Label>
+                            <Input id="test-student-erp" value={TEST_STUDENT_ERP} readOnly />
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="test-student-name">Student Name</Label>
+                        <Input
+                            id="test-student-name"
+                            value={testStudentName}
+                            onChange={(event) => setTestStudentName(event.target.value)}
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                            <Label htmlFor="test-student-absences">Total Absences</Label>
+                            <Input
+                                id="test-student-absences"
+                                type="number"
+                                min={0}
+                                value={testStudentAbsences}
+                                onChange={(event) => setTestStudentAbsences(event.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="test-student-penalties">Total Penalties</Label>
+                            <Input
+                                id="test-student-penalties"
+                                type="number"
+                                min={0}
+                                value={testStudentPenalties}
+                                onChange={(event) => setTestStudentPenalties(event.target.value)}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="test-student-session-status">Session Status JSON</Label>
+                        <Textarea
+                            id="test-student-session-status"
+                            value={testStudentSessionStatusJson}
+                            onChange={(event) => setTestStudentSessionStatusJson(event.target.value)}
+                            className="min-h-[110px] font-mono text-xs"
+                            placeholder='{"session-id":"present"}'
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="test-student-penalty-entries">Penalty Entries JSON</Label>
+                        <Textarea
+                            id="test-student-penalty-entries"
+                            value={testStudentPenaltyEntriesJson}
+                            onChange={(event) => setTestStudentPenaltyEntriesJson(event.target.value)}
+                            className="min-h-[110px] font-mono text-xs"
+                            placeholder='[{"session_id":"...","session_number":1}]'
+                        />
+                    </div>
+
+                    <Button onClick={saveTestStudentOverrides} disabled={isSavingTestStudent}>
+                        {isSavingTestStudent && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Save Test Student Overrides
+                    </Button>
                 </CardContent>
             </Card>
 

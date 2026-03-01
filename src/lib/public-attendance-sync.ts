@@ -10,6 +10,22 @@ export interface PublicAttendanceSession {
   day_of_week: string;
 }
 
+export interface PublicAttendancePenaltyDetails {
+  rejoin_count?: number;
+  session_durations_minutes?: number[];
+  total_duration_minutes?: number;
+  missed_minutes_for_presence?: number;
+  [key: string]: unknown;
+}
+
+export interface PublicAttendancePenaltyEntry {
+  session_id: string;
+  session_number: number;
+  session_date: string;
+  day_of_week: string;
+  details: PublicAttendancePenaltyDetails | null;
+}
+
 export interface PublicAttendanceStudent {
   class_no: string;
   student_name: string;
@@ -17,6 +33,7 @@ export interface PublicAttendanceStudent {
   total_penalties: number;
   total_absences: number;
   session_status: Record<string, string>;
+  penalty_entries: PublicAttendancePenaltyEntry[];
 }
 
 export interface PublicAttendanceBoardData {
@@ -46,6 +63,14 @@ const toNumber = (value: unknown) => {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const toObjectOrNull = (value: unknown): Record<string, unknown> | null => {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  return null;
 };
 
 const statusToSymbol = (status: string | undefined) => {
@@ -80,6 +105,19 @@ export const normalizePublicAttendanceBoardData = (payload: unknown): PublicAtte
         typeof (student as PublicAttendanceStudent).session_status === 'object'
           ? ((student as PublicAttendanceStudent).session_status as Record<string, string>)
           : {},
+      penalty_entries: (Array.isArray((student as PublicAttendanceStudent).penalty_entries)
+        ? (student as PublicAttendanceStudent).penalty_entries
+        : []
+      )
+        .map((entry) => ({
+          session_id: toText((entry as PublicAttendancePenaltyEntry).session_id),
+          session_number: toNumber((entry as PublicAttendancePenaltyEntry).session_number),
+          session_date: toText((entry as PublicAttendancePenaltyEntry).session_date),
+          day_of_week: toText((entry as PublicAttendancePenaltyEntry).day_of_week),
+          details: toObjectOrNull((entry as PublicAttendancePenaltyEntry).details) as PublicAttendancePenaltyDetails | null,
+        }))
+        .filter((entry) => entry.session_id !== '')
+        .sort((a, b) => a.session_number - b.session_number),
     }))
     .filter((student) => student.erp !== '');
 
@@ -94,6 +132,76 @@ export const fetchPublicAttendanceBoard = async (): Promise<PublicAttendanceBoar
   }
 
   return normalizePublicAttendanceBoardData(data);
+};
+
+interface PenaltyAttendanceRow {
+  erp: string;
+  session_id: string;
+  sessions:
+    | {
+        session_number: number;
+        session_date: string;
+        day_of_week: string;
+      }
+    | Array<{
+        session_number: number;
+        session_date: string;
+        day_of_week: string;
+      }>
+    | null;
+}
+
+export const fetchPenaltyEntriesForErps = async (
+  erps: string[]
+): Promise<Record<string, PublicAttendancePenaltyEntry[]>> => {
+  const uniqueErps = Array.from(new Set(erps.map((erp) => erp.trim()).filter(Boolean)));
+
+  if (uniqueErps.length === 0) {
+    return {};
+  }
+
+  const { data, error } = await supabase
+    .from('attendance')
+    .select('erp, session_id, sessions(session_number, session_date, day_of_week)')
+    .eq('naming_penalty', true)
+    .in('erp', uniqueErps);
+
+  if (error) {
+    throw error;
+  }
+
+  const grouped: Record<string, PublicAttendancePenaltyEntry[]> = {};
+
+  for (const row of (data ?? []) as PenaltyAttendanceRow[]) {
+    const sessionRef = Array.isArray(row.sessions) ? row.sessions[0] : row.sessions;
+    if (!sessionRef) {
+      continue;
+    }
+
+    const entry: PublicAttendancePenaltyEntry = {
+      session_id: toText(row.session_id),
+      session_number: toNumber(sessionRef.session_number),
+      session_date: toText(sessionRef.session_date),
+      day_of_week: toText(sessionRef.day_of_week),
+      details: null,
+    };
+
+    if (!entry.session_id || !row.erp) {
+      continue;
+    }
+
+    const erp = toText(row.erp);
+    grouped[erp] = grouped[erp] ?? [];
+    grouped[erp].push(entry);
+  }
+
+  for (const erp of Object.keys(grouped)) {
+    grouped[erp] = grouped[erp]
+      .sort((a, b) => a.session_number - b.session_number)
+      .filter((entry, index, arr) => index === 0 || arr[index - 1].session_id !== entry.session_id);
+  }
+
+  return grouped;
 };
 
 export const buildPublicAttendanceSnapshotPayload = (

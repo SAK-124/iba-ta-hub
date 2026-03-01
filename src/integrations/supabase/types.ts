@@ -19,6 +19,8 @@ export type Database = {
           created_at: string
           id: string
           roster_verification_enabled: boolean
+          show_test_student_in_ta: boolean
+          test_student_overrides: Json
           tickets_enabled: boolean
           updated_at: string
         }
@@ -26,6 +28,8 @@ export type Database = {
           created_at?: string
           id?: string
           roster_verification_enabled?: boolean
+          show_test_student_in_ta?: boolean
+          test_student_overrides?: Json
           tickets_enabled?: boolean
           updated_at?: string
         }
@@ -33,6 +37,8 @@ export type Database = {
           created_at?: string
           id?: string
           roster_verification_enabled?: boolean
+          show_test_student_in_ta?: boolean
+          test_student_overrides?: Json
           tickets_enabled?: boolean
           updated_at?: string
         }

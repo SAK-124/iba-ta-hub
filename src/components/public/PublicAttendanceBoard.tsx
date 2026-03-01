@@ -8,6 +8,7 @@ import {
   type PublicAttendanceSession,
   type PublicAttendanceStudent,
 } from '@/lib/public-attendance-sync';
+import { TEST_STUDENT_ERP } from '@/lib/test-student-settings';
 import { subscribeAttendanceDataUpdated, subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { AlertCircle, Loader2, Search } from 'lucide-react';
 
@@ -45,7 +46,7 @@ export default function PublicAttendanceBoard() {
     try {
       const board = await fetchPublicAttendanceBoard();
       setSessions(board.sessions);
-      setStudents(board.students);
+      setStudents(board.students.filter((student) => student.erp !== TEST_STUDENT_ERP));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load attendance board.';
       setError(message);
@@ -71,9 +72,11 @@ export default function PublicAttendanceBoard() {
   }, [searchQuery, students]);
 
   const getAbsenceColor = (count: number) => {
-    if (count <= 4) return 'text-green-600';
-    if (count === 5) return 'text-yellow-600';
-    return 'text-red-600';
+    if (count === 0) return 'text-muted-foreground';
+    if (count <= 2) return 'text-green-600';
+    if (count <= 4) return 'text-yellow-600';
+    if (count === 5) return 'text-red-600';
+    return 'text-purple-600';
   };
 
   const getSessionSymbol = (status: string | undefined) => {

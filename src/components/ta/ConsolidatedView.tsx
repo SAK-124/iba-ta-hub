@@ -3,12 +3,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ta/ui/input';
 import { Button } from '@/components/ta/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ta/ui/tooltip';
 import {
+  fetchPenaltyEntriesForErps,
   fetchPublicAttendanceBoard,
   syncPublicAttendanceSnapshot,
   type PublicAttendanceSession,
   type PublicAttendanceStudent,
 } from '@/lib/public-attendance-sync';
+import { applyTaTestStudentToBoard, fetchTaTestStudentSettings } from '@/lib/test-student-settings';
 import { subscribeAttendanceDataUpdated, subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { toast } from 'sonner';
 import { Loader2, Upload } from 'lucide-react';
@@ -44,9 +47,42 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
     }
 
     try {
-      const board = await fetchPublicAttendanceBoard();
-      setSessions(board.sessions);
-      setStudents(board.students);
+      const [board, testStudentSettings] = await Promise.all([
+        fetchPublicAttendanceBoard(),
+        fetchTaTestStudentSettings(),
+      ]);
+      const taBoard = applyTaTestStudentToBoard(board, testStudentSettings);
+      let studentsWithPenaltyDetails = taBoard.students;
+
+      const erpsNeedingPenaltyDetails = taBoard.students
+        .filter((student) => student.total_penalties > 0 && (student.penalty_entries?.length ?? 0) === 0)
+        .map((student) => student.erp);
+
+      if (erpsNeedingPenaltyDetails.length > 0) {
+        try {
+          const fetchedPenaltyEntries = await fetchPenaltyEntriesForErps(erpsNeedingPenaltyDetails);
+          studentsWithPenaltyDetails = taBoard.students.map((student) => {
+            if ((student.penalty_entries?.length ?? 0) > 0 || student.total_penalties <= 0) {
+              return student;
+            }
+
+            const entries = fetchedPenaltyEntries[student.erp] ?? [];
+            if (entries.length === 0) {
+              return student;
+            }
+
+            return {
+              ...student,
+              penalty_entries: entries,
+            };
+          });
+        } catch (fallbackError) {
+          console.warn('Penalty details fallback lookup failed', fallbackError);
+        }
+      }
+
+      setSessions(taBoard.sessions);
+      setStudents(studentsWithPenaltyDetails);
       hasLoadedOnceRef.current = true;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to load consolidated attendance.';
@@ -174,6 +210,7 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
             <Loader2 className="animate-spin" />
           </div>
         ) : (
+          <TooltipProvider delayDuration={0}>
             <Table containerClassName="max-h-[600px]">
               <TableHeader>
                 <TableRow>
@@ -192,17 +229,50 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
               <TableBody>
                 {filteredStudents.map((student) => {
                   const getAbsenceColor = (count: number) => {
-                    if (count <= 4) return 'status-present-table-text';
-                    if (count === 5) return 'status-excused-table-text';
-                    return 'status-absent-table-text';
+                    if (count === 0) return '';
+                    if (count <= 2) return 'status-present-table-text';
+                    if (count <= 4) return 'status-excused-table-text';
+                    if (count === 5) return 'status-absent-table-text';
+                    return 'status-purple-table-text';
                   };
+                  const hasPenalties = student.total_penalties > 0;
+                  const penaltyEntries = student.penalty_entries ?? [];
+                  const penaltySessionLabels = penaltyEntries.map((entry) => `S${entry.session_number}`);
+                  const penaltyTooltipText =
+                    penaltySessionLabels.length > 0 ? `Penalty sessions: ${penaltySessionLabels.join(', ')}` : 'Session info unavailable';
 
                   return (
                     <TableRow key={student.erp}>
                       <TableCell className="sticky left-0 font-medium">{student.class_no}</TableCell>
                       <TableCell className="sticky left-[100px]">{student.student_name}</TableCell>
                       <TableCell>{student.erp}</TableCell>
-                      <TableCell className="text-center font-bold">{student.total_penalties}</TableCell>
+                      <TableCell className={`text-center font-bold ${hasPenalties ? 'status-absent-table-text' : ''}`}>
+                        {hasPenalties ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="cursor-help" title={penaltyTooltipText}>
+                                {student.total_penalties}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent className="text-debossed-body">
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Penalty sessions</p>
+                              {penaltyEntries.length > 0 ? (
+                                <ul className="mt-1 space-y-0.5">
+                                  {penaltyEntries.map((entry) => (
+                                    <li key={`${student.erp}-${entry.session_id}`} className="text-sm font-bold text-debossed-body">
+                                      S{entry.session_number}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="mt-1 text-sm text-debossed-sm">Session info unavailable</p>
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          student.total_penalties
+                        )}
+                      </TableCell>
                       <TableCell className={`text-center font-bold ${getAbsenceColor(student.total_absences)}`}>
                         {student.total_absences}
                       </TableCell>
@@ -233,6 +303,7 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
                 })}
               </TableBody>
             </Table>
+          </TooltipProvider>
         )}
       </CardContent>
       </Card>
