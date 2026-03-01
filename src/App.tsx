@@ -9,16 +9,17 @@ import Dashboard from "./pages/Dashboard";
 import PublicAttendance from "./pages/PublicAttendance";
 import BlockedAccess from "./pages/BlockedAccess";
 import NotFound from "./pages/NotFound";
-import { Loader2 } from "lucide-react";
 import { ThemeProvider } from "@/components/theme-provider";
+import PortalLoadingScreen from "@/components/PortalLoadingScreen";
 
 const queryClient = new QueryClient();
 
 function RouteLoading() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <Loader2 className="w-8 h-8 animate-spin text-primary" />
-    </div>
+    <PortalLoadingScreen
+      title="Authenticating Access"
+      subtitle="Checking your account and preparing the portal..."
+    />
   );
 }
 

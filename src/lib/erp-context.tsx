@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -21,61 +21,40 @@ export function ERPProvider({ children }: { children: React.ReactNode }) {
   const [isVerified, setIsVerified] = useState(false);
   const [studentName, setStudentName] = useState<string | null>(null);
   const [classNo, setClassNo] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const latestCheckIdRef = useRef(0);
 
-  useEffect(() => {
-    // Check for logged in user and extract ERP
-    const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user?.email) {
-        // Regex to extract 5 digits before @
-        // e.g. s.khan.26611@khi.iba.edu.pk -> 26611
-        const match = user.email.match(/(\d{5})@/);
-        if (match && match[1]) {
-          const autoErp = match[1];
-          if (autoErp !== erp) {
-            console.log('Auto-setting ERP from email:', autoErp);
-            setERP(autoErp);
-          }
-        }
-      }
-    };
-
-    checkUser();
-
-    if (erp) {
-      checkRoster(erp);
-    }
-  }, []);
-
-  const setERP = (newErp: string) => {
+  const setERP = useCallback((newErp: string) => {
     setErpState(newErp);
     localStorage.setItem('student_erp', newErp);
-    checkRoster(newErp);
-  };
+  }, []);
 
-  const checkRoster = async (erpToCheck: string) => {
+  const checkRoster = useCallback(async (erpToCheck: string) => {
+    const checkId = ++latestCheckIdRef.current;
     setIsLoading(true);
     try {
+      if (erpToCheck === '00000') {
+        if (checkId !== latestCheckIdRef.current) return false;
+        setIsVerified(true);
+        setStudentName('Test Student');
+        setClassNo('TEST');
+        return true;
+      }
+
       // First check if verification is enabled
       const { data: settings } = await supabase
         .from('app_settings')
         .select('roster_verification_enabled')
         .single();
 
+      if (checkId !== latestCheckIdRef.current) return false;
       const verificationEnabled = settings?.roster_verification_enabled ?? true;
 
       if (!verificationEnabled) {
+        if (checkId !== latestCheckIdRef.current) return false;
         setIsVerified(true);
         setStudentName('Student');
-        setIsLoading(false);
-        return true;
-      }
-
-      if (erpToCheck === '00000') {
-        setIsVerified(true);
-        setStudentName('Test Student');
-        setClassNo('TEST');
+        setClassNo(null);
         setIsLoading(false);
         return true;
       }
@@ -83,6 +62,7 @@ export function ERPProvider({ children }: { children: React.ReactNode }) {
       const { data, error } = await supabase
         .rpc('check_roster', { check_erp: erpToCheck });
 
+      if (checkId !== latestCheckIdRef.current) return false;
       if (error) {
         console.error('Roster check error:', error);
         toast.error('Failed to verify roster');
@@ -105,13 +85,62 @@ export function ERPProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
     } catch (error) {
+      if (checkId !== latestCheckIdRef.current) return false;
       console.error('Error checking roster:', error);
       setIsVerified(false);
       return false;
     } finally {
-      setIsLoading(false);
+      if (checkId === latestCheckIdRef.current) {
+        setIsLoading(false);
+      }
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const detectErpFromUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!isMounted) return;
+
+      if (user?.email) {
+        // Regex to extract 5 digits before @
+        // e.g. s.khan.26611@khi.iba.edu.pk -> 26611
+        const match = user.email.match(/(\d{5})@/);
+        if (match && match[1]) {
+          const autoErp = match[1];
+          if (autoErp !== erp) {
+            console.log('Auto-setting ERP from email:', autoErp);
+            setERP(autoErp);
+            return;
+          }
+        }
+      }
+
+      // If no ERP was detected and none persisted, stop initial loading.
+      if (!erp) {
+        setIsLoading(false);
+      }
+    };
+
+    void detectErpFromUser();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [erp, setERP]);
+
+  useEffect(() => {
+    if (!erp) {
+      setIsVerified(false);
+      setStudentName(null);
+      setClassNo(null);
+      setIsLoading(false);
+      return;
+    }
+
+    void checkRoster(erp);
+  }, [erp, checkRoster]);
 
   return (
     <ERPContext.Provider value={{ erp, setERP, isVerified, studentName, classNo, isLoading, checkRoster }}>

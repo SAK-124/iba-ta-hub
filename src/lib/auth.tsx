@@ -21,18 +21,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isTA, setIsTA] = useState(false);
-  const hasBootstrappedSessionRef = useRef(false);
+  const latestSyncIdRef = useRef(0);
+  const sawAuthEventRef = useRef(false);
 
   const checkTAStatus = async (email: string): Promise<boolean> => {
     try {
-      const { data } = await supabase
-        .from('ta_allowlist')
-        .select('active')
-        .eq('email', email)
-        .eq('active', true)
-        .maybeSingle();
-
-      return !!data;
+      const { data, error } = await supabase.rpc('check_ta_allowlist', { check_email: email });
+      if (error) {
+        return false;
+      }
+      return Boolean(data);
     } catch {
       return false;
     }
@@ -41,39 +39,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
-    const syncSessionState = async (nextSession: Session | null) => {
+    const syncSessionState = async (
+      nextSession: Session | null,
+      source: 'initial' | 'event',
+    ) => {
       if (!isMounted) return;
-
-      if (!hasBootstrappedSessionRef.current) {
-        setIsLoading(true);
+      if (source === 'initial' && sawAuthEventRef.current) {
+        return;
+      }
+      if (source === 'event') {
+        sawAuthEventRef.current = true;
       }
 
+      const syncId = ++latestSyncIdRef.current;
+      setIsLoading(true);
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
 
       if (!nextSession?.user?.email) {
+        if (syncId !== latestSyncIdRef.current || !isMounted) return;
         setIsTA(false);
         setIsLoading(false);
-        hasBootstrappedSessionRef.current = true;
         return;
       }
 
       const taStatus = await checkTAStatus(nextSession.user.email);
-      if (!isMounted) return;
+      if (syncId !== latestSyncIdRef.current || !isMounted) return;
 
       setIsTA(taStatus);
       setIsLoading(false);
-      hasBootstrappedSessionRef.current = true;
     };
 
     setIsLoading(true);
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      void syncSessionState(session);
+      void syncSessionState(session, 'initial');
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      void syncSessionState(nextSession);
+      void syncSessionState(nextSession, 'event');
     });
 
     return () => {
