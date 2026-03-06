@@ -9,14 +9,20 @@ import type {
   TicketWithStudentName,
 } from './types';
 
-const augmentWithRosterNames = async (tickets: TicketRow[]): Promise<TicketWithStudentName[]> => {
-  const erps = [...new Set(tickets.map((ticket) => ticket.entered_erp))].filter(Boolean);
+const rosterNameCache = new Map<string, string>();
+
+const withStudentName = (ticket: TicketRow): TicketWithStudentName => ({
+  ...ticket,
+  real_name: rosterNameCache.get(String(ticket.entered_erp ?? '').trim()) || ticket.roster_name || 'Unknown',
+});
+
+const hydrateRosterNameCache = async (tickets: TicketRow[]) => {
+  const erps = [...new Set(tickets.map((ticket) => String(ticket.entered_erp ?? '').trim()).filter(Boolean))].filter(
+    (erp) => !rosterNameCache.has(erp),
+  );
 
   if (erps.length === 0) {
-    return tickets.map((ticket) => ({
-      ...ticket,
-      real_name: ticket.roster_name || 'Unknown',
-    }));
+    return;
   }
 
   const { data: rosterData, error } = await supabase
@@ -30,13 +36,17 @@ const augmentWithRosterNames = async (tickets: TicketRow[]): Promise<TicketWithS
 
   const nameMap = new Map<string, string>();
   (rosterData ?? []).forEach((entry) => {
-    nameMap.set(entry.erp, entry.student_name);
+    nameMap.set(entry.erp.trim(), entry.student_name);
   });
 
-  return tickets.map((ticket) => ({
-    ...ticket,
-    real_name: nameMap.get(ticket.entered_erp) || ticket.roster_name || 'Unknown',
-  }));
+  for (const [erp, name] of nameMap.entries()) {
+    rosterNameCache.set(erp, name);
+  }
+};
+
+const augmentWithRosterNames = async (tickets: TicketRow[]): Promise<TicketWithStudentName[]> => {
+  await hydrateRosterNameCache(tickets);
+  return tickets.map(withStudentName);
 };
 
 export const listTickets = async (): Promise<TicketWithStudentName[]> => {
@@ -46,6 +56,11 @@ export const listTickets = async (): Promise<TicketWithStudentName[]> => {
   }
 
   return augmentWithRosterNames((data ?? []) as TicketRow[]);
+};
+
+export const mapRealtimeTicketWithStudentName = async (ticket: TicketRow): Promise<TicketWithStudentName> => {
+  await hydrateRosterNameCache([ticket]);
+  return withStudentName(ticket);
 };
 
 export const listTicketsByErp = async (erp: string): Promise<TicketRow[]> => {
@@ -93,11 +108,11 @@ export const updateTicketResponse = async (ticketId: string, taResponse: string)
 
 export const subscribeMyTickets = (erp: string, handler: TicketSubscriptionHandler): TicketChannel => {
   return supabase
-    .channel('my-tickets')
+    .channel(`my-tickets-${erp}`)
     .on(
       'postgres_changes',
       {
-        event: 'UPDATE',
+        event: '*',
         schema: 'public',
         table: 'tickets',
         filter: `entered_erp=eq.${erp}`,

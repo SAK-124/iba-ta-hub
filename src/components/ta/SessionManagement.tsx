@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ta/ui/button';
 import { Input } from '@/components/ta/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ta/ui/select';
@@ -7,11 +7,25 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ta/ui/popover';
 import { Calendar } from '@/components/ta/ui/calendar';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ta/ui/dialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ta/ui/alert-dialog';
 import { toast } from 'sonner';
 import { Loader2, Plus, Trash2, CalendarIcon, Clock, Pencil, Eye, EyeOff } from 'lucide-react';
 import { format, getDay, parse } from 'date-fns';
 import { normalizeZoomSessionReport, type ZoomReportLoadRequest } from '@/lib/zoom-session-report';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/auth';
+import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
+import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
+import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 import {
     createSession,
     deleteSession,
@@ -23,39 +37,84 @@ import {
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 type Session = SessionRow;
+const TA_STORAGE_SCOPE = 'ta';
+const SESSION_MANAGEMENT_STORAGE_KEY = 'module-sessions';
 
 interface SessionManagementProps {
     onOpenZoomReport?: (request: ZoomReportLoadRequest) => void;
 }
 
+interface PersistedSessionManagementState {
+    sessionNum: string;
+    selectedDate: string | null;
+    day: string;
+    customDay: string;
+    useCustomDay: boolean;
+    startTime: string;
+    endTime: string;
+    editingSession: Session | null;
+    editSessionNum: string;
+    editDate: string | null;
+    editDay: string;
+    editStartTime: string;
+    editEndTime: string;
+    sessionPendingDelete: Session | null;
+}
+
 export default function SessionManagement({ onOpenZoomReport }: SessionManagementProps = {}) {
+    const { user } = useAuth();
+    const userEmail = user?.email ?? null;
+    const persistedState = readScopedSessionStorage<PersistedSessionManagementState>(
+        TA_STORAGE_SCOPE,
+        userEmail,
+        SESSION_MANAGEMENT_STORAGE_KEY,
+        {
+            sessionNum: '',
+            selectedDate: null,
+            day: '',
+            customDay: '',
+            useCustomDay: false,
+            startTime: '',
+            endTime: '',
+            editingSession: null,
+            editSessionNum: '',
+            editDate: null,
+            editDay: '',
+            editStartTime: '',
+            editEndTime: '',
+            sessionPendingDelete: null,
+        },
+    );
     const [sessions, setSessions] = useState<Session[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const markRefreshedRef = useRef<() => void>(() => {});
+    const hasLoadedOnceRef = useRef(false);
 
     // New session form
-    const [sessionNum, setSessionNum] = useState('');
-    const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-    const [day, setDay] = useState<string>('');
-    const [customDay, setCustomDay] = useState('');
-    const [useCustomDay, setUseCustomDay] = useState(false);
-    const [startTime, setStartTime] = useState('');
-    const [endTime, setEndTime] = useState('');
+    const [sessionNum, setSessionNum] = useState(persistedState.sessionNum);
+    const [selectedDate, setSelectedDate] = useState<Date | undefined>(
+        persistedState.selectedDate ? new Date(persistedState.selectedDate) : undefined,
+    );
+    const [day, setDay] = useState<string>(persistedState.day);
+    const [customDay, setCustomDay] = useState(persistedState.customDay);
+    const [useCustomDay, setUseCustomDay] = useState(persistedState.useCustomDay);
+    const [startTime, setStartTime] = useState(persistedState.startTime);
+    const [endTime, setEndTime] = useState(persistedState.endTime);
     const [isCreating, setIsCreating] = useState(false);
     const startTimeInputRef = useRef<HTMLInputElement>(null);
     const endTimeInputRef = useRef<HTMLInputElement>(null);
 
     // Edit dialog state
-    const [editingSession, setEditingSession] = useState<Session | null>(null);
-    const [editSessionNum, setEditSessionNum] = useState('');
-    const [editDate, setEditDate] = useState<Date | undefined>(undefined);
-    const [editDay, setEditDay] = useState('');
-    const [editStartTime, setEditStartTime] = useState('');
-    const [editEndTime, setEditEndTime] = useState('');
+    const [editingSession, setEditingSession] = useState<Session | null>(persistedState.editingSession);
+    const [editSessionNum, setEditSessionNum] = useState(persistedState.editSessionNum);
+    const [editDate, setEditDate] = useState<Date | undefined>(
+        persistedState.editDate ? new Date(persistedState.editDate) : undefined,
+    );
+    const [editDay, setEditDay] = useState(persistedState.editDay);
+    const [editStartTime, setEditStartTime] = useState(persistedState.editStartTime);
+    const [editEndTime, setEditEndTime] = useState(persistedState.editEndTime);
     const [isSaving, setIsSaving] = useState(false);
-
-    useEffect(() => {
-        fetchSessions();
-    }, []);
+    const [sessionPendingDelete, setSessionPendingDelete] = useState<Session | null>(persistedState.sessionPendingDelete);
 
     // Auto-detect day of week when date changes (for new session)
     useEffect(() => {
@@ -74,12 +133,64 @@ export default function SessionManagement({ onOpenZoomReport }: SessionManagemen
         }
     }, [editDate]);
 
-    const fetchSessions = async () => {
-        setIsLoading(true);
-        const data = await listSessions();
-        setSessions(data as Session[]);
-        setIsLoading(false);
-    };
+    useEffect(() => {
+        writeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, SESSION_MANAGEMENT_STORAGE_KEY, {
+            sessionNum,
+            selectedDate: selectedDate ? selectedDate.toISOString() : null,
+            day,
+            customDay,
+            useCustomDay,
+            startTime,
+            endTime,
+            editingSession,
+            editSessionNum,
+            editDate: editDate ? editDate.toISOString() : null,
+            editDay,
+            editStartTime,
+            editEndTime,
+            sessionPendingDelete,
+        });
+    }, [
+        customDay,
+        day,
+        editDate,
+        editDay,
+        editEndTime,
+        editSessionNum,
+        editStartTime,
+        editingSession,
+        endTime,
+        selectedDate,
+        sessionNum,
+        sessionPendingDelete,
+        startTime,
+        useCustomDay,
+        userEmail,
+    ]);
+
+    const fetchSessions = useCallback(async (mode: 'initial' | 'silent' = 'initial') => {
+        const shouldShowLoader = mode === 'initial' && !hasLoadedOnceRef.current;
+        if (shouldShowLoader) {
+            setIsLoading(true);
+        }
+        try {
+            const data = await listSessions();
+            setSessions(data as Session[]);
+            hasLoadedOnceRef.current = true;
+            markRefreshedRef.current();
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            toast.error('Failed to load sessions: ' + message);
+        } finally {
+            if (shouldShowLoader) {
+                setIsLoading(false);
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        void fetchSessions('initial');
+    }, [fetchSessions]);
 
     const handleCreate = async () => {
         if (!sessionNum || !selectedDate) return;
@@ -103,7 +214,7 @@ export default function SessionManagement({ onOpenZoomReport }: SessionManagemen
 
             toast.success('Session created');
             resetForm();
-            await fetchSessions();
+            await fetchSessions('silent');
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : 'Unknown error';
             toast.error('Failed to create session: ' + message);
@@ -123,11 +234,10 @@ export default function SessionManagement({ onOpenZoomReport }: SessionManagemen
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm('Are you sure? This will delete the session. Attendance data will remain but become orphaned.')) return;
         try {
             await deleteSession(id);
             toast.success('Session deleted');
-            await fetchSessions();
+            await fetchSessions('silent');
         } catch {
             toast.error('Failed to delete');
         }
@@ -175,7 +285,7 @@ export default function SessionManagement({ onOpenZoomReport }: SessionManagemen
 
             toast.success('Session updated (attendance data preserved)');
             setEditingSession(null);
-            await fetchSessions();
+            await fetchSessions('silent');
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : 'Unknown error';
             toast.error('Failed to update: ' + message);
@@ -206,6 +316,29 @@ export default function SessionManagement({ onOpenZoomReport }: SessionManagemen
         input.focus();
         input.click();
     };
+
+    const { markRefreshed } = useStaleRefreshOnFocus(
+        () => fetchSessions('silent'),
+        { staleAfterMs: 60_000 },
+    );
+
+    useEffect(() => {
+        markRefreshedRef.current = markRefreshed;
+    }, [markRefreshed]);
+
+    useEffect(() => {
+        const channel = subscribeToRealtimeTables(
+            `ta-sessions-${userEmail ?? 'anonymous'}`,
+            [{ table: 'sessions' }],
+            () => {
+                void fetchSessions('silent');
+            },
+        );
+
+        return () => {
+            void removeRealtimeChannel(channel);
+        };
+    }, [fetchSessions, userEmail]);
 
     return (
         <div className="ta-module-shell grid gap-6 md:grid-cols-3">
@@ -397,7 +530,7 @@ export default function SessionManagement({ onOpenZoomReport }: SessionManagemen
                                                     <Button variant="ghost" size="icon" onClick={() => openEditDialog(s)}>
                                                         <Pencil className="h-4 w-4 text-debossed-sm" />
                                                     </Button>
-                                                    <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)}>
+                                                    <Button variant="ghost" size="icon" onClick={() => setSessionPendingDelete(s)}>
                                                         <Trash2 className="h-4 w-4 status-absent-text" />
                                                     </Button>
                                                 </TableCell>
@@ -491,6 +624,29 @@ export default function SessionManagement({ onOpenZoomReport }: SessionManagemen
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <AlertDialog open={Boolean(sessionPendingDelete)} onOpenChange={(open) => !open && setSessionPendingDelete(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Session?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will delete the session entry. Attendance rows stay in the database and may become orphaned.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (!sessionPendingDelete) return;
+                                void handleDelete(sessionPendingDelete.id);
+                                setSessionPendingDelete(null);
+                            }}
+                        >
+                            Delete Session
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ta/ui/button';
 import { Textarea } from '@/components/ta/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
@@ -31,6 +31,10 @@ import { Loader2, Upload, Pencil, Trash2, Plus, Search } from 'lucide-react';
 import { normalizeName } from '@/lib/utils';
 import { emitRosterDataUpdated } from '@/lib/data-sync-events';
 import { applyTaTestStudentToRoster, fetchTaTestStudentSettings, TEST_STUDENT_ERP } from '@/lib/test-student-settings';
+import { useAuth } from '@/lib/auth';
+import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
+import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
+import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 import {
     createRosterStudent,
     deleteRosterStudent,
@@ -47,22 +51,66 @@ type StudentRow = {
     erp: string;
 };
 
+const TA_STORAGE_SCOPE = 'ta';
+const ROSTER_MANAGEMENT_STORAGE_KEY = 'module-roster';
+
+interface PersistedRosterManagementState {
+    rosterText: string;
+    searchQuery: string;
+    isDialogOpen: boolean;
+    currentStudent: StudentRow | null;
+    formData: {
+        student_name: string;
+        erp: string;
+        class_no: string;
+    };
+    studentPendingDelete: StudentRow | null;
+}
+
 export default function RosterManagement() {
-    const [rosterText, setRosterText] = useState('');
+    const { user } = useAuth();
+    const userEmail = user?.email ?? null;
+    const persistedState = readScopedSessionStorage<PersistedRosterManagementState>(
+        TA_STORAGE_SCOPE,
+        userEmail,
+        ROSTER_MANAGEMENT_STORAGE_KEY,
+        {
+            rosterText: '',
+            searchQuery: '',
+            isDialogOpen: false,
+            currentStudent: null,
+            formData: { student_name: '', erp: '', class_no: '' },
+            studentPendingDelete: null,
+        },
+    );
+    const [rosterText, setRosterText] = useState(persistedState.rosterText);
     const [isUploading, setIsUploading] = useState(false);
     const [students, setStudents] = useState<StudentRow[]>([]);
     const [count, setCount] = useState(0);
-    const [searchQuery, setSearchQuery] = useState('');
+    const [searchQuery, setSearchQuery] = useState(persistedState.searchQuery);
+    const markRefreshedRef = useRef<() => void>(() => {});
 
     // Editing State
-    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [isDialogOpen, setIsDialogOpen] = useState(persistedState.isDialogOpen);
     const [isSaving, setIsSaving] = useState(false);
-    const [currentStudent, setCurrentStudent] = useState<StudentRow | null>(null); // null = adding, object = editing
-    const [formData, setFormData] = useState({ student_name: '', erp: '', class_no: '' });
+    const [currentStudent, setCurrentStudent] = useState<StudentRow | null>(persistedState.currentStudent); // null = adding, object = editing
+    const [formData, setFormData] = useState(persistedState.formData);
+    const [studentPendingDelete, setStudentPendingDelete] = useState<StudentRow | null>(persistedState.studentPendingDelete);
 
     useEffect(() => {
         fetchRoster();
     }, []);
+
+    useEffect(() => {
+        writeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, ROSTER_MANAGEMENT_STORAGE_KEY, {
+            rosterText,
+            searchQuery,
+            isDialogOpen,
+            currentStudent,
+            formData,
+            studentPendingDelete,
+        });
+    }, [currentStudent, formData, isDialogOpen, rosterText, searchQuery, studentPendingDelete, userEmail]);
 
     const fetchRoster = async () => {
         try {
@@ -77,6 +125,7 @@ export default function RosterManagement() {
 
             setCount(mergedRows.length);
             setStudents(mergedRows);
+            markRefreshedRef.current();
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : 'Unknown error';
             toast.error('Failed to load roster: ' + message);
@@ -184,8 +233,6 @@ export default function RosterManagement() {
             return;
         }
 
-        if (!confirm('Are you sure you want to delete this student?')) return;
-
         try {
             await deleteRosterStudent(student.id);
             toast.success('Student deleted');
@@ -223,6 +270,29 @@ export default function RosterManagement() {
         s.erp.toLowerCase().includes(searchQuery.toLowerCase()) ||
         s.class_no.toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    const { markRefreshed } = useStaleRefreshOnFocus(
+        () => fetchRoster(),
+        { staleAfterMs: 60_000 },
+    );
+
+    useEffect(() => {
+        markRefreshedRef.current = markRefreshed;
+    }, [markRefreshed]);
+
+    useEffect(() => {
+        const channel = subscribeToRealtimeTables(
+            `ta-roster-${Date.now()}`,
+            [{ table: 'students_roster' }, { table: 'app_settings' }],
+            () => {
+                void fetchRoster();
+            },
+        );
+
+        return () => {
+            void removeRealtimeChannel(channel);
+        };
+    }, []);
 
     return (
         <div className="ta-module-shell  space-y-8 animate-fade-in">
@@ -338,7 +408,7 @@ export default function RosterManagement() {
                                                             <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => openEditDialog(s)}>
                                                                 <Pencil className="h-4 w-4" />
                                                             </Button>
-                                                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => handleDeleteStudent(s)}>
+                                                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => setStudentPendingDelete(s)}>
                                                                 <Trash2 className="h-4 w-4 status-absent-text" />
                                                             </Button>
                                                         </>
@@ -406,6 +476,30 @@ export default function RosterManagement() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <AlertDialog open={Boolean(studentPendingDelete)} onOpenChange={(open) => !open && setStudentPendingDelete(null)}>
+                <AlertDialogContent className="border-[#141517]">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="status-absent-text">Delete student?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action cannot be undone. The roster entry will be permanently removed.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="rounded-xl neo-btn neo-out text-debossed-sm"
+                            onClick={() => {
+                                if (!studentPendingDelete) return;
+                                void handleDeleteStudent(studentPendingDelete);
+                                setStudentPendingDelete(null);
+                            }}
+                        >
+                            <span className="status-absent-text">Delete</span>
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

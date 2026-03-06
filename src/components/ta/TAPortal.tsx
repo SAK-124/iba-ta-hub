@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ComponentType } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, type ComponentType } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -17,19 +17,29 @@ import {
 import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '@/lib/auth';
+import {
+  readScopedSessionStorage,
+  removeScopedSessionStorage,
+  writeScopedSessionStorage,
+} from '@/lib/scoped-session-storage';
 import { cn } from '@/lib/utils';
-import type { ZoomReportLoadRequest, ZoomSessionReport } from '@/lib/zoom-session-report';
+import {
+  normalizeZoomSessionReport,
+  type ZoomReportLoadRequest,
+  type ZoomSessionReport,
+} from '@/lib/zoom-session-report';
+import PortalLoadingScreen from '@/components/PortalLoadingScreen';
 
-import AttendanceMarking from './AttendanceMarking';
-import ConsolidatedView from './ConsolidatedView';
-import ExportData from './ExportData';
-import IssueManagement from './IssueManagement';
-import LateDaysManagement from './LateDaysManagement';
-import ListsSettings from './ListsSettings';
-import RosterManagement from './RosterManagement';
-import RuleExceptions from './RuleExceptions';
-import SessionManagement from './SessionManagement';
-import TAZoomProcess from './TAZoomProcess';
+const TAZoomProcess = lazy(() => import('./TAZoomProcess'));
+const AttendanceMarking = lazy(() => import('./AttendanceMarking'));
+const SessionManagement = lazy(() => import('./SessionManagement'));
+const ConsolidatedView = lazy(() => import('./ConsolidatedView'));
+const RuleExceptions = lazy(() => import('./RuleExceptions'));
+const RosterManagement = lazy(() => import('./RosterManagement'));
+const LateDaysManagement = lazy(() => import('./LateDaysManagement'));
+const ExportData = lazy(() => import('./ExportData'));
+const IssueManagement = lazy(() => import('./IssueManagement'));
+const ListsSettings = lazy(() => import('./ListsSettings'));
 
 type PortalModule =
   | 'zoom'
@@ -54,6 +64,16 @@ interface ModuleConfig {
 }
 
 const ATTENDANCE_TAB_STORAGE_KEY = 'ta-attendance-workspace-tab';
+const TA_STORAGE_SCOPE = 'ta';
+const ACTIVE_MODULE_STORAGE_KEY = 'active-module';
+const ATTENDANCE_WORKSPACE_TAB_STORAGE_KEY = 'attendance-workspace-tab';
+const LATEST_ZOOM_REPORT_STORAGE_KEY = 'latest-final-zoom-report';
+const MODULE_SUSPENSE_FALLBACK = (
+  <PortalLoadingScreen
+    title="Loading Module"
+    subtitle="Preparing tools and data for this workspace..."
+  />
+);
 
 const MODULES: ModuleConfig[] = [
   { id: 'zoom', title: 'Zoom Processor', description: 'Upload logs, review matches, and generate attendance', icon: Video, colSpan: 2 },
@@ -69,13 +89,66 @@ const MODULES: ModuleConfig[] = [
 ];
 
 const isAttendanceWorkspaceTab = (value: string | null): value is AttendanceWorkspaceTab => value === 'zoom' || value === 'attendance';
+const isPortalModule = (value: string | null): value is PortalModule =>
+  Boolean(value && MODULES.some((module) => module.id === value));
+
+const readStoredAttendanceWorkspaceTab = (userEmail: string | null | undefined): AttendanceWorkspaceTab => {
+  const storedScopedTab = readScopedSessionStorage<string | null>(
+    TA_STORAGE_SCOPE,
+    userEmail,
+    ATTENDANCE_WORKSPACE_TAB_STORAGE_KEY,
+    null,
+  );
+  if (isAttendanceWorkspaceTab(storedScopedTab)) {
+    return storedScopedTab;
+  }
+
+  if (typeof window === 'undefined') {
+    return 'zoom';
+  }
+
+  const legacyStoredTab = window.sessionStorage.getItem(ATTENDANCE_TAB_STORAGE_KEY);
+  if (isAttendanceWorkspaceTab(legacyStoredTab)) {
+    return legacyStoredTab;
+  }
+
+  return 'zoom';
+};
 
 export default function TAPortal() {
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
   const navigate = useNavigate();
-  const [activeModule, setActiveModule] = useState<PortalModule | null>(null);
-  const [attendanceWorkspaceTab, setAttendanceWorkspaceTab] = useState<AttendanceWorkspaceTab>('zoom');
-  const [latestFinalZoomReport, setLatestFinalZoomReport] = useState<ZoomSessionReport | null>(null);
+  const userEmail = user?.email ?? null;
+  const initialAttendanceWorkspaceTab = readStoredAttendanceWorkspaceTab(userEmail);
+  const initialActiveModule = readScopedSessionStorage<string | null>(
+    TA_STORAGE_SCOPE,
+    userEmail,
+    ACTIVE_MODULE_STORAGE_KEY,
+    null,
+  );
+  const [activeModule, setActiveModule] = useState<PortalModule | null>(
+    isPortalModule(initialActiveModule) ? initialActiveModule : null,
+  );
+  const [attendanceWorkspaceTab, setAttendanceWorkspaceTab] = useState<AttendanceWorkspaceTab>(
+    initialAttendanceWorkspaceTab,
+  );
+  const [loadedAttendanceTabs, setLoadedAttendanceTabs] = useState<Set<AttendanceWorkspaceTab>>(() => {
+    const next = new Set<AttendanceWorkspaceTab>(['zoom']);
+    if (initialAttendanceWorkspaceTab === 'attendance' || initialActiveModule === 'attendance') {
+      next.add('attendance');
+    }
+    return next;
+  });
+  const [latestFinalZoomReport, setLatestFinalZoomReport] = useState<ZoomSessionReport | null>(() =>
+    normalizeZoomSessionReport(
+      readScopedSessionStorage<unknown | null>(
+        TA_STORAGE_SCOPE,
+        userEmail,
+        LATEST_ZOOM_REPORT_STORAGE_KEY,
+        null,
+      ),
+    ),
+  );
   const [pendingZoomReportLoad, setPendingZoomReportLoad] = useState<ZoomReportLoadRequest | null>(null);
 
   const showAttendanceSwitch = activeModule === 'zoom' || activeModule === 'attendance';
@@ -86,11 +159,6 @@ export default function TAPortal() {
     const hadDark = root.classList.contains('dark');
     root.classList.remove('light');
     root.classList.add('dark');
-
-    const storedTab = window.sessionStorage.getItem(ATTENDANCE_TAB_STORAGE_KEY);
-    if (isAttendanceWorkspaceTab(storedTab)) {
-      setAttendanceWorkspaceTab(storedTab);
-    }
 
     return () => {
       root.classList.remove('light', 'dark');
@@ -104,8 +172,35 @@ export default function TAPortal() {
   }, []);
 
   useEffect(() => {
-    window.sessionStorage.setItem(ATTENDANCE_TAB_STORAGE_KEY, attendanceWorkspaceTab);
-  }, [attendanceWorkspaceTab]);
+    writeScopedSessionStorage(
+      TA_STORAGE_SCOPE,
+      userEmail,
+      ATTENDANCE_WORKSPACE_TAB_STORAGE_KEY,
+      attendanceWorkspaceTab,
+    );
+
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(ATTENDANCE_TAB_STORAGE_KEY, attendanceWorkspaceTab);
+    }
+  }, [attendanceWorkspaceTab, userEmail]);
+
+  useEffect(() => {
+    writeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, ACTIVE_MODULE_STORAGE_KEY, activeModule);
+  }, [activeModule, userEmail]);
+
+  useEffect(() => {
+    if (latestFinalZoomReport) {
+      writeScopedSessionStorage(
+        TA_STORAGE_SCOPE,
+        userEmail,
+        LATEST_ZOOM_REPORT_STORAGE_KEY,
+        latestFinalZoomReport,
+      );
+      return;
+    }
+
+    removeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, LATEST_ZOOM_REPORT_STORAGE_KEY);
+  }, [latestFinalZoomReport, userEmail]);
 
   const activeModuleConfig = useMemo(
     () => (activeModule ? MODULES.find((module) => module.id === activeModule) ?? null : null),
@@ -115,12 +210,22 @@ export default function TAPortal() {
   const handleOpenModule = (module: PortalModule) => {
     if (module === 'zoom' || module === 'attendance') {
       setAttendanceWorkspaceTab(module);
+      setLoadedAttendanceTabs((prev) => {
+        const next = new Set(prev);
+        next.add(module);
+        return next;
+      });
     }
     setActiveModule(module);
   };
 
   const handleSwitchAttendanceTab = (tab: AttendanceWorkspaceTab) => {
     setAttendanceWorkspaceTab(tab);
+    setLoadedAttendanceTabs((prev) => {
+      const next = new Set(prev);
+      next.add(tab);
+      return next;
+    });
     setActiveModule(tab);
   };
 
@@ -157,28 +262,36 @@ export default function TAPortal() {
     if (showAttendanceSwitch) {
       return (
         <div className="relative">
-          <div
-            className={cn(
-              'transition-opacity duration-300 ease-out',
-              attendanceWorkspaceTab === 'zoom' ? 'relative opacity-100' : 'pointer-events-none absolute inset-0 opacity-0',
-            )}
-            aria-hidden={attendanceWorkspaceTab !== 'zoom'}
-          >
-            <TAZoomProcess
-              onFinalReportReady={setLatestFinalZoomReport}
-              reportLoadRequest={pendingZoomReportLoad}
-              onReportLoadHandled={() => setPendingZoomReportLoad(null)}
-            />
-          </div>
-          <div
-            className={cn(
-              'transition-opacity duration-300 ease-out',
-              attendanceWorkspaceTab === 'attendance' ? 'relative opacity-100' : 'pointer-events-none absolute inset-0 opacity-0',
-            )}
-            aria-hidden={attendanceWorkspaceTab !== 'attendance'}
-          >
-            <AttendanceMarking latestFinalZoomReport={latestFinalZoomReport} />
-          </div>
+          {loadedAttendanceTabs.has('zoom') && (
+            <div
+              className={cn(
+                'transition-opacity duration-300 ease-out',
+                attendanceWorkspaceTab === 'zoom' ? 'relative opacity-100' : 'pointer-events-none absolute inset-0 opacity-0',
+              )}
+              aria-hidden={attendanceWorkspaceTab !== 'zoom'}
+            >
+              <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
+                <TAZoomProcess
+                  onFinalReportReady={setLatestFinalZoomReport}
+                  reportLoadRequest={pendingZoomReportLoad}
+                  onReportLoadHandled={() => setPendingZoomReportLoad(null)}
+                />
+              </Suspense>
+            </div>
+          )}
+          {loadedAttendanceTabs.has('attendance') && (
+            <div
+              className={cn(
+                'transition-opacity duration-300 ease-out',
+                attendanceWorkspaceTab === 'attendance' ? 'relative opacity-100' : 'pointer-events-none absolute inset-0 opacity-0',
+              )}
+              aria-hidden={attendanceWorkspaceTab !== 'attendance'}
+            >
+              <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
+                <AttendanceMarking latestFinalZoomReport={latestFinalZoomReport} />
+              </Suspense>
+            </div>
+          )}
         </div>
       );
     }
@@ -186,29 +299,64 @@ export default function TAPortal() {
     switch (activeModule) {
       case 'sessions':
         return (
-          <SessionManagement
-            onOpenZoomReport={(request) => {
-              setPendingZoomReportLoad(request);
-              setLatestFinalZoomReport(request.report);
-              setAttendanceWorkspaceTab('zoom');
-              setActiveModule('zoom');
-            }}
-          />
+          <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
+            <SessionManagement
+              onOpenZoomReport={(request) => {
+                setPendingZoomReportLoad(request);
+                setLatestFinalZoomReport(request.report);
+                setAttendanceWorkspaceTab('zoom');
+                setLoadedAttendanceTabs((prev) => {
+                  const next = new Set(prev);
+                  next.add('zoom');
+                  return next;
+                });
+                setActiveModule('zoom');
+              }}
+            />
+          </Suspense>
         );
       case 'consolidated':
-        return <ConsolidatedView isActive={true} />;
+        return (
+          <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
+            <ConsolidatedView isActive={true} />
+          </Suspense>
+        );
       case 'exceptions':
-        return <RuleExceptions />;
+        return (
+          <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
+            <RuleExceptions />
+          </Suspense>
+        );
       case 'roster':
-        return <RosterManagement />;
+        return (
+          <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
+            <RosterManagement />
+          </Suspense>
+        );
       case 'late-days':
-        return <LateDaysManagement />;
+        return (
+          <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
+            <LateDaysManagement />
+          </Suspense>
+        );
       case 'export':
-        return <ExportData />;
+        return (
+          <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
+            <ExportData />
+          </Suspense>
+        );
       case 'issues':
-        return <IssueManagement />;
+        return (
+          <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
+            <IssueManagement />
+          </Suspense>
+        );
       case 'settings':
-        return <ListsSettings />;
+        return (
+          <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
+            <ListsSettings />
+          </Suspense>
+        );
       default:
         return null;
     }

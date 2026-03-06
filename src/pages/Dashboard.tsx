@@ -18,11 +18,7 @@ export default function Dashboard() {
   }
 
   if (isTA) {
-    return (
-      <ERPProvider>
-        <TAPortal />
-      </ERPProvider>
-    );
+    return <TAPortal />;
   }
 
   return (
