@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
 import { Button } from '@/components/ta/ui/button';
 import { Input } from '@/components/ta/ui/input';
@@ -11,6 +11,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ta/ui/label';
 import { Textarea } from '@/components/ta/ui/textarea';
 import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
+import { useAuth } from '@/lib/auth';
+import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
+import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
+import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 import {
     createRuleException,
     deleteRuleException,
@@ -25,6 +29,8 @@ type CameraWarningsMap = Record<string, number>;
 
 const CAMERA_WARNING_DURATION_MS = 5 * 60 * 1000;
 let cameraWarningsCache: CameraWarningsMap = {};
+const TA_STORAGE_SCOPE = 'ta';
+const RULE_EXCEPTIONS_STORAGE_KEY = 'module-rule-exceptions';
 
 const formatCountdown = (remainingMs: number) => {
     const totalSeconds = Math.max(Math.ceil(remainingMs / 1000), 0);
@@ -36,40 +42,71 @@ const formatCountdown = (remainingMs: number) => {
 const formatWarnedAt = (timestampMs: number) =>
     new Date(timestampMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
+interface PersistedRuleExceptionsState {
+    filterDay: string;
+    trackerSearchQuery: string;
+    cameraWarnings: CameraWarningsMap;
+    newErp: string;
+    newType: string;
+    newDay: string;
+    newNotes: string;
+    openDialog: boolean;
+}
+
 export default function RuleExceptions() {
+    const { user } = useAuth();
+    const userEmail = user?.email ?? null;
+    const persistedState = readScopedSessionStorage<PersistedRuleExceptionsState>(
+        TA_STORAGE_SCOPE,
+        userEmail,
+        RULE_EXCEPTIONS_STORAGE_KEY,
+        {
+            filterDay: 'all',
+            trackerSearchQuery: '',
+            cameraWarnings: cameraWarningsCache,
+            newErp: '',
+            newType: 'camera_excused',
+            newDay: 'both',
+            newNotes: '',
+            openDialog: false,
+        },
+    );
     const [exceptions, setExceptions] = useState<RuleExceptionRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRosterLoading, setIsRosterLoading] = useState(true);
-    const [filterDay, setFilterDay] = useState('all');
+    const [filterDay, setFilterDay] = useState(persistedState.filterDay);
     const [rosterStudents, setRosterStudents] = useState<RosterStudentRow[]>([]);
-    const [trackerSearchQuery, setTrackerSearchQuery] = useState('');
-    const [cameraWarnings, setCameraWarnings] = useState<CameraWarningsMap>(() => cameraWarningsCache);
+    const [trackerSearchQuery, setTrackerSearchQuery] = useState(persistedState.trackerSearchQuery);
+    const [cameraWarnings, setCameraWarnings] = useState<CameraWarningsMap>(() => persistedState.cameraWarnings);
     const [clockMs, setClockMs] = useState(() => Date.now());
+    const markRefreshedRef = useRef<() => void>(() => {});
+    const hasLoadedExceptionsRef = useRef(false);
+    const hasLoadedRosterRef = useRef(false);
 
     // New exception form
-    const [newErp, setNewErp] = useState('');
-    const [newType, setNewType] = useState('camera_excused');
-    const [newDay, setNewDay] = useState('both');
-    const [newNotes, setNewNotes] = useState('');
+    const [newErp, setNewErp] = useState(persistedState.newErp);
+    const [newType, setNewType] = useState(persistedState.newType);
+    const [newDay, setNewDay] = useState(persistedState.newDay);
+    const [newNotes, setNewNotes] = useState(persistedState.newNotes);
     const [isAdding, setIsAdding] = useState(false);
-    const [openDialog, setOpenDialog] = useState(false);
-
-    useEffect(() => {
-        fetchExceptions();
-        fetchRosterStudents();
-    }, []);
-
-    useEffect(() => {
-        const unsubscribe = subscribeRosterDataUpdated(() => {
-            void fetchRosterStudents();
-        });
-
-        return unsubscribe;
-    }, []);
+    const [openDialog, setOpenDialog] = useState(persistedState.openDialog);
 
     useEffect(() => {
         cameraWarningsCache = cameraWarnings;
     }, [cameraWarnings]);
+
+    useEffect(() => {
+        writeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, RULE_EXCEPTIONS_STORAGE_KEY, {
+            filterDay,
+            trackerSearchQuery,
+            cameraWarnings,
+            newErp,
+            newType,
+            newDay,
+            newNotes,
+            openDialog,
+        });
+    }, [cameraWarnings, filterDay, newDay, newErp, newNotes, newType, openDialog, trackerSearchQuery, userEmail]);
 
     useEffect(() => {
         if (Object.keys(cameraWarnings).length === 0) {
@@ -83,32 +120,61 @@ export default function RuleExceptions() {
         return () => window.clearInterval(timer);
     }, [cameraWarnings]);
 
-    const fetchExceptions = async () => {
-        setIsLoading(true);
+    const fetchExceptions = useCallback(async (mode: 'initial' | 'silent' = 'initial') => {
+        const shouldShowLoader = mode === 'initial' && !hasLoadedExceptionsRef.current;
+        if (shouldShowLoader) {
+            setIsLoading(true);
+        }
         try {
             const data = await listRuleExceptions();
             setExceptions(data as unknown as RuleExceptionRow[]);
+            hasLoadedExceptionsRef.current = true;
+            markRefreshedRef.current();
         } catch {
             toast.error('Failed to load exceptions');
+        } finally {
+            if (shouldShowLoader) {
+                setIsLoading(false);
+            }
         }
-        setIsLoading(false);
-    };
+    }, []);
 
-    const fetchRosterStudents = async () => {
-        setIsRosterLoading(true);
+    const fetchRosterStudents = useCallback(async (mode: 'initial' | 'silent' = 'initial') => {
+        const shouldShowLoader = mode === 'initial' && !hasLoadedRosterRef.current;
+        if (shouldShowLoader) {
+            setIsRosterLoading(true);
+        }
         try {
             const rosterData = await listRoster();
             const data = rosterData.rows
                 .map((row) => ({ id: row.id, erp: row.erp, student_name: row.student_name, class_no: row.class_no }))
                 .sort((a, b) => a.class_no.localeCompare(b.class_no) || a.student_name.localeCompare(b.student_name));
             setRosterStudents(data as RosterStudentRow[]);
+            hasLoadedRosterRef.current = true;
+            markRefreshedRef.current();
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : 'Unknown error';
             toast.error(`Failed to load roster: ${message}`);
             setRosterStudents([]);
+        } finally {
+            if (shouldShowLoader) {
+                setIsRosterLoading(false);
+            }
         }
-        setIsRosterLoading(false);
-    };
+    }, []);
+
+    useEffect(() => {
+        void fetchExceptions('initial');
+        void fetchRosterStudents('initial');
+    }, [fetchExceptions, fetchRosterStudents]);
+
+    useEffect(() => {
+        const unsubscribe = subscribeRosterDataUpdated(() => {
+            void fetchRosterStudents('silent');
+        });
+
+        return unsubscribe;
+    }, [fetchRosterStudents]);
 
     const handleAddException = async () => {
         if (!newErp) return;
@@ -132,7 +198,7 @@ export default function RuleExceptions() {
             setOpenDialog(false);
             setNewErp('');
             setNewNotes('');
-            fetchExceptions();
+            void fetchExceptions('silent');
 
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : 'Unknown error';
@@ -209,6 +275,34 @@ export default function RuleExceptions() {
 
     const warnedCount = Object.keys(cameraWarnings).length;
     const expiredCount = Object.values(cameraWarnings).filter((warnedAtMs) => clockMs - warnedAtMs >= CAMERA_WARNING_DURATION_MS).length;
+    const { markRefreshed } = useStaleRefreshOnFocus(
+        async () => {
+            await Promise.all([fetchExceptions('silent'), fetchRosterStudents('silent')]);
+        },
+        { staleAfterMs: 60_000 },
+    );
+
+    useEffect(() => {
+        markRefreshedRef.current = markRefreshed;
+    }, [markRefreshed]);
+
+    useEffect(() => {
+        const channel = subscribeToRealtimeTables(
+            `ta-rule-exceptions-${userEmail ?? 'anonymous'}`,
+            [
+                { table: 'rule_exceptions' },
+                { table: 'students_roster' },
+            ],
+            () => {
+                void fetchExceptions('silent');
+                void fetchRosterStudents('silent');
+            },
+        );
+
+        return () => {
+            void removeRealtimeChannel(channel);
+        };
+    }, [fetchExceptions, fetchRosterStudents, userEmail]);
 
     return (
         <div className="ta-module-shell space-y-6">

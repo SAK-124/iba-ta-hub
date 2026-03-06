@@ -11,18 +11,33 @@ import LateDays from './LateDays';
 import { useAuth } from '@/lib/auth';
 import { useAppSettingsQuery } from '@/features/settings';
 import { useLateDaysSummary } from '@/features/late-days';
+import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 
 type StudentPortalTab = 'submit' | 'issues' | 'attendance' | 'late-days';
+const STUDENT_STORAGE_SCOPE = 'student';
+const ACTIVE_TAB_STORAGE_KEY = 'active-tab';
 
 interface LateDaysSummary {
   remaining: number;
   totalAllowance: number;
 }
 
+const isStudentPortalTab = (value: string | null): value is StudentPortalTab =>
+  value === 'submit' || value === 'issues' || value === 'attendance' || value === 'late-days';
+
 export default function StudentPortal() {
   const { erp, isVerified, studentName, isLoading } = useERP();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<StudentPortalTab>('attendance');
+  const storageUserKey = user?.email ?? erp ?? null;
+  const storedActiveTab = readScopedSessionStorage<string | null>(
+    STUDENT_STORAGE_SCOPE,
+    storageUserKey,
+    ACTIVE_TAB_STORAGE_KEY,
+    null,
+  );
+  const [activeTab, setActiveTab] = useState<StudentPortalTab>(
+    isStudentPortalTab(storedActiveTab) ? storedActiveTab : 'attendance',
+  );
   const [hasInitializedTab, setHasInitializedTab] = useState(false);
   const { data: appSettings, isLoading: isSettingsLoading } = useAppSettingsQuery();
   const ticketsEnabled = appSettings?.tickets_enabled ?? true;
@@ -35,10 +50,31 @@ export default function StudentPortal() {
 
   useEffect(() => {
     if (!isSettingsLoading && !hasInitializedTab) {
-      setActiveTab(ticketsEnabled ? 'submit' : 'attendance');
+      setActiveTab((currentTab) => {
+        if (ticketsEnabled) {
+          if (!isStudentPortalTab(storedActiveTab)) {
+            return 'submit';
+          }
+          return currentTab;
+        }
+
+        if (currentTab === 'submit' || currentTab === 'issues') {
+          return 'attendance';
+        }
+
+        return currentTab;
+      });
       setHasInitializedTab(true);
     }
   }, [isSettingsLoading, ticketsEnabled, hasInitializedTab]);
+
+  useEffect(() => {
+    if (!hasInitializedTab) {
+      return;
+    }
+
+    writeScopedSessionStorage(STUDENT_STORAGE_SCOPE, storageUserKey, ACTIVE_TAB_STORAGE_KEY, activeTab);
+  }, [activeTab, hasInitializedTab, storageUserKey]);
 
   const handleLateDaysSummaryChange = (_summary: LateDaysSummary) => {
     // Keep callback for LateDays component contract; source of truth is feature hook above.

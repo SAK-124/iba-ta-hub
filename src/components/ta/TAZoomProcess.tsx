@@ -22,9 +22,14 @@ import {
 import { toast } from 'sonner';
 import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/auth';
 import { normalizeZoomSessionReport, type ZoomReportLoadRequest, type ZoomSessionReport } from '@/lib/zoom-session-report';
-import * as XLSX from 'xlsx';
 import { getCurrentSessionEmail, listRosterReference } from '@/features/zoom';
+import {
+  readScopedSessionStorage,
+  removeScopedSessionStorage,
+  writeScopedSessionStorage,
+} from '@/lib/scoped-session-storage';
 
 type GenericRow = Record<string, unknown>;
 
@@ -71,8 +76,6 @@ interface ZoomWorkspaceCache {
   data: ProcessedData | null;
   activeTab: string;
   step: 'upload' | 'review' | 'results';
-  zoomFile: File | null;
-  rosterFile: File | null;
   useSavedRoster: boolean;
   manualDuration: string;
   namazBreak: string;
@@ -91,7 +94,21 @@ interface TAZoomProcessProps {
 }
 
 const ERP_REGEX = /(\d{5})/;
-let zoomWorkspaceCache: ZoomWorkspaceCache | null = null;
+const TA_STORAGE_SCOPE = 'ta';
+const ZOOM_WORKSPACE_STORAGE_KEY = 'module-zoom';
+
+const getDefaultZoomWorkspaceState = (): ZoomWorkspaceCache => ({
+  data: null,
+  activeTab: 'matches',
+  step: 'upload',
+  useSavedRoster: true,
+  manualDuration: '',
+  namazBreak: '',
+  filterQuery: '',
+  filterClass: '',
+  penaltiesMinusOneOnly: false,
+  ignoredKeys: [],
+});
 
 const toText = (value: unknown) => (value == null ? '' : String(value).trim());
 
@@ -270,14 +287,35 @@ const rowToSearchText = (row: GenericRow) =>
     .join(' ')
     .toLowerCase();
 
+const exportRosterToWorkbookBlob = async (
+  rows: Array<{ 'Class No': string; Name: string; ERP: string }>,
+): Promise<Blob> => {
+  const XLSX = await import('xlsx');
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Roster');
+  const workbookBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+
+  return new Blob([workbookBuffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+};
+
 export default function TAZoomProcess({
   onFinalReportReady,
   reportLoadRequest,
   onReportLoadHandled,
 }: TAZoomProcessProps = {}) {
-  const cached = zoomWorkspaceCache;
+  const { user } = useAuth();
+  const userEmail = user?.email ?? null;
+  const cached = readScopedSessionStorage<ZoomWorkspaceCache>(
+    TA_STORAGE_SCOPE,
+    userEmail,
+    ZOOM_WORKSPACE_STORAGE_KEY,
+    getDefaultZoomWorkspaceState(),
+  );
 
-  const [data, setData] = useState<ProcessedData | null>(() => cached?.data ?? null);
+  const [data, setData] = useState<ProcessedData | null>(() => (cached?.data ? toProcessedData(cached.data) : null));
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
   const [calcDots, setCalcDots] = useState(0);
@@ -285,8 +323,8 @@ export default function TAZoomProcess({
 
   const [step, setStep] = useState<'upload' | 'review' | 'results'>(() => cached?.step ?? 'upload');
 
-  const [zoomFile, setZoomFile] = useState<File | null>(() => cached?.zoomFile ?? null);
-  const [rosterFile, setRosterFile] = useState<File | null>(() => cached?.rosterFile ?? null);
+  const [zoomFile, setZoomFile] = useState<File | null>(null);
+  const [rosterFile, setRosterFile] = useState<File | null>(null);
   const [useSavedRoster, setUseSavedRoster] = useState(() => cached?.useSavedRoster ?? true);
   const [manualDuration, setManualDuration] = useState(() => cached?.manualDuration ?? '');
   const [namazBreak, setNamazBreak] = useState(() => cached?.namazBreak ?? '');
@@ -351,12 +389,14 @@ export default function TAZoomProcess({
   }, []);
 
   useEffect(() => {
-    zoomWorkspaceCache = {
+    if (!userEmail) {
+      return;
+    }
+
+    const nextState: ZoomWorkspaceCache = {
       data,
       activeTab,
       step,
-      zoomFile,
-      rosterFile,
       useSavedRoster,
       manualDuration,
       namazBreak,
@@ -365,12 +405,17 @@ export default function TAZoomProcess({
       penaltiesMinusOneOnly,
       ignoredKeys: Array.from(ignoredKeys),
     };
+
+    if (!data && step === 'upload' && ignoredKeys.size === 0 && !filterQuery && !filterClass && !manualDuration && !namazBreak && useSavedRoster && !penaltiesMinusOneOnly) {
+      removeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, ZOOM_WORKSPACE_STORAGE_KEY);
+      return;
+    }
+
+    writeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, ZOOM_WORKSPACE_STORAGE_KEY, nextState);
   }, [
     data,
     activeTab,
     step,
-    zoomFile,
-    rosterFile,
     useSavedRoster,
     manualDuration,
     namazBreak,
@@ -378,6 +423,7 @@ export default function TAZoomProcess({
     filterClass,
     penaltiesMinusOneOnly,
     ignoredKeys,
+    userEmail,
   ]);
 
   useEffect(() => {
@@ -593,15 +639,7 @@ export default function TAZoomProcess({
         Name: student.student_name,
         ERP: student.erp,
       }));
-
-      const ws = XLSX.utils.json_to_sheet(mappedStudents);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Roster');
-
-      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      return new Blob([wbout], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      });
+      return await exportRosterToWorkbookBlob(mappedStudents);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to load roster.';
       console.error('Error fetching saved roster:', error);

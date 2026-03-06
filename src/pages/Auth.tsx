@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { checkRosterCached, checkTaAllowlistCached } from '@/lib/access-checks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -70,13 +70,7 @@ export default function Auth() {
           return;
         }
 
-        const { data: isAllowed, error: allowlistError } = await supabase
-          .rpc('check_ta_allowlist', { check_email: trimmedEmail });
-
-        if (allowlistError) {
-          throw allowlistError;
-        }
-
+        const isAllowed = await checkTaAllowlistCached(trimmedEmail);
         if (!isAllowed) {
           setError('This email is not authorized for TA access.');
           return;
@@ -106,15 +100,7 @@ export default function Auth() {
 
       const erp = match[1];
 
-      const { data: rosterData, error: rosterError } = await supabase
-        .rpc('check_roster', { check_erp: erp });
-
-      if (rosterError) {
-        throw rosterError;
-      }
-
-      const rosterResult = rosterData as { found: boolean };
-
+      const rosterResult = await checkRosterCached(erp);
       if (!rosterResult.found) {
         setError('Your ERP was not found in the course roster.');
         return;

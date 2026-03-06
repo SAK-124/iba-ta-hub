@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
+import { checkTaAllowlistCached, clearAccessChecksCache } from '@/lib/access-checks';
+import { clearScopedSessionStorageScope } from '@/lib/scoped-session-storage';
 
 interface AuthContextType {
   user: User | null;
@@ -23,14 +25,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isTA, setIsTA] = useState(false);
   const latestSyncIdRef = useRef(0);
   const sawAuthEventRef = useRef(false);
+  const hasResolvedInitialSessionRef = useRef(false);
+  const latestKnownEmailRef = useRef<string | null>(null);
 
   const checkTAStatus = async (email: string): Promise<boolean> => {
     try {
-      const { data, error } = await supabase.rpc('check_ta_allowlist', { check_email: email });
-      if (error) {
-        return false;
-      }
-      return Boolean(data);
+      return await checkTaAllowlistCached(email);
     } catch {
       return false;
     }
@@ -52,22 +52,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const syncId = ++latestSyncIdRef.current;
-      setIsLoading(true);
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
 
-      if (!nextSession?.user?.email) {
+      const nextEmail = nextSession?.user?.email?.trim().toLowerCase() ?? null;
+      if (latestKnownEmailRef.current && latestKnownEmailRef.current !== nextEmail) {
+        clearAccessChecksCache();
+      }
+      latestKnownEmailRef.current = nextEmail;
+
+      if (!nextEmail) {
         if (syncId !== latestSyncIdRef.current || !isMounted) return;
         setIsTA(false);
-        setIsLoading(false);
+        if (!hasResolvedInitialSessionRef.current) {
+          hasResolvedInitialSessionRef.current = true;
+          setIsLoading(false);
+        }
         return;
       }
 
-      const taStatus = await checkTAStatus(nextSession.user.email);
+      const taStatus = await checkTAStatus(nextEmail);
       if (syncId !== latestSyncIdRef.current || !isMounted) return;
 
       setIsTA(taStatus);
-      setIsLoading(false);
+      if (!hasResolvedInitialSessionRef.current) {
+        hasResolvedInitialSessionRef.current = true;
+        setIsLoading(false);
+      }
     };
 
     setIsLoading(true);
@@ -136,12 +147,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    const currentEmail = user?.email?.trim().toLowerCase() ?? null;
     if (user?.id === '00000') {
       setUser(null);
       setSession(null);
       setIsTA(false);
+      latestKnownEmailRef.current = null;
+      clearAccessChecksCache();
+      clearScopedSessionStorageScope('student', currentEmail);
+      clearScopedSessionStorageScope('ta', currentEmail);
       return;
     }
+    latestKnownEmailRef.current = null;
+    clearAccessChecksCache();
+    clearScopedSessionStorageScope('student', currentEmail);
+    clearScopedSessionStorageScope('ta', currentEmail);
     await supabase.auth.signOut();
   };
 

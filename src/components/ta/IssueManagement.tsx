@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
 import { Badge } from '@/components/ta/ui/badge';
 import { Button } from '@/components/ta/ui/button';
@@ -30,70 +30,162 @@ import {
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
+import { useAuth } from '@/lib/auth';
+import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
+import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
+import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 import {
     addRuleExceptionFromTicket,
     deleteTicket as deleteTicketById,
     listTickets,
+    mapRealtimeTicketWithStudentName,
+    removeRowById,
     removeTicketChannel,
     subscribeAllTickets,
     toggleTicketStatus,
+    upsertRowById,
     updateTicketResponse,
     type TicketRealtimePayload,
     type TicketWithStudentName,
 } from '@/features/tickets';
 
+const TA_STORAGE_SCOPE = 'ta';
+const ISSUE_MANAGEMENT_STORAGE_KEY = 'module-issues';
+
+interface PersistedIssueManagementState {
+    filterStatus: string;
+    filterGroup: string;
+    searchErp: string;
+}
+
 export default function IssueManagement() {
+    const { user } = useAuth();
+    const userEmail = user?.email ?? null;
+    const persistedState = readScopedSessionStorage<PersistedIssueManagementState>(
+        TA_STORAGE_SCOPE,
+        userEmail,
+        ISSUE_MANAGEMENT_STORAGE_KEY,
+        {
+            filterStatus: 'all',
+            filterGroup: 'all',
+            searchErp: '',
+        },
+    );
     const [tickets, setTickets] = useState<TicketWithStudentName[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [filterStatus, setFilterStatus] = useState<string>('all');
-    const [filterGroup, setFilterGroup] = useState<string>('all');
-    const [searchErp, setSearchErp] = useState('');
+    const [filterStatus, setFilterStatus] = useState<string>(persistedState.filterStatus);
+    const [filterGroup, setFilterGroup] = useState<string>(persistedState.filterGroup);
+    const [searchErp, setSearchErp] = useState(persistedState.searchErp);
+    const markRefreshedRef = useRef<() => void>(() => {});
+    const hasLoadedOnceRef = useRef(false);
+
+    const fetchTickets = useCallback(async (mode: 'initial' | 'silent' = 'initial') => {
+        const shouldShowLoader = mode === 'initial' && !hasLoadedOnceRef.current;
+        if (shouldShowLoader) {
+            setIsLoading(true);
+        }
+        try {
+            const nextTickets = await listTickets();
+            setTickets(nextTickets);
+            hasLoadedOnceRef.current = true;
+            markRefreshedRef.current();
+        } finally {
+            if (shouldShowLoader) {
+                setIsLoading(false);
+            }
+        }
+    }, []);
+
+    const applyRealtimeEvent = useCallback(async (payload: TicketRealtimePayload) => {
+        if (payload.eventType === 'DELETE') {
+            const deletedId = payload.old.id;
+            if (!deletedId) return;
+            setTickets((prev) => removeRowById(prev, deletedId));
+            return;
+        }
+
+        const incoming = payload.new;
+        if (!incoming?.id) return;
+
+        try {
+            const ticketWithName = await mapRealtimeTicketWithStudentName(incoming);
+            setTickets((prev) => upsertRowById(prev, ticketWithName));
+        } catch {
+            // Fallback to full refresh if payload augmentation fails.
+            void fetchTickets('silent');
+        }
+    }, [fetchTickets]);
 
     // Realtime subscription
     useEffect(() => {
-        void fetchTickets();
+        void fetchTickets('initial');
 
         const channel = subscribeAllTickets((payload: TicketRealtimePayload) => {
-            if (payload.eventType === 'INSERT') {
-                void fetchTickets();
-            } else if (payload.eventType === 'UPDATE') {
-                void fetchTickets();
-            }
+            void applyRealtimeEvent(payload);
         });
 
         const unsubscribeRoster = subscribeRosterDataUpdated(() => {
-            void fetchTickets();
+            void fetchTickets('silent');
         });
 
         return () => {
             unsubscribeRoster();
             void removeTicketChannel(channel);
         };
-    }, []);
+    }, [applyRealtimeEvent, fetchTickets]);
 
-    const fetchTickets = async () => {
-        setIsLoading(true);
-        const nextTickets = await listTickets();
-        setTickets(nextTickets);
-        setIsLoading(false);
-    };
+    useEffect(() => {
+        writeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, ISSUE_MANAGEMENT_STORAGE_KEY, {
+            filterStatus,
+            filterGroup,
+            searchErp,
+        });
+    }, [filterGroup, filterStatus, searchErp, userEmail]);
+
+    const { markRefreshed } = useStaleRefreshOnFocus(
+        () => fetchTickets('silent'),
+        { staleAfterMs: 60_000 },
+    );
+
+    useEffect(() => {
+        markRefreshedRef.current = markRefreshed;
+    }, [markRefreshed]);
+
+    useEffect(() => {
+        const channel = subscribeToRealtimeTables(
+            `ta-issues-roster-${userEmail ?? 'anonymous'}`,
+            [{ table: 'students_roster' }],
+            () => {
+                void fetchTickets('silent');
+            },
+        );
+
+        return () => {
+            void removeRealtimeChannel(channel);
+        };
+    }, [fetchTickets, userEmail]);
 
     const toggleStatus = async (ticket: TicketWithStudentName) => {
         try {
             await toggleTicketStatus(ticket);
+            setTickets((prev) =>
+                prev.map((row) =>
+                    row.id === ticket.id
+                        ? { ...row, status: ticket.status === 'pending' ? 'resolved' : 'pending' }
+                        : row,
+                ),
+            );
             toast.success('Status updated');
-            await fetchTickets();
         } catch {
             toast.error('Failed to update status');
         }
     };
 
     const deleteTicket = async (id: string) => {
-        if (!confirm('Are you sure you want to delete this ticket?')) return;
         try {
             await deleteTicketById(id);
+            setTickets((prev) => removeRowById(prev, id));
             toast.success('Ticket deleted');
-            await fetchTickets();
         } catch {
             toast.error('Failed to delete ticket');
         }
@@ -349,9 +441,27 @@ export default function IssueManagement() {
                                                         </div>
                                                     </SheetContent>
                                                 </Sheet>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={(e) => { e.stopPropagation(); deleteTicket(ticket.id); }}>
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild>
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={(event) => event.stopPropagation()}>
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </AlertDialogTrigger>
+                                                    <AlertDialogContent className="border-[#141517]">
+                                                        <AlertDialogHeader>
+                                                            <AlertDialogTitle className="status-absent-text">Delete Ticket?</AlertDialogTitle>
+                                                            <AlertDialogDescription>
+                                                                This action cannot be undone. This will permanently delete the ticket and remove the data from our servers.
+                                                            </AlertDialogDescription>
+                                                        </AlertDialogHeader>
+                                                        <AlertDialogFooter>
+                                                            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+                                                            <AlertDialogAction onClick={() => deleteTicket(ticket.id)} className="rounded-xl neo-btn neo-out text-debossed-sm">
+                                                                <span className="status-absent-text">Delete</span>
+                                                            </AlertDialogAction>
+                                                        </AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
                                             </TableCell>
                                         </TableRow>
                                     ))

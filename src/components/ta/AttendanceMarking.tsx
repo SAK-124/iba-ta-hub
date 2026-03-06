@@ -18,9 +18,17 @@ import {
   AlertDialogTitle,
 } from '@/components/ta/ui/alert-dialog';
 import { toast } from 'sonner';
-import { emitAttendanceDataUpdated, subscribeRosterDataUpdated } from '@/lib/data-sync-events';
+import {
+  emitAttendanceDataUpdated,
+  subscribeAttendanceDataUpdated,
+  subscribeRosterDataUpdated,
+} from '@/lib/data-sync-events';
 import { Loader2, Save } from 'lucide-react';
 import { sendNtfyNotification } from '@/lib/ntfy';
+import { useAuth } from '@/lib/auth';
+import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
+import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
+import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 import type { ZoomSessionReport } from '@/lib/zoom-session-report';
 import {
   deleteAttendanceBySession,
@@ -43,15 +51,37 @@ import { syncPublicAttendance } from '@/features/public-attendance';
 type AttendanceFilterToken = 'present' | 'absent' | 'penalized';
 
 const AUTO_SYNC_DELAY_MS = 1200;
+const TA_STORAGE_SCOPE = 'ta';
+const ATTENDANCE_MARKING_STORAGE_KEY = 'module-attendance-marking';
 
 interface AttendanceMarkingProps {
   latestFinalZoomReport?: ZoomSessionReport | null;
 }
 
+interface PersistedAttendanceMarkingState {
+  selectedSessionId: string;
+  absentErps: string;
+  searchQuery: string;
+  activeFilters: AttendanceFilterToken[];
+}
+
 export default function AttendanceMarking({ latestFinalZoomReport = null }: AttendanceMarkingProps) {
+  const { user } = useAuth();
+  const userEmail = user?.email ?? null;
+  const persistedState = readScopedSessionStorage<PersistedAttendanceMarkingState>(
+    TA_STORAGE_SCOPE,
+    userEmail,
+    ATTENDANCE_MARKING_STORAGE_KEY,
+    {
+      selectedSessionId: '',
+      absentErps: '',
+      searchQuery: '',
+      activeFilters: [],
+    },
+  );
   const [sessions, setSessions] = useState<SessionRow[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState('');
-  const [absentErps, setAbsentErps] = useState('');
+  const [selectedSessionId, setSelectedSessionId] = useState(persistedState.selectedSessionId);
+  const [absentErps, setAbsentErps] = useState(persistedState.absentErps);
 
   const [attendanceData, setAttendanceData] = useState<AttendanceRow[]>([]);
   const [roster, setRoster] = useState<RosterRow[]>([]);
@@ -61,10 +91,13 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
   const [isSyncing, setIsSyncing] = useState(false);
   const [showOverwriteAlert, setShowOverwriteAlert] = useState(false);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilters, setActiveFilters] = useState<Set<AttendanceFilterToken>>(new Set());
+  const [searchQuery, setSearchQuery] = useState(persistedState.searchQuery);
+  const [activeFilters, setActiveFilters] = useState<Set<AttendanceFilterToken>>(
+    () => new Set(persistedState.activeFilters),
+  );
 
   const autoSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const markRefreshedRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     void fetchSessions();
@@ -81,7 +114,7 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
     if (selectedSessionId) {
       void (async () => {
         const latestRoster = roster.length > 0 ? roster : await fetchRoster();
-        await fetchAttendance(selectedSessionId, latestRoster);
+        await fetchAttendance(selectedSessionId, latestRoster, 'initial');
       })();
       return;
     }
@@ -95,7 +128,7 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
         const latestRoster = await fetchRoster();
 
         if (selectedSessionId) {
-          await fetchAttendance(selectedSessionId, latestRoster);
+          await fetchAttendance(selectedSessionId, latestRoster, 'silent');
         }
       })();
     });
@@ -103,10 +136,32 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
     return unsubscribe;
   }, [selectedSessionId]);
 
+  useEffect(() => {
+    const unsubscribeAttendance = subscribeAttendanceDataUpdated(() => {
+      if (!selectedSessionId) {
+        return;
+      }
+
+      void fetchAttendance(selectedSessionId, undefined, 'silent');
+    });
+
+    return unsubscribeAttendance;
+  }, [selectedSessionId]);
+
+  useEffect(() => {
+    writeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, ATTENDANCE_MARKING_STORAGE_KEY, {
+      selectedSessionId,
+      absentErps,
+      searchQuery,
+      activeFilters: Array.from(activeFilters),
+    });
+  }, [absentErps, activeFilters, searchQuery, selectedSessionId, userEmail]);
+
   const fetchSessions = async () => {
     try {
       const data = await listSessions();
       setSessions((data || []) as SessionRow[]);
+      markRefreshedRef.current();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Failed to load sessions: ${message}`);
@@ -118,6 +173,7 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
     try {
       const nextRoster = await listRoster();
       setRoster(nextRoster);
+      markRefreshedRef.current();
       return nextRoster;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -170,8 +226,15 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
     return true;
   };
 
-  const fetchAttendance = async (sessionId: string, rosterOverride?: RosterRow[]) => {
-    setIsLoading(true);
+  const fetchAttendance = async (
+    sessionId: string,
+    rosterOverride?: RosterRow[],
+    mode: 'initial' | 'silent' = 'initial',
+  ) => {
+    const shouldShowLoader = mode === 'initial' && attendanceData.length === 0;
+    if (shouldShowLoader) {
+      setIsLoading(true);
+    }
     try {
       const rosterRows =
         rosterOverride && rosterOverride.length > 0
@@ -203,8 +266,11 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
       }
 
       setAttendanceData(nextRows);
+      markRefreshedRef.current();
     } finally {
-      setIsLoading(false);
+      if (shouldShowLoader) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -410,6 +476,44 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
   const absentCount = attendanceData.filter((record) => record.status === 'absent').length;
   const excusedCount = attendanceData.filter((record) => record.status === 'excused').length;
   const penalizedCount = attendanceData.filter((record) => record.naming_penalty).length;
+  const { markRefreshed } = useStaleRefreshOnFocus(
+    async () => {
+      const latestRoster = await fetchRoster();
+      await fetchSessions();
+      if (selectedSessionId) {
+        await fetchAttendance(selectedSessionId, latestRoster, 'silent');
+      }
+    },
+    { staleAfterMs: 60_000 },
+  );
+
+  useEffect(() => {
+    markRefreshedRef.current = markRefreshed;
+  }, [markRefreshed]);
+
+  useEffect(() => {
+    const channel = subscribeToRealtimeTables(
+      `ta-attendance-marking-${Date.now()}`,
+      [
+        { table: 'attendance' },
+        { table: 'students_roster' },
+        { table: 'sessions' },
+      ],
+      () => {
+        void fetchSessions();
+        void (async () => {
+          const latestRoster = await fetchRoster();
+          if (selectedSessionId) {
+            await fetchAttendance(selectedSessionId, latestRoster, 'silent');
+          }
+        })();
+      },
+    );
+
+    return () => {
+      void removeRealtimeChannel(channel);
+    };
+  }, [selectedSessionId]);
 
   return (
     <div className="ta-module-shell grid gap-6 md:grid-cols-3">
@@ -568,7 +672,7 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredAttendance.slice(0, 100).map((record) => (
+                  {filteredAttendance.map((record) => (
                     <TableRow key={record.id}>
                       <TableCell>{record.class_no}</TableCell>
                       <TableCell>{record.student_name}</TableCell>

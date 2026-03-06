@@ -13,6 +13,8 @@ import {
 } from '@/lib/public-attendance-sync';
 import { applyTaTestStudentToBoard, fetchTaTestStudentSettings } from '@/lib/test-student-settings';
 import { subscribeAttendanceDataUpdated, subscribeRosterDataUpdated } from '@/lib/data-sync-events';
+import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
+import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
 import { toast } from 'sonner';
 import { Loader2, Upload } from 'lucide-react';
 
@@ -31,6 +33,7 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const hasLoadedOnceRef = useRef(false);
   const isFetchInFlightRef = useRef(false);
+  const markRefreshedRef = useRef<() => void>(() => {});
 
   const fetchData = useCallback(async (mode: FetchMode) => {
     if (isFetchInFlightRef.current) {
@@ -84,6 +87,7 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
       setSessions(taBoard.sessions);
       setStudents(studentsWithPenaltyDetails);
       hasLoadedOnceRef.current = true;
+      markRefreshedRef.current();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to load consolidated attendance.';
       toast.error(message);
@@ -95,6 +99,15 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
       isFetchInFlightRef.current = false;
     }
   }, []);
+
+  const { markRefreshed } = useStaleRefreshOnFocus(
+    () => fetchData(hasLoadedOnceRef.current ? 'silent' : 'initial'),
+    { enabled: isActive, staleAfterMs: 60_000 },
+  );
+
+  useEffect(() => {
+    markRefreshedRef.current = markRefreshed;
+  }, [markRefreshed]);
 
   useEffect(() => {
     if (!isActive) {
@@ -125,12 +138,21 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
       return;
     }
 
-    const intervalId = window.setInterval(() => {
-      void fetchData('silent');
-    }, 15000);
+    const channel = subscribeToRealtimeTables(
+      `ta-consolidated-${Date.now()}`,
+      [
+        { table: 'attendance' },
+        { table: 'students_roster' },
+        { table: 'sessions' },
+        { table: 'app_settings' },
+      ],
+      () => {
+        void fetchData(hasLoadedOnceRef.current ? 'silent' : 'initial');
+      },
+    );
 
     return () => {
-      window.clearInterval(intervalId);
+      void removeRealtimeChannel(channel);
     };
   }, [isActive, fetchData]);
 
@@ -181,12 +203,6 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
             <CardDescription>Full attendance sheet with penalties</CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            {isRefreshing && !isInitialLoading && (
-              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Refreshing...
-              </span>
-            )}
             <Input
               placeholder="Search..."
               className="w-[220px]"

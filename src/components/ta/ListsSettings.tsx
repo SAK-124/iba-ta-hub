@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Switch } from '@/components/ta/ui/switch';
 import { Label } from '@/components/ta/ui/label';
 import { Input } from '@/components/ta/ui/input';
@@ -9,6 +9,9 @@ import { toast } from 'sonner';
 import { Loader2, Trash2, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { emitRosterDataUpdated } from '@/lib/data-sync-events';
+import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
+import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
+import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 import { TEST_STUDENT_ERP } from '@/lib/test-student-settings';
 import {
     addSubmission as createSubmission,
@@ -38,33 +41,131 @@ const DEFAULT_TEST_STUDENT_OVERRIDES = {
     penalty_entries: [],
 };
 
+const TA_STORAGE_SCOPE = 'ta';
+const SETTINGS_STORAGE_KEY = 'module-settings';
+
+interface TestStudentDraftState {
+    testStudentClassNo: string;
+    testStudentName: string;
+    testStudentAbsences: string;
+    testStudentPenalties: string;
+    testStudentSessionStatusJson: string;
+    testStudentPenaltyEntriesJson: string;
+}
+
+const DEFAULT_TEST_STUDENT_DRAFT_STATE: TestStudentDraftState = {
+    testStudentClassNo: DEFAULT_TEST_STUDENT_OVERRIDES.class_no,
+    testStudentName: DEFAULT_TEST_STUDENT_OVERRIDES.student_name,
+    testStudentAbsences: String(DEFAULT_TEST_STUDENT_OVERRIDES.total_absences),
+    testStudentPenalties: String(DEFAULT_TEST_STUDENT_OVERRIDES.total_penalties),
+    testStudentSessionStatusJson: '{}',
+    testStudentPenaltyEntriesJson: '[]',
+};
+
+const buildTestStudentDraftState = (rawOverrides: Record<string, unknown>): TestStudentDraftState => {
+    const mergedOverrides = {
+        ...DEFAULT_TEST_STUDENT_OVERRIDES,
+        ...rawOverrides,
+    };
+
+    return {
+        testStudentClassNo: String(mergedOverrides.class_no ?? DEFAULT_TEST_STUDENT_OVERRIDES.class_no),
+        testStudentName: String(mergedOverrides.student_name ?? DEFAULT_TEST_STUDENT_OVERRIDES.student_name),
+        testStudentAbsences: String(Number(mergedOverrides.total_absences ?? DEFAULT_TEST_STUDENT_OVERRIDES.total_absences)),
+        testStudentPenalties: String(Number(mergedOverrides.total_penalties ?? DEFAULT_TEST_STUDENT_OVERRIDES.total_penalties)),
+        testStudentSessionStatusJson: JSON.stringify(mergedOverrides.session_status ?? {}, null, 2),
+        testStudentPenaltyEntriesJson: JSON.stringify(mergedOverrides.penalty_entries ?? [], null, 2),
+    };
+};
+
+const areTestStudentDraftStatesEqual = (
+    left: TestStudentDraftState,
+    right: TestStudentDraftState,
+) =>
+    left.testStudentClassNo === right.testStudentClassNo &&
+    left.testStudentName === right.testStudentName &&
+    left.testStudentAbsences === right.testStudentAbsences &&
+    left.testStudentPenalties === right.testStudentPenalties &&
+    left.testStudentSessionStatusJson === right.testStudentSessionStatusJson &&
+    left.testStudentPenaltyEntriesJson === right.testStudentPenaltyEntriesJson;
+
+const isDefaultTestStudentDraftState = (draftState: TestStudentDraftState) =>
+    areTestStudentDraftStatesEqual(draftState, DEFAULT_TEST_STUDENT_DRAFT_STATE);
+
+interface PersistedSettingsState {
+    newTaEmail: string;
+    newSubLabel: string;
+    testStudentClassNo: string;
+    testStudentName: string;
+    testStudentAbsences: string;
+    testStudentPenalties: string;
+    testStudentSessionStatusJson: string;
+    testStudentPenaltyEntriesJson: string;
+}
+
 export default function ListsSettings() {
     const { user } = useAuth();
+    const userEmail = user?.email ?? null;
+    const persistedState = readScopedSessionStorage<PersistedSettingsState>(
+        TA_STORAGE_SCOPE,
+        userEmail,
+        SETTINGS_STORAGE_KEY,
+        {
+            newTaEmail: '',
+            newSubLabel: '',
+            ...DEFAULT_TEST_STUDENT_DRAFT_STATE,
+        },
+    );
     const [settings, setSettings] = useState<AppSettingsRow | null>(null);
     const [taEmails, setTaEmails] = useState<TaAllowlistRow[]>([]);
-    const [newTaEmail, setNewTaEmail] = useState('');
+    const [newTaEmail, setNewTaEmail] = useState(persistedState.newTaEmail);
 
     const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
-    const [newSubLabel, setNewSubLabel] = useState('');
+    const [newSubLabel, setNewSubLabel] = useState(persistedState.newSubLabel);
     const [isPasswordLoading, setIsPasswordLoading] = useState(false);
     const [currentPassword, setCurrentPassword] = useState<string | null>(null);
     const [showCurrentPassword, setShowCurrentPassword] = useState(false);
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
-    const [testStudentClassNo, setTestStudentClassNo] = useState(DEFAULT_TEST_STUDENT_OVERRIDES.class_no);
-    const [testStudentName, setTestStudentName] = useState(DEFAULT_TEST_STUDENT_OVERRIDES.student_name);
-    const [testStudentAbsences, setTestStudentAbsences] = useState(String(DEFAULT_TEST_STUDENT_OVERRIDES.total_absences));
-    const [testStudentPenalties, setTestStudentPenalties] = useState(String(DEFAULT_TEST_STUDENT_OVERRIDES.total_penalties));
-    const [testStudentSessionStatusJson, setTestStudentSessionStatusJson] = useState('{}');
-    const [testStudentPenaltyEntriesJson, setTestStudentPenaltyEntriesJson] = useState('[]');
+    const [testStudentClassNo, setTestStudentClassNo] = useState(persistedState.testStudentClassNo);
+    const [testStudentName, setTestStudentName] = useState(persistedState.testStudentName);
+    const [testStudentAbsences, setTestStudentAbsences] = useState(persistedState.testStudentAbsences);
+    const [testStudentPenalties, setTestStudentPenalties] = useState(persistedState.testStudentPenalties);
+    const [testStudentSessionStatusJson, setTestStudentSessionStatusJson] = useState(persistedState.testStudentSessionStatusJson);
+    const [testStudentPenaltyEntriesJson, setTestStudentPenaltyEntriesJson] = useState(persistedState.testStudentPenaltyEntriesJson);
     const [isSavingTestStudent, setIsSavingTestStudent] = useState(false);
+    const markRefreshedRef = useRef<() => void>(() => {});
+    const lastLoadedTestStudentDraftRef = useRef<TestStudentDraftState | null>(null);
 
     useEffect(() => {
         fetchSettings();
         void fetchTaList();
         void fetchSubmissions();
     }, []);
+
+    useEffect(() => {
+        writeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, SETTINGS_STORAGE_KEY, {
+            newTaEmail,
+            newSubLabel,
+            testStudentClassNo,
+            testStudentName,
+            testStudentAbsences,
+            testStudentPenalties,
+            testStudentSessionStatusJson,
+            testStudentPenaltyEntriesJson,
+        });
+    }, [
+        newSubLabel,
+        newTaEmail,
+        testStudentAbsences,
+        testStudentClassNo,
+        testStudentName,
+        testStudentPenaltyEntriesJson,
+        testStudentPenalties,
+        testStudentSessionStatusJson,
+        userEmail,
+    ]);
 
     useEffect(() => {
         if (!user?.email) {
@@ -91,10 +192,22 @@ export default function ListsSettings() {
         const data = await getAppSettings();
         if (data) {
             const rawOverrides = isObjectRecord(data.test_student_overrides) ? data.test_student_overrides : {};
-            const mergedOverrides = {
-                ...DEFAULT_TEST_STUDENT_OVERRIDES,
-                ...rawOverrides,
+            const nextTestStudentDraft = buildTestStudentDraftState(rawOverrides);
+            const currentTestStudentDraft: TestStudentDraftState = {
+                testStudentClassNo,
+                testStudentName,
+                testStudentAbsences,
+                testStudentPenalties,
+                testStudentSessionStatusJson,
+                testStudentPenaltyEntriesJson,
             };
+            const shouldHydrateDraft =
+                lastLoadedTestStudentDraftRef.current === null
+                    ? isDefaultTestStudentDraftState(currentTestStudentDraft)
+                    : areTestStudentDraftStatesEqual(
+                          currentTestStudentDraft,
+                          lastLoadedTestStudentDraftRef.current,
+                      );
 
             setSettings({
                 ...data,
@@ -103,12 +216,17 @@ export default function ListsSettings() {
                 test_student_overrides: rawOverrides,
             });
 
-            setTestStudentClassNo(String(mergedOverrides.class_no ?? DEFAULT_TEST_STUDENT_OVERRIDES.class_no));
-            setTestStudentName(String(mergedOverrides.student_name ?? DEFAULT_TEST_STUDENT_OVERRIDES.student_name));
-            setTestStudentAbsences(String(Number(mergedOverrides.total_absences ?? DEFAULT_TEST_STUDENT_OVERRIDES.total_absences)));
-            setTestStudentPenalties(String(Number(mergedOverrides.total_penalties ?? DEFAULT_TEST_STUDENT_OVERRIDES.total_penalties)));
-            setTestStudentSessionStatusJson(JSON.stringify(mergedOverrides.session_status ?? {}, null, 2));
-            setTestStudentPenaltyEntriesJson(JSON.stringify(mergedOverrides.penalty_entries ?? [], null, 2));
+            if (shouldHydrateDraft) {
+                setTestStudentClassNo(nextTestStudentDraft.testStudentClassNo);
+                setTestStudentName(nextTestStudentDraft.testStudentName);
+                setTestStudentAbsences(nextTestStudentDraft.testStudentAbsences);
+                setTestStudentPenalties(nextTestStudentDraft.testStudentPenalties);
+                setTestStudentSessionStatusJson(nextTestStudentDraft.testStudentSessionStatusJson);
+                setTestStudentPenaltyEntriesJson(nextTestStudentDraft.testStudentPenaltyEntriesJson);
+            }
+
+            lastLoadedTestStudentDraftRef.current = nextTestStudentDraft;
+            markRefreshedRef.current();
         }
     };
 
@@ -116,6 +234,7 @@ export default function ListsSettings() {
         try {
             const data = await listTaAllowlist(true);
             setTaEmails((data || []) as TaAllowlistRow[]);
+            markRefreshedRef.current();
         } catch {
             toast.error('Failed to load TA list');
         }
@@ -125,6 +244,7 @@ export default function ListsSettings() {
         try {
             const data = await listSubmissions(true);
             setSubmissions((data || []) as SubmissionRow[]);
+            markRefreshedRef.current();
         } catch {
             toast.error('Failed to load submission list');
         }
@@ -140,6 +260,37 @@ export default function ListsSettings() {
             toast.error('Failed to update settings');
         }
     };
+
+    const { markRefreshed } = useStaleRefreshOnFocus(
+        async () => {
+            await Promise.all([fetchSettings(), fetchTaList(), fetchSubmissions()]);
+        },
+        { staleAfterMs: 60_000 },
+    );
+
+    useEffect(() => {
+        markRefreshedRef.current = markRefreshed;
+    }, [markRefreshed]);
+
+    useEffect(() => {
+        const channel = subscribeToRealtimeTables(
+            `ta-settings-${Date.now()}`,
+            [
+                { table: 'app_settings' },
+                { table: 'submissions_list' },
+                { table: 'ta_allowlist' },
+            ],
+            () => {
+                void fetchSettings();
+                void fetchTaList();
+                void fetchSubmissions();
+            },
+        );
+
+        return () => {
+            void removeRealtimeChannel(channel);
+        };
+    }, []);
 
     const toggleStudentTickets = async (checked: boolean) => {
         if (!settings) return;
@@ -223,11 +374,19 @@ export default function ListsSettings() {
         setIsSavingTestStudent(true);
         try {
             await updateAppSettings(settings.id, { test_student_overrides: overridesPayload });
+            const savedDraftState = buildTestStudentDraftState(overridesPayload);
 
             setSettings({
                 ...settings,
                 test_student_overrides: overridesPayload,
             });
+            lastLoadedTestStudentDraftRef.current = savedDraftState;
+            setTestStudentClassNo(savedDraftState.testStudentClassNo);
+            setTestStudentName(savedDraftState.testStudentName);
+            setTestStudentAbsences(savedDraftState.testStudentAbsences);
+            setTestStudentPenalties(savedDraftState.testStudentPenalties);
+            setTestStudentSessionStatusJson(savedDraftState.testStudentSessionStatusJson);
+            setTestStudentPenaltyEntriesJson(savedDraftState.testStudentPenaltyEntriesJson);
             emitRosterDataUpdated('lists_settings_test_student_overrides');
             toast.success('Test student overrides saved');
         } finally {

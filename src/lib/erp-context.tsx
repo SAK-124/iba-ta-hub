@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { checkRosterCached, isRosterVerificationEnabledCached } from '@/lib/access-checks';
 
 interface ERPContextType {
   erp: string | null;
@@ -41,14 +42,8 @@ export function ERPProvider({ children }: { children: React.ReactNode }) {
         return true;
       }
 
-      // First check if verification is enabled
-      const { data: settings } = await supabase
-        .from('app_settings')
-        .select('roster_verification_enabled')
-        .single();
-
       if (checkId !== latestCheckIdRef.current) return false;
-      const verificationEnabled = settings?.roster_verification_enabled ?? true;
+      const verificationEnabled = await isRosterVerificationEnabledCached();
 
       if (!verificationEnabled) {
         if (checkId !== latestCheckIdRef.current) return false;
@@ -59,19 +54,8 @@ export function ERPProvider({ children }: { children: React.ReactNode }) {
         return true;
       }
 
-      const { data, error } = await supabase
-        .rpc('check_roster', { check_erp: erpToCheck });
-
       if (checkId !== latestCheckIdRef.current) return false;
-      if (error) {
-        console.error('Roster check error:', error);
-        toast.error('Failed to verify roster');
-        setIsVerified(false);
-        return false;
-      }
-
-      // data is returned as jsonb from the RPC
-      const result = data as { found: boolean; student_name?: string; class_no?: string };
+      const result = await checkRosterCached(erpToCheck);
 
       if (result.found) {
         setIsVerified(true);

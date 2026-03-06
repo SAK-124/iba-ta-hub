@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -8,8 +8,22 @@ import { Input } from '@/components/ta/ui/input';
 import { Button } from '@/components/ta/ui/button';
 import { Badge } from '@/components/ta/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ta/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ta/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
 import { Textarea } from '@/components/ta/ui/textarea';
+import { useAuth } from '@/lib/auth';
+import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
+import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
+import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 import {
   archiveLateDayAssignment,
   createLateDayAssignment,
@@ -52,7 +66,46 @@ const toIsoFromLocalDateTime = (localValue: string) => new Date(localValue).toIS
 const formatDeadline = (deadline: string | null) =>
   deadline ? format(new Date(deadline), 'PPP p') : 'Not set yet';
 
+const TA_STORAGE_SCOPE = 'ta';
+const LATE_DAYS_MANAGEMENT_STORAGE_KEY = 'module-late-days';
+
+interface PersistedLateDaysManagementState {
+  newTitle: string;
+  newDueAt: string;
+  rosterSearchQuery: string;
+  editingAssignment: LateDayAssignment | null;
+  editTitle: string;
+  editDueAt: string;
+  grantTarget: RosterStudent | null;
+  grantDays: string;
+  grantReason: string;
+  selectedClaimGroupKey: string | null;
+  assignmentPendingArchive: LateDayAssignment | null;
+  claimPendingDelete: string | null;
+}
+
 export default function LateDaysManagement() {
+  const { user } = useAuth();
+  const userEmail = user?.email ?? null;
+  const persistedState = readScopedSessionStorage<PersistedLateDaysManagementState>(
+    TA_STORAGE_SCOPE,
+    userEmail,
+    LATE_DAYS_MANAGEMENT_STORAGE_KEY,
+    {
+      newTitle: '',
+      newDueAt: '',
+      rosterSearchQuery: '',
+      editingAssignment: null,
+      editTitle: '',
+      editDueAt: '',
+      grantTarget: null,
+      grantDays: '1',
+      grantReason: '',
+      selectedClaimGroupKey: null,
+      assignmentPendingArchive: null,
+      claimPendingDelete: null,
+    },
+  );
   const [assignments, setAssignments] = useState<LateDayAssignment[]>([]);
   const [claims, setClaims] = useState<LateDayClaim[]>([]);
   const [adjustments, setAdjustments] = useState<LateDayAdjustment[]>([]);
@@ -61,20 +114,24 @@ export default function LateDaysManagement() {
   const [isCreatingAssignment, setIsCreatingAssignment] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [deletingClaimId, setDeletingClaimId] = useState<string | null>(null);
+  const [assignmentPendingArchive, setAssignmentPendingArchive] = useState<LateDayAssignment | null>(persistedState.assignmentPendingArchive);
+  const [claimPendingDelete, setClaimPendingDelete] = useState<string | null>(persistedState.claimPendingDelete);
+  const markRefreshedRef = useRef<() => void>(() => {});
+  const hasLoadedOnceRef = useRef(false);
 
-  const [newTitle, setNewTitle] = useState('');
-  const [newDueAt, setNewDueAt] = useState('');
-  const [rosterSearchQuery, setRosterSearchQuery] = useState('');
+  const [newTitle, setNewTitle] = useState(persistedState.newTitle);
+  const [newDueAt, setNewDueAt] = useState(persistedState.newDueAt);
+  const [rosterSearchQuery, setRosterSearchQuery] = useState(persistedState.rosterSearchQuery);
 
-  const [editingAssignment, setEditingAssignment] = useState<LateDayAssignment | null>(null);
-  const [editTitle, setEditTitle] = useState('');
-  const [editDueAt, setEditDueAt] = useState('');
+  const [editingAssignment, setEditingAssignment] = useState<LateDayAssignment | null>(persistedState.editingAssignment);
+  const [editTitle, setEditTitle] = useState(persistedState.editTitle);
+  const [editDueAt, setEditDueAt] = useState(persistedState.editDueAt);
 
-  const [grantTarget, setGrantTarget] = useState<RosterStudent | null>(null);
-  const [grantDays, setGrantDays] = useState('1');
-  const [grantReason, setGrantReason] = useState('');
+  const [grantTarget, setGrantTarget] = useState<RosterStudent | null>(persistedState.grantTarget);
+  const [grantDays, setGrantDays] = useState(persistedState.grantDays);
+  const [grantReason, setGrantReason] = useState(persistedState.grantReason);
   const [isGranting, setIsGranting] = useState(false);
-  const [selectedClaimGroupKey, setSelectedClaimGroupKey] = useState<string | null>(null);
+  const [selectedClaimGroupKey, setSelectedClaimGroupKey] = useState<string | null>(persistedState.selectedClaimGroupKey);
 
   const assignmentById = useMemo(
     () =>
@@ -176,8 +233,11 @@ export default function LateDaysManagement() {
     });
   }, [rosterWithBalances, rosterSearchQuery]);
 
-  const fetchLateDaysData = async () => {
-    setIsLoading(true);
+  const fetchLateDaysData = useCallback(async (mode: 'initial' | 'silent' = 'initial') => {
+    const shouldShowLoader = mode === 'initial' && !hasLoadedOnceRef.current;
+    if (shouldShowLoader) {
+      setIsLoading(true);
+    }
     try {
       const [lateDaysData, rosterData] = await Promise.all([listLateDaysAdminData(), listRoster()]);
       setAssignments(lateDaysData.assignments ?? []);
@@ -185,6 +245,8 @@ export default function LateDaysManagement() {
       setAdjustments(lateDaysData.adjustments ?? []);
       setRosterStudents((rosterData.rows ?? [])
         .sort((a, b) => a.class_no.localeCompare(b.class_no) || a.student_name.localeCompare(b.student_name)) as RosterStudent[]);
+      hasLoadedOnceRef.current = true;
+      markRefreshedRef.current();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Failed to load late-day data: ${message}`);
@@ -193,13 +255,46 @@ export default function LateDaysManagement() {
       setRosterStudents([]);
       setAdjustments([]);
     } finally {
-      setIsLoading(false);
+      if (shouldShowLoader) {
+        setIsLoading(false);
+      }
     }
-  };
+  }, []);
 
   useEffect(() => {
-    void fetchLateDaysData();
-  }, []);
+    void fetchLateDaysData('initial');
+  }, [fetchLateDaysData]);
+
+  useEffect(() => {
+    writeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, LATE_DAYS_MANAGEMENT_STORAGE_KEY, {
+      newTitle,
+      newDueAt,
+      rosterSearchQuery,
+      editingAssignment,
+      editTitle,
+      editDueAt,
+      grantTarget,
+      grantDays,
+      grantReason,
+      selectedClaimGroupKey,
+      assignmentPendingArchive,
+      claimPendingDelete,
+    });
+  }, [
+    assignmentPendingArchive,
+    claimPendingDelete,
+    editDueAt,
+    editTitle,
+    editingAssignment,
+    grantDays,
+    grantReason,
+    grantTarget,
+    newDueAt,
+    newTitle,
+    rosterSearchQuery,
+    selectedClaimGroupKey,
+    userEmail,
+  ]);
 
   useEffect(() => {
     if (selectedClaimGroupKey && !selectedClaimGroup) {
@@ -219,7 +314,7 @@ export default function LateDaysManagement() {
       toast.success(newDueAt ? 'Assignment added.' : 'Assignment added without deadline.');
       setNewTitle('');
       setNewDueAt('');
-      await fetchLateDaysData();
+      await fetchLateDaysData('silent');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       if (message.includes('null value in column "due_at"')) {
@@ -259,7 +354,7 @@ export default function LateDaysManagement() {
       });
       toast.success(editDueAt ? 'Assignment updated.' : 'Assignment updated. Deadline cleared.');
       closeEditDialog();
-      await fetchLateDaysData();
+      await fetchLateDaysData('silent');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       if (message.includes('null value in column "due_at"')) {
@@ -274,12 +369,11 @@ export default function LateDaysManagement() {
 
   const handleArchiveAssignment = async (assignment: LateDayAssignment) => {
     if (!assignment.active) return;
-    if (!confirm('Archive this assignment? It will be hidden from students but claim history is preserved.')) return;
 
     try {
       await archiveLateDayAssignment(assignment.id);
       toast.success('Assignment archived.');
-      await fetchLateDaysData();
+      await fetchLateDaysData('silent');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Failed to archive assignment: ${message}`);
@@ -288,8 +382,6 @@ export default function LateDaysManagement() {
   };
 
   const handleDeleteClaim = async (claimId: string) => {
-    if (!confirm('Delete this claim row? This will return those late days to the student balance.')) return;
-
     setDeletingClaimId(claimId);
     try {
       await deleteLateDayClaim(claimId);
@@ -338,7 +430,7 @@ export default function LateDaysManagement() {
           : 'Late days added.'
       );
       closeGrantDialog();
-      await fetchLateDaysData();
+      await fetchLateDaysData('silent');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Failed to add late day: ${message}`);
@@ -354,6 +446,34 @@ export default function LateDaysManagement() {
       </div>
     );
   }
+
+  const { markRefreshed } = useStaleRefreshOnFocus(
+    () => fetchLateDaysData('silent'),
+    { staleAfterMs: 60_000 },
+  );
+
+  useEffect(() => {
+    markRefreshedRef.current = markRefreshed;
+  }, [markRefreshed]);
+
+  useEffect(() => {
+    const channel = subscribeToRealtimeTables(
+      `ta-late-days-${userEmail ?? 'anonymous'}`,
+      [
+        { table: 'late_day_assignments' },
+        { table: 'late_day_claims' },
+        { table: 'late_day_adjustments' },
+        { table: 'students_roster' },
+      ],
+      () => {
+        void fetchLateDaysData('silent');
+      },
+    );
+
+    return () => {
+      void removeRealtimeChannel(channel);
+    };
+  }, [fetchLateDaysData, userEmail]);
 
   return (
     <div className="ta-module-shell grid gap-6 xl:grid-cols-3">
@@ -425,7 +545,7 @@ export default function LateDaysManagement() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => handleArchiveAssignment(assignment)}
+                              onClick={() => setAssignmentPendingArchive(assignment)}
                               disabled={!assignment.active}
                             >
                               <Trash2 className="h-4 w-4 status-absent-text" />
@@ -604,7 +724,7 @@ export default function LateDaysManagement() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleDeleteClaim(claimEvent.id)}
+                          onClick={() => setClaimPendingDelete(claimEvent.id)}
                           disabled={deletingClaimId === claimEvent.id}
                         >
                           {deletingClaimId === claimEvent.id ? (
@@ -710,6 +830,52 @@ export default function LateDaysManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={Boolean(assignmentPendingArchive)} onOpenChange={(open) => !open && setAssignmentPendingArchive(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive assignment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This assignment will be hidden from students, and claim history will remain preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!assignmentPendingArchive) return;
+                void handleArchiveAssignment(assignmentPendingArchive);
+                setAssignmentPendingArchive(null);
+              }}
+            >
+              Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={Boolean(claimPendingDelete)} onOpenChange={(open) => !open && setClaimPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete claim row?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deleting a claim returns those late days to the student balance and cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!claimPendingDelete) return;
+                void handleDeleteClaim(claimPendingDelete);
+                setClaimPendingDelete(null);
+              }}
+            >
+              Delete Claim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
