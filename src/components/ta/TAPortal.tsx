@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type ComponentType } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -18,6 +18,22 @@ import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '@/lib/auth';
 import {
+  getScreenContextSummary,
+  type AgentCommandEnvelope,
+  type AttendanceAgentCommand,
+  type ConsolidatedAgentCommand,
+  type ExportAgentCommand,
+  type HelpAssistantAction,
+  type HelpContextSnapshot,
+  type IssueQueueAgentCommand,
+  type LateDaysAgentCommand,
+  type RosterAgentCommand,
+  type RuleExceptionsAgentCommand,
+  type SessionAgentCommand,
+  type SettingsAgentCommand,
+  type ZoomAgentCommand,
+} from '@/lib/ta-help-actions';
+import {
   readScopedSessionStorage,
   removeScopedSessionStorage,
   writeScopedSessionStorage,
@@ -29,6 +45,7 @@ import {
   type ZoomSessionReport,
 } from '@/lib/zoom-session-report';
 import PortalLoadingScreen from '@/components/PortalLoadingScreen';
+import TAHelpAssistant from './TAHelpAssistant';
 
 const TAZoomProcess = lazy(() => import('./TAZoomProcess'));
 const AttendanceMarking = lazy(() => import('./AttendanceMarking'));
@@ -54,6 +71,17 @@ type PortalModule =
   | 'settings';
 
 type AttendanceWorkspaceTab = 'zoom' | 'attendance';
+
+interface SessionManagementAgentPrefill {
+  token: number;
+  selectedDate: string | null;
+  focusField: 'session-number' | null;
+}
+
+const makeCommandEnvelope = <T,>(command: T, token: number): AgentCommandEnvelope<T> => ({
+  token,
+  command,
+});
 
 interface ModuleConfig {
   id: PortalModule;
@@ -115,6 +143,43 @@ const readStoredAttendanceWorkspaceTab = (userEmail: string | null | undefined):
   return 'zoom';
 };
 
+const formatLocalIsoDate = (value: Date) => {
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, '0');
+  const day = `${value.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getImmediateStageForModule = (
+  module: PortalModule,
+  attendanceTab: AttendanceWorkspaceTab = 'zoom',
+) => {
+  switch (module) {
+    case 'zoom':
+      return 'Zoom Processor · upload step';
+    case 'attendance':
+      return 'Live Attendance · selecting session';
+    case 'sessions':
+      return 'Session Management · overview';
+    case 'consolidated':
+      return 'Consolidated View · table review';
+    case 'late-days':
+      return 'Late Days · overview';
+    case 'exceptions':
+      return 'Rule Exceptions · overview';
+    case 'roster':
+      return 'Roster Management · overview';
+    case 'export':
+      return 'Export Data · overview';
+    case 'issues':
+      return 'Issue Queue · overview';
+    case 'settings':
+      return 'Lists & Settings · overview';
+    default:
+      return attendanceTab === 'zoom' ? 'Zoom Processor · upload step' : 'Live Attendance · selecting session';
+  }
+};
+
 export default function TAPortal() {
   const { signOut, user } = useAuth();
   const navigate = useNavigate();
@@ -150,6 +215,22 @@ export default function TAPortal() {
     ),
   );
   const [pendingZoomReportLoad, setPendingZoomReportLoad] = useState<ZoomReportLoadRequest | null>(null);
+  const [helpModuleStage, setHelpModuleStage] = useState<string | null>(() =>
+    isPortalModule(initialActiveModule) ? getImmediateStageForModule(initialActiveModule, initialAttendanceWorkspaceTab) : null,
+  );
+  const [sessionAgentPrefill, setSessionAgentPrefill] = useState<SessionManagementAgentPrefill | null>(null);
+  const [helpSnapshotDetails, setHelpSnapshotDetails] = useState<Partial<HelpContextSnapshot>>({});
+  const [zoomAgentCommand, setZoomAgentCommand] = useState<AgentCommandEnvelope<ZoomAgentCommand> | null>(null);
+  const [attendanceAgentCommand, setAttendanceAgentCommand] = useState<AgentCommandEnvelope<AttendanceAgentCommand> | null>(null);
+  const [sessionAgentCommand, setSessionAgentCommand] = useState<AgentCommandEnvelope<SessionAgentCommand> | null>(null);
+  const [rosterAgentCommand, setRosterAgentCommand] = useState<AgentCommandEnvelope<RosterAgentCommand> | null>(null);
+  const [consolidatedAgentCommand, setConsolidatedAgentCommand] = useState<AgentCommandEnvelope<ConsolidatedAgentCommand> | null>(null);
+  const [ruleExceptionsAgentCommand, setRuleExceptionsAgentCommand] = useState<AgentCommandEnvelope<RuleExceptionsAgentCommand> | null>(null);
+  const [issueQueueAgentCommand, setIssueQueueAgentCommand] = useState<AgentCommandEnvelope<IssueQueueAgentCommand> | null>(null);
+  const [lateDaysAgentCommand, setLateDaysAgentCommand] = useState<AgentCommandEnvelope<LateDaysAgentCommand> | null>(null);
+  const [exportAgentCommand, setExportAgentCommand] = useState<AgentCommandEnvelope<ExportAgentCommand> | null>(null);
+  const [settingsAgentCommand, setSettingsAgentCommand] = useState<AgentCommandEnvelope<SettingsAgentCommand> | null>(null);
+  const commandTokenRef = useRef(0);
 
   const showAttendanceSwitch = activeModule === 'zoom' || activeModule === 'attendance';
 
@@ -202,12 +283,82 @@ export default function TAPortal() {
     removeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, LATEST_ZOOM_REPORT_STORAGE_KEY);
   }, [latestFinalZoomReport, userEmail]);
 
+  useEffect(() => {
+    if (!activeModule) {
+      setHelpModuleStage(null);
+    }
+  }, [activeModule]);
+
+  useEffect(() => {
+    setHelpSnapshotDetails({});
+  }, [activeModule, attendanceWorkspaceTab]);
+
   const activeModuleConfig = useMemo(
     () => (activeModule ? MODULES.find((module) => module.id === activeModule) ?? null : null),
     [activeModule],
   );
+  const helpModuleTitle = useMemo(() => {
+    if (showAttendanceSwitch) {
+      return attendanceWorkspaceTab === 'zoom' ? 'Zoom Processor' : 'Live Attendance';
+    }
+
+    return activeModuleConfig?.title ?? 'TA Dashboard';
+  }, [activeModuleConfig?.title, attendanceWorkspaceTab, showAttendanceSwitch]);
+
+  const helpSnapshot = useMemo<HelpContextSnapshot>(() => {
+    const defaultSummary = getScreenContextSummary(helpModuleTitle, helpModuleStage);
+    return {
+      moduleId: (showAttendanceSwitch ? attendanceWorkspaceTab : activeModule) ?? 'dashboard',
+      moduleTitle: helpModuleTitle,
+      moduleStage: helpModuleStage,
+      screenDescription: helpSnapshotDetails.screenDescription ?? defaultSummary?.description ?? null,
+      openSurface: helpSnapshotDetails.openSurface ?? null,
+      visibleControls:
+        helpSnapshotDetails.visibleControls && helpSnapshotDetails.visibleControls.length > 0
+          ? helpSnapshotDetails.visibleControls
+          : defaultSummary?.visibleControls ?? [],
+      searchQuery: helpSnapshotDetails.searchQuery ?? null,
+      filters: helpSnapshotDetails.filters,
+      selected: helpSnapshotDetails.selected ?? null,
+      actionTargets: helpSnapshotDetails.actionTargets ?? [],
+    };
+  }, [
+    activeModule,
+    attendanceWorkspaceTab,
+    helpModuleStage,
+    helpModuleTitle,
+    helpSnapshotDetails.actionTargets,
+    helpSnapshotDetails.filters,
+    helpSnapshotDetails.openSurface,
+    helpSnapshotDetails.screenDescription,
+    helpSnapshotDetails.searchQuery,
+    helpSnapshotDetails.selected,
+    helpSnapshotDetails.visibleControls,
+    showAttendanceSwitch,
+  ]);
+
+  const nextCommandToken = () => {
+    commandTokenRef.current += 1;
+    return commandTokenRef.current;
+  };
+
+  const clearPendingCommands = () => {
+    setZoomAgentCommand(null);
+    setAttendanceAgentCommand(null);
+    setSessionAgentCommand(null);
+    setRosterAgentCommand(null);
+    setConsolidatedAgentCommand(null);
+    setRuleExceptionsAgentCommand(null);
+    setIssueQueueAgentCommand(null);
+    setLateDaysAgentCommand(null);
+    setExportAgentCommand(null);
+    setSettingsAgentCommand(null);
+  };
 
   const handleOpenModule = (module: PortalModule) => {
+    clearPendingCommands();
+    setHelpSnapshotDetails({});
+    setHelpModuleStage(getImmediateStageForModule(module, attendanceWorkspaceTab));
     if (module === 'zoom' || module === 'attendance') {
       setAttendanceWorkspaceTab(module);
       setLoadedAttendanceTabs((prev) => {
@@ -220,6 +371,9 @@ export default function TAPortal() {
   };
 
   const handleSwitchAttendanceTab = (tab: AttendanceWorkspaceTab) => {
+    clearPendingCommands();
+    setHelpSnapshotDetails({});
+    setHelpModuleStage(getImmediateStageForModule(tab, tab));
     setAttendanceWorkspaceTab(tab);
     setLoadedAttendanceTabs((prev) => {
       const next = new Set(prev);
@@ -227,6 +381,122 @@ export default function TAPortal() {
       return next;
     });
     setActiveModule(tab);
+  };
+
+  const handleRunHelpAction = (action: HelpAssistantAction) => {
+    switch (action.type) {
+      case 'open-module':
+        handleOpenModule(action.module);
+        return;
+      case 'switch-attendance-tab':
+        handleSwitchAttendanceTab(action.tab);
+        return;
+      case 'zoom-command':
+        setHelpModuleStage('Zoom Processor · upload step');
+        setAttendanceWorkspaceTab('zoom');
+        setLoadedAttendanceTabs((prev) => new Set(prev).add('zoom'));
+        setActiveModule('zoom');
+        setZoomAgentCommand(makeCommandEnvelope(action.command, nextCommandToken()));
+        return;
+      case 'attendance-command':
+        setHelpModuleStage(
+          action.command.kind === 'prepare-sync'
+            ? 'Live Attendance · reviewing session'
+            : action.command.kind === 'prepare-submit'
+              ? 'Live Attendance · reviewing absent ERP list'
+              : action.command.kind === 'select-session'
+                ? 'Live Attendance · selecting session'
+                : 'Live Attendance · reviewing session',
+        );
+        setAttendanceWorkspaceTab('attendance');
+        setLoadedAttendanceTabs((prev) => new Set(prev).add('attendance'));
+        setActiveModule('attendance');
+        setAttendanceAgentCommand(makeCommandEnvelope(action.command, nextCommandToken()));
+        return;
+      case 'session-command':
+        setHelpModuleStage('Session Management · creating a session');
+        setActiveModule('sessions');
+        setSessionAgentPrefill({
+          token: nextCommandToken(),
+          selectedDate: action.command.selectedDate,
+          focusField: 'session-number',
+        });
+        setSessionAgentCommand(makeCommandEnvelope(action.command, nextCommandToken()));
+        return;
+      case 'roster-command':
+        setHelpModuleStage(
+          action.command.kind === 'open-add-student'
+            ? 'Roster Management · add student dialog'
+            : action.command.kind === 'open-edit-student'
+              ? 'Roster Management · edit student dialog'
+              : action.command.kind === 'prepare-delete-student'
+                ? 'Roster Management · delete student confirmation'
+                : action.command.kind === 'prepare-bulk-roster'
+                  ? 'Roster Management · bulk roster draft'
+                  : 'Roster Management · overview',
+        );
+        setActiveModule('roster');
+        setRosterAgentCommand(makeCommandEnvelope(action.command, nextCommandToken()));
+        return;
+      case 'consolidated-command':
+        setHelpModuleStage(
+          action.command.kind === 'focus-sync'
+            ? 'Consolidated View · table review'
+            : action.command.kind === 'search'
+              ? 'Consolidated View · search active'
+              : 'Consolidated View · table review',
+        );
+        setActiveModule('consolidated');
+        setConsolidatedAgentCommand(makeCommandEnvelope(action.command, nextCommandToken()));
+        return;
+      case 'rule-exceptions-command':
+        setHelpModuleStage(
+          action.command.kind === 'open-add-exception'
+            ? 'Rule Exceptions · add exception dialog'
+            : action.command.kind === 'search-tracker' || action.command.kind === 'mark-warned' || action.command.kind === 'clear-warning'
+              ? 'Rule Exceptions · tracker search'
+              : 'Rule Exceptions · overview',
+        );
+        setActiveModule('exceptions');
+        setRuleExceptionsAgentCommand(makeCommandEnvelope(action.command, nextCommandToken()));
+        return;
+      case 'issue-queue-command':
+        setHelpModuleStage(
+          action.command.kind === 'open-ticket' ||
+          action.command.kind === 'prepare-resolve-ticket' ||
+          action.command.kind === 'prepare-escalate-ticket' ||
+          action.command.kind === 'prepare-delete-ticket' ||
+          action.command.kind === 'prefill-response'
+            ? 'Issue Queue · ticket sheet open'
+            : 'Issue Queue · filtered list',
+        );
+        setActiveModule('issues');
+        setIssueQueueAgentCommand(makeCommandEnvelope(action.command, nextCommandToken()));
+        return;
+      case 'late-days-command':
+        setHelpModuleStage(
+          action.command.kind === 'open-grant-dialog'
+            ? 'Late Days · granting late days'
+            : action.command.kind === 'prepare-create-assignment'
+              ? 'Late Days · creating assignment'
+              : action.command.kind === 'open-claim-details'
+                ? 'Late Days · reviewing claim details'
+                : 'Late Days · overview',
+        );
+        setActiveModule('late-days');
+        setLateDaysAgentCommand(makeCommandEnvelope(action.command, nextCommandToken()));
+        return;
+      case 'export-command':
+        setHelpModuleStage('Export Data · overview');
+        setActiveModule('export');
+        setExportAgentCommand(makeCommandEnvelope(action.command, nextCommandToken()));
+        return;
+      case 'settings-command':
+        setHelpModuleStage('Lists & Settings · editing inputs');
+        setActiveModule('settings');
+        setSettingsAgentCommand(makeCommandEnvelope(action.command, nextCommandToken()));
+        return;
+    }
   };
 
   const handleSignOut = async () => {
@@ -275,6 +545,10 @@ export default function TAPortal() {
                   onFinalReportReady={setLatestFinalZoomReport}
                   reportLoadRequest={pendingZoomReportLoad}
                   onReportLoadHandled={() => setPendingZoomReportLoad(null)}
+                  onContextChange={setHelpModuleStage}
+                  onHelpContextChange={setHelpSnapshotDetails}
+                  agentCommand={zoomAgentCommand}
+                  onAgentCommandHandled={() => setZoomAgentCommand(null)}
                 />
               </Suspense>
             </div>
@@ -288,7 +562,13 @@ export default function TAPortal() {
               aria-hidden={attendanceWorkspaceTab !== 'attendance'}
             >
               <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
-                <AttendanceMarking latestFinalZoomReport={latestFinalZoomReport} />
+                <AttendanceMarking
+                  latestFinalZoomReport={latestFinalZoomReport}
+                  onContextChange={setHelpModuleStage}
+                  onHelpContextChange={setHelpSnapshotDetails}
+                  agentCommand={attendanceAgentCommand}
+                  onAgentCommandHandled={() => setAttendanceAgentCommand(null)}
+                />
               </Suspense>
             </div>
           )}
@@ -301,6 +581,12 @@ export default function TAPortal() {
         return (
           <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
             <SessionManagement
+              agentPrefill={sessionAgentPrefill}
+              onAgentPrefillHandled={() => setSessionAgentPrefill(null)}
+              onContextChange={setHelpModuleStage}
+              onHelpContextChange={setHelpSnapshotDetails}
+              agentCommand={sessionAgentCommand}
+              onAgentCommandHandled={() => setSessionAgentCommand(null)}
               onOpenZoomReport={(request) => {
                 setPendingZoomReportLoad(request);
                 setLatestFinalZoomReport(request.report);
@@ -318,43 +604,79 @@ export default function TAPortal() {
       case 'consolidated':
         return (
           <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
-            <ConsolidatedView isActive={true} />
+            <ConsolidatedView
+              isActive={true}
+              onContextChange={setHelpModuleStage}
+              onHelpContextChange={setHelpSnapshotDetails}
+              agentCommand={consolidatedAgentCommand}
+              onAgentCommandHandled={() => setConsolidatedAgentCommand(null)}
+            />
           </Suspense>
         );
       case 'exceptions':
         return (
           <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
-            <RuleExceptions />
+            <RuleExceptions
+              onContextChange={setHelpModuleStage}
+              onHelpContextChange={setHelpSnapshotDetails}
+              agentCommand={ruleExceptionsAgentCommand}
+              onAgentCommandHandled={() => setRuleExceptionsAgentCommand(null)}
+            />
           </Suspense>
         );
       case 'roster':
         return (
           <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
-            <RosterManagement />
+            <RosterManagement
+              onContextChange={setHelpModuleStage}
+              onHelpContextChange={setHelpSnapshotDetails}
+              agentCommand={rosterAgentCommand}
+              onAgentCommandHandled={() => setRosterAgentCommand(null)}
+            />
           </Suspense>
         );
       case 'late-days':
         return (
           <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
-            <LateDaysManagement />
+            <LateDaysManagement
+              onContextChange={setHelpModuleStage}
+              onHelpContextChange={setHelpSnapshotDetails}
+              agentCommand={lateDaysAgentCommand}
+              onAgentCommandHandled={() => setLateDaysAgentCommand(null)}
+            />
           </Suspense>
         );
       case 'export':
         return (
           <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
-            <ExportData />
+            <ExportData
+              onContextChange={setHelpModuleStage}
+              onHelpContextChange={setHelpSnapshotDetails}
+              agentCommand={exportAgentCommand}
+              onAgentCommandHandled={() => setExportAgentCommand(null)}
+            />
           </Suspense>
         );
       case 'issues':
         return (
           <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
-            <IssueManagement />
+            <IssueManagement
+              onContextChange={setHelpModuleStage}
+              onHelpContextChange={setHelpSnapshotDetails}
+              agentCommand={issueQueueAgentCommand}
+              onAgentCommandHandled={() => setIssueQueueAgentCommand(null)}
+            />
           </Suspense>
         );
       case 'settings':
         return (
           <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
-            <ListsSettings />
+            <ListsSettings
+              onContextChange={setHelpModuleStage}
+              onHelpContextChange={setHelpSnapshotDetails}
+              agentCommand={settingsAgentCommand}
+              onAgentCommandHandled={() => setSettingsAgentCommand(null)}
+            />
           </Suspense>
         );
       default:
@@ -447,7 +769,7 @@ export default function TAPortal() {
             >
               <div className="neo-out rounded-[32px] p-5 md:p-6">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                  <button onClick={() => setActiveModule(null)} className="group/back flex items-center gap-2 text-sm font-bold tracking-wide text-debossed-sm">
+                  <button onClick={() => { setHelpModuleStage(null); setActiveModule(null); }} className="group/back flex items-center gap-2 text-sm font-bold tracking-wide text-debossed-sm">
                     <div className="p-1.5 rounded-full neo-in">
                       <ArrowLeft className="w-4 h-4" />
                     </div>
@@ -519,6 +841,8 @@ export default function TAPortal() {
           )}
         </AnimatePresence>
       </div>
+
+      <TAHelpAssistant snapshot={helpSnapshot} onRunAction={handleRunHelpAction} />
     </div>
   );
 }

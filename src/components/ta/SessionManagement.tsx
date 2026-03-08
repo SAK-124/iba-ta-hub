@@ -21,6 +21,11 @@ import { toast } from 'sonner';
 import { Loader2, Plus, Trash2, CalendarIcon, Clock, Pencil, Eye, EyeOff } from 'lucide-react';
 import { format, getDay, parse } from 'date-fns';
 import { normalizeZoomSessionReport, type ZoomReportLoadRequest } from '@/lib/zoom-session-report';
+import type {
+    AgentCommandEnvelope,
+    HelpContextSnapshot,
+    SessionAgentCommand,
+} from '@/lib/ta-help-actions';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
 import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
@@ -42,6 +47,16 @@ const SESSION_MANAGEMENT_STORAGE_KEY = 'module-sessions';
 
 interface SessionManagementProps {
     onOpenZoomReport?: (request: ZoomReportLoadRequest) => void;
+    onContextChange?: (context: string | null) => void;
+    onHelpContextChange?: (snapshot: Partial<HelpContextSnapshot>) => void;
+    agentPrefill?: {
+        token: number;
+        selectedDate: string | null;
+        focusField: 'session-number' | null;
+    } | null;
+    onAgentPrefillHandled?: () => void;
+    agentCommand?: AgentCommandEnvelope<SessionAgentCommand> | null;
+    onAgentCommandHandled?: () => void;
 }
 
 interface PersistedSessionManagementState {
@@ -61,7 +76,15 @@ interface PersistedSessionManagementState {
     sessionPendingDelete: Session | null;
 }
 
-export default function SessionManagement({ onOpenZoomReport }: SessionManagementProps = {}) {
+export default function SessionManagement({
+    onOpenZoomReport,
+    onContextChange,
+    onHelpContextChange,
+    agentPrefill = null,
+    onAgentPrefillHandled,
+    agentCommand = null,
+    onAgentCommandHandled,
+}: SessionManagementProps = {}) {
     const { user } = useAuth();
     const userEmail = user?.email ?? null;
     const persistedState = readScopedSessionStorage<PersistedSessionManagementState>(
@@ -101,6 +124,7 @@ export default function SessionManagement({ onOpenZoomReport }: SessionManagemen
     const [startTime, setStartTime] = useState(persistedState.startTime);
     const [endTime, setEndTime] = useState(persistedState.endTime);
     const [isCreating, setIsCreating] = useState(false);
+    const sessionNumInputRef = useRef<HTMLInputElement>(null);
     const startTimeInputRef = useRef<HTMLInputElement>(null);
     const endTimeInputRef = useRef<HTMLInputElement>(null);
 
@@ -115,6 +139,7 @@ export default function SessionManagement({ onOpenZoomReport }: SessionManagemen
     const [editEndTime, setEditEndTime] = useState(persistedState.editEndTime);
     const [isSaving, setIsSaving] = useState(false);
     const [sessionPendingDelete, setSessionPendingDelete] = useState<Session | null>(persistedState.sessionPendingDelete);
+    const lastHandledAgentCommandTokenRef = useRef<number | null>(null);
 
     // Auto-detect day of week when date changes (for new session)
     useEffect(() => {
@@ -124,6 +149,109 @@ export default function SessionManagement({ onOpenZoomReport }: SessionManagemen
             setUseCustomDay(false);
         }
     }, [selectedDate]);
+
+    useEffect(() => {
+        const stageLabel = editingSession
+            ? `Session Management · editing session ${editingSession.session_number}`
+            : sessionPendingDelete
+                ? `Session Management · deleting session ${sessionPendingDelete.session_number}`
+                : selectedDate
+                    ? 'Session Management · creating a session'
+                    : 'Session Management · overview';
+
+        onContextChange?.(stageLabel);
+    }, [editingSession, onContextChange, selectedDate, sessionPendingDelete]);
+
+    useEffect(() => {
+        onHelpContextChange?.({
+            openSurface: editingSession
+                ? 'edit session dialog'
+                : sessionPendingDelete
+                    ? 'delete session confirmation'
+                    : 'create session form',
+            screenDescription: editingSession
+                ? 'Edit a saved session without losing its attendance data.'
+                : 'Create a new class session or manage existing saved sessions.',
+            visibleControls: ['Session Number', 'Date', 'Day of Week', 'Start Time', 'End Time', editingSession ? 'Save' : 'Create Session'],
+            actionTargets: sessions
+                .slice(0, 100)
+                .map((session) => ({
+                    kind: 'session' as const,
+                    id: session.id,
+                    label: `Session ${session.session_number}`,
+                    aliases: [`#${session.session_number}`, format(new Date(session.session_date), 'PPP')],
+                    meta: {
+                        session_number: session.session_number,
+                        session_date: session.session_date,
+                        day_of_week: session.day_of_week,
+                    },
+                })),
+        });
+    }, [editingSession, onHelpContextChange, sessionPendingDelete, sessions]);
+
+    useEffect(() => {
+        if (!agentPrefill) {
+            return;
+        }
+
+        if (agentPrefill.selectedDate) {
+            setSelectedDate(new Date(`${agentPrefill.selectedDate}T00:00:00`));
+        }
+
+        if (agentPrefill.focusField === 'session-number') {
+            window.setTimeout(() => {
+                sessionNumInputRef.current?.focus();
+                sessionNumInputRef.current?.select();
+            }, 0);
+        }
+
+        onAgentPrefillHandled?.();
+    }, [agentPrefill, onAgentPrefillHandled]);
+
+    useEffect(() => {
+        if (!agentCommand) {
+            return;
+        }
+
+        if (lastHandledAgentCommandTokenRef.current === agentCommand.token) {
+            return;
+        }
+
+        if (agentCommand.command.kind !== 'prepare-create-session') {
+            lastHandledAgentCommandTokenRef.current = agentCommand.token;
+            onAgentCommandHandled?.();
+            return;
+        }
+
+        if (!hasLoadedOnceRef.current && isLoading) {
+            return;
+        }
+
+        lastHandledAgentCommandTokenRef.current = agentCommand.token;
+
+        const nextSessionNumber =
+            sessions.length > 0
+                ? Math.max(...sessions.map((session) => session.session_number)) + 1
+                : 1;
+
+        setSelectedDate(new Date(`${agentCommand.command.selectedDate}T00:00:00`));
+        setSessionNum(String(nextSessionNumber));
+
+        window.setTimeout(() => {
+            const focusTarget =
+                agentCommand.command.focusField === 'end-time'
+                    ? endTimeInputRef.current
+                    : agentCommand.command.focusField === 'start-time'
+                        ? startTimeInputRef.current
+                        : sessionNumInputRef.current;
+            focusTarget?.focus();
+            if (focusTarget instanceof HTMLInputElement) {
+                focusTarget.select();
+            }
+        }, 0);
+
+        onAgentCommandHandled?.();
+    }, [agentCommand, isLoading, onAgentCommandHandled, sessions]);
 
     // Auto-detect day of week when edit date changes
     useEffect(() => {
@@ -356,6 +484,7 @@ export default function SessionManagement({ onOpenZoomReport }: SessionManagemen
                             type="number"
                             value={sessionNum}
                             onChange={e => setSessionNum(e.target.value)}
+                            ref={sessionNumInputRef}
                         />
                     </div>
 

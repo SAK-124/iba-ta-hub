@@ -160,6 +160,28 @@
   text-shadow: 0 0 12px rgba(139, 92, 246, 0.8), -1px -1px 3px rgba(0, 0, 0, 1), 1px 1px 1px rgba(255, 255, 255, 0.08);
 }
 
+[data-ui-surface='ta'] .status-white-table-text {
+  color: #d9e0e7;
+  text-shadow: 0 0 12px rgba(217, 224, 231, 0.42), -1px -1px 3px rgba(0, 0, 0, 1), 1px 1px 1px rgba(255, 255, 255, 0.08);
+}
+
+@keyframes ta-purple-breathe {
+  0%,
+  100% {
+    opacity: 0.88;
+    filter: saturate(0.94);
+  }
+
+  50% {
+    opacity: 1;
+    filter: saturate(1.08);
+  }
+}
+
+[data-ui-surface='ta'] .status-purple-breathe {
+  animation: ta-purple-breathe 3.4s ease-in-out infinite;
+}
+
 [data-ui-surface='ta'] .group\/row:hover .table-radio-led {
   background-color: var(--color-all);
   box-shadow: 0 0 8px var(--color-all);

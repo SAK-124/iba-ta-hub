@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ta/ui/card';
 import { Button } from '@/components/ta/ui/button';
 import { Label } from '@/components/ta/ui/label';
@@ -24,6 +24,11 @@ import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
 import { normalizeZoomSessionReport, type ZoomReportLoadRequest, type ZoomSessionReport } from '@/lib/zoom-session-report';
+import type {
+  AgentCommandEnvelope,
+  HelpContextSnapshot,
+  ZoomAgentCommand,
+} from '@/lib/ta-help-actions';
 import { getCurrentSessionEmail, listRosterReference } from '@/features/zoom';
 import {
   readScopedSessionStorage,
@@ -91,6 +96,10 @@ interface TAZoomProcessProps {
   onFinalReportReady?: (report: ZoomSessionReport | null) => void;
   reportLoadRequest?: ZoomReportLoadRequest | null;
   onReportLoadHandled?: () => void;
+  onContextChange?: (context: string | null) => void;
+  onHelpContextChange?: (snapshot: Partial<HelpContextSnapshot>) => void;
+  agentCommand?: AgentCommandEnvelope<ZoomAgentCommand> | null;
+  onAgentCommandHandled?: () => void;
 }
 
 const ERP_REGEX = /(\d{5})/;
@@ -305,6 +314,10 @@ export default function TAZoomProcess({
   onFinalReportReady,
   reportLoadRequest,
   onReportLoadHandled,
+  onContextChange,
+  onHelpContextChange,
+  agentCommand = null,
+  onAgentCommandHandled,
 }: TAZoomProcessProps = {}) {
   const { user } = useAuth();
   const userEmail = user?.email ?? null;
@@ -346,6 +359,10 @@ export default function TAZoomProcess({
 
   const [ignoredKeys, setIgnoredKeys] = useState<Set<string>>(() => new Set(cached?.ignoredKeys ?? []));
   const [rosterReference, setRosterReference] = useState<Record<string, RosterReference>>({});
+  const selectCsvLabelRef = useRef<HTMLLabelElement>(null);
+  const analyzeButtonRef = useRef<HTMLButtonElement>(null);
+  const calculateButtonRef = useRef<HTMLButtonElement>(null);
+  const lastHandledAgentCommandTokenRef = useRef<number | null>(null);
 
   const toggleIgnoreKey = (key: string) => {
     setIgnoredKeys((prev) => {
@@ -379,6 +396,34 @@ export default function TAZoomProcess({
   useEffect(() => {
     void loadReferenceData();
   }, []);
+
+  useEffect(() => {
+    const stageLabel =
+      step === 'upload'
+        ? 'Zoom Processor · upload step'
+        : step === 'review'
+          ? `Zoom Processor · review step · ${activeTab} tab`
+          : `Zoom Processor · results step · ${activeTab} tab`;
+
+    onContextChange?.(stageLabel);
+  }, [activeTab, onContextChange, step]);
+
+  useEffect(() => {
+    onHelpContextChange?.({
+      openSurface: step === 'upload' ? 'upload step' : step === 'review' ? 'review tabs' : 'results tabs',
+      screenDescription: 'Upload Zoom data, review matches and issues, then calculate the final attendance results.',
+      visibleControls:
+        step === 'upload'
+          ? ['SELECT CSV', 'Use Saved', 'CUSTOM DURATION (MINS)', 'NAMAZ BREAK (MINS)', 'Analyze Matrix', 'Calculate Attendance']
+          : step === 'review'
+            ? ['Matches', 'Issues', 'Unidentified', 'Raw Zoom Log', 'Calculate Attendance']
+            : ['Attendance', 'Absent', 'Penalties', 'Matches', 'Issues', 'Unidentified', 'Raw Zoom Log', 'Copy Absent ERPs'],
+      filters: {
+        tab: activeTab,
+        step,
+      },
+    });
+  }, [activeTab, onHelpContextChange, step]);
 
   useEffect(() => {
     const unsubscribe = subscribeRosterDataUpdated(() => {
@@ -480,6 +525,51 @@ export default function TAZoomProcess({
     toast.success(`Loaded saved Zoom report for session #${reportLoadRequest.sessionNumber}`);
     onReportLoadHandled?.();
   }, [reportLoadRequest, onFinalReportReady, onReportLoadHandled]);
+
+  useEffect(() => {
+    if (!agentCommand) {
+      return;
+    }
+
+    if (lastHandledAgentCommandTokenRef.current === agentCommand.token) {
+      return;
+    }
+
+    lastHandledAgentCommandTokenRef.current = agentCommand.token;
+
+    switch (agentCommand.command.kind) {
+      case 'focus-upload':
+        setStep('upload');
+        if (agentCommand.command.focusControl === 'calculate') {
+          window.setTimeout(() => calculateButtonRef.current?.focus(), 0);
+        } else if (agentCommand.command.focusControl === 'analyze') {
+          window.setTimeout(() => analyzeButtonRef.current?.focus(), 0);
+        } else {
+          window.setTimeout(() => selectCsvLabelRef.current?.focus(), 0);
+        }
+        break;
+      case 'set-parameters':
+        if (agentCommand.command.manualDuration !== undefined) {
+          setManualDuration(agentCommand.command.manualDuration);
+        }
+        if (agentCommand.command.namazBreak !== undefined) {
+          setNamazBreak(agentCommand.command.namazBreak);
+        }
+        break;
+      case 'switch-tab':
+        if (agentCommand.command.tab) {
+          setActiveTab(agentCommand.command.tab);
+          if (agentCommand.command.tab === 'attendance' || agentCommand.command.tab === 'absent' || agentCommand.command.tab === 'penalties') {
+            setStep('results');
+          } else if (step === 'upload') {
+            setStep('review');
+          }
+        }
+        break;
+    }
+
+    onAgentCommandHandled?.();
+  }, [agentCommand, onAgentCommandHandled, step]);
 
   const rosterErpSet = useMemo(() => new Set(Object.keys(rosterReference)), [rosterReference]);
   const rosterCount = Object.keys(rosterReference).length;
@@ -1115,6 +1205,8 @@ export default function TAZoomProcess({
                 <div className="relative h-[110px]">
                   <input type="file" accept=".csv" className="hidden" id="main-zoom-upload" onChange={handleZoomFileChange} disabled={isProcessing} />
                   <Label
+                    ref={selectCsvLabelRef}
+                    tabIndex={0}
                     htmlFor="main-zoom-upload"
                     className={cn(
                       'neo-in upload-zone absolute inset-0 flex flex-col items-center justify-center cursor-pointer overflow-hidden group transition-all duration-300',
@@ -1206,6 +1298,7 @@ export default function TAZoomProcess({
 
             {zoomFile && step === 'upload' && (
               <button
+                ref={analyzeButtonRef}
                 type="button"
                 className={cn(
                   'mt-8 h-[52px] w-full neo-btn neo-out flex items-center justify-center gap-3 text-[15px] tracking-wide uppercase',
@@ -1236,6 +1329,7 @@ export default function TAZoomProcess({
               <Input type="number" placeholder="0" value={namazBreak} onChange={(event) => setNamazBreak(event.target.value)} className="neo-in h-12" />
             </div>
             <button
+              ref={calculateButtonRef}
               type="button"
               className={cn(
                 'mt-8 w-full h-[52px] flex items-center justify-center gap-3 text-[15px] tracking-wide uppercase',

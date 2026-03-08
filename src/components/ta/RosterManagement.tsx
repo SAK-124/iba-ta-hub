@@ -35,6 +35,11 @@ import { useAuth } from '@/lib/auth';
 import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
 import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
 import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
+import type {
+    AgentCommandEnvelope,
+    HelpContextSnapshot,
+    RosterAgentCommand,
+} from '@/lib/ta-help-actions';
 import {
     createRosterStudent,
     deleteRosterStudent,
@@ -67,7 +72,36 @@ interface PersistedRosterManagementState {
     studentPendingDelete: StudentRow | null;
 }
 
-export default function RosterManagement() {
+interface RosterManagementProps {
+    onContextChange?: (context: string | null) => void;
+    onHelpContextChange?: (snapshot: Partial<HelpContextSnapshot>) => void;
+    agentCommand?: AgentCommandEnvelope<RosterAgentCommand> | null;
+    onAgentCommandHandled?: () => void;
+}
+
+const normalizeSearchValue = (value: string) => value.trim().toLowerCase();
+
+const findMatchingStudent = (students: StudentRow[], query: string) => {
+    const normalizedQuery = normalizeSearchValue(query);
+    if (!normalizedQuery) {
+        return null;
+    }
+
+    const matches = students.filter((student) =>
+        [student.student_name, student.erp, student.class_no]
+            .map((value) => normalizeSearchValue(value))
+            .some((value) => value.includes(normalizedQuery) || normalizedQuery.includes(value))
+    );
+
+    return matches.length === 1 ? matches[0] : null;
+};
+
+export default function RosterManagement({
+    onContextChange,
+    onHelpContextChange,
+    agentCommand = null,
+    onAgentCommandHandled,
+}: RosterManagementProps = {}) {
     const { user } = useAuth();
     const userEmail = user?.email ?? null;
     const persistedState = readScopedSessionStorage<PersistedRosterManagementState>(
@@ -96,10 +130,62 @@ export default function RosterManagement() {
     const [currentStudent, setCurrentStudent] = useState<StudentRow | null>(persistedState.currentStudent); // null = adding, object = editing
     const [formData, setFormData] = useState(persistedState.formData);
     const [studentPendingDelete, setStudentPendingDelete] = useState<StudentRow | null>(persistedState.studentPendingDelete);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+    const rosterTextareaRef = useRef<HTMLTextAreaElement>(null);
+    const studentNameInputRef = useRef<HTMLInputElement>(null);
+    const studentErpInputRef = useRef<HTMLInputElement>(null);
+    const studentClassInputRef = useRef<HTMLInputElement>(null);
+    const lastHandledAgentCommandTokenRef = useRef<number | null>(null);
 
     useEffect(() => {
         fetchRoster();
     }, []);
+
+    useEffect(() => {
+        const stageLabel = studentPendingDelete
+            ? 'Roster Management · delete student confirmation'
+            : isDialogOpen
+                ? currentStudent
+                    ? 'Roster Management · edit student dialog'
+                    : 'Roster Management · add student dialog'
+                : searchQuery.trim()
+                    ? 'Roster Management · search active'
+                    : rosterText.trim()
+                        ? 'Roster Management · bulk roster draft'
+                        : 'Roster Management · overview';
+
+        onContextChange?.(stageLabel);
+    }, [currentStudent, isDialogOpen, onContextChange, rosterText, searchQuery, studentPendingDelete]);
+
+    useEffect(() => {
+        onHelpContextChange?.({
+            openSurface: studentPendingDelete
+                ? 'delete student confirmation'
+                : isDialogOpen
+                    ? currentStudent
+                        ? 'edit student dialog'
+                        : 'add student dialog'
+                    : 'roster table',
+            screenDescription: 'Import the roster, search students, and add, edit, or remove roster entries.',
+            visibleControls: [
+                'Add Student',
+                'Replace Entire Roster',
+                'Search by ERP, Name or Class...',
+                isDialogOpen ? (currentStudent ? 'Confirm Updates' : 'Add to Roster') : '',
+            ].filter(Boolean) as string[],
+            searchQuery,
+            actionTargets: students.slice(0, 150).map((student) => ({
+                kind: 'student' as const,
+                id: student.id,
+                label: student.student_name,
+                aliases: [student.erp, student.class_no],
+                meta: {
+                    erp: student.erp,
+                    class_no: student.class_no,
+                },
+            })),
+        });
+    }, [currentStudent, isDialogOpen, onHelpContextChange, searchQuery, studentPendingDelete, students]);
 
     useEffect(() => {
         writeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, ROSTER_MANAGEMENT_STORAGE_KEY, {
@@ -111,6 +197,70 @@ export default function RosterManagement() {
             studentPendingDelete,
         });
     }, [currentStudent, formData, isDialogOpen, rosterText, searchQuery, studentPendingDelete, userEmail]);
+
+    useEffect(() => {
+        if (!agentCommand) {
+            return;
+        }
+
+        if (lastHandledAgentCommandTokenRef.current === agentCommand.token) {
+            return;
+        }
+
+        lastHandledAgentCommandTokenRef.current = agentCommand.token;
+
+        switch (agentCommand.command.kind) {
+            case 'search':
+                setSearchQuery(agentCommand.command.query ?? '');
+                window.setTimeout(() => searchInputRef.current?.focus(), 0);
+                break;
+            case 'open-add-student':
+                openAddDialog();
+                setFormData({
+                    student_name: agentCommand.command.student?.student_name ?? '',
+                    erp: agentCommand.command.student?.erp ?? '',
+                    class_no: agentCommand.command.student?.class_no ?? '',
+                });
+                window.setTimeout(() => {
+                    if (agentCommand.command.focusField === 'erp') {
+                        studentErpInputRef.current?.focus();
+                    } else if (agentCommand.command.focusField === 'class_no') {
+                        studentClassInputRef.current?.focus();
+                    } else {
+                        studentNameInputRef.current?.focus();
+                    }
+                }, 0);
+                break;
+            case 'open-edit-student': {
+                const query = agentCommand.command.query ?? '';
+                setSearchQuery(query);
+                const match = findMatchingStudent(students, query);
+                if (match) {
+                    openEditDialog(match);
+                } else {
+                    window.setTimeout(() => searchInputRef.current?.focus(), 0);
+                }
+                break;
+            }
+            case 'prepare-delete-student': {
+                const query = agentCommand.command.query ?? '';
+                setSearchQuery(query);
+                const match = findMatchingStudent(students, query);
+                if (match) {
+                    setStudentPendingDelete(match);
+                } else {
+                    window.setTimeout(() => searchInputRef.current?.focus(), 0);
+                }
+                break;
+            }
+            case 'prepare-bulk-roster':
+                setRosterText(agentCommand.command.rosterText ?? '');
+                window.setTimeout(() => rosterTextareaRef.current?.focus(), 0);
+                break;
+        }
+
+        onAgentCommandHandled?.();
+    }, [agentCommand, onAgentCommandHandled, students]);
 
     const fetchRoster = async () => {
         try {
@@ -331,6 +481,7 @@ export default function RosterManagement() {
                             <Textarea
                                 placeholder="Example: 2481 Muhammad Saboor 26611"
                                 className="min-h-[400px] rounded-xl font-mono text-xs resize-none"
+                                ref={rosterTextareaRef}
                                 value={rosterText}
                                 onChange={(e) => setRosterText(e.target.value)}
                             />
@@ -370,6 +521,7 @@ export default function RosterManagement() {
                                 <Input
                                     placeholder="Search by ERP, Name or Class..."
                                     className="pl-9 h-11"
+                                    ref={searchInputRef}
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
@@ -446,6 +598,7 @@ export default function RosterManagement() {
                             <Label className="text-[10px] font-bold uppercase tracking-widest text-debossed-sm">Full Name</Label>
                             <Input
                                 className="h-11 rounded-xl"
+                                ref={studentNameInputRef}
                                 value={formData.student_name}
                                 onChange={e => setFormData({ ...formData, student_name: e.target.value })}
                             />
@@ -455,6 +608,7 @@ export default function RosterManagement() {
                                 <Label className="text-[10px] font-bold uppercase tracking-widest text-debossed-sm">ERP ID</Label>
                                 <Input
                                     className="h-11 rounded-xl font-mono"
+                                    ref={studentErpInputRef}
                                     value={formData.erp}
                                     onChange={e => setFormData({ ...formData, erp: e.target.value })}
                                 />
@@ -463,6 +617,7 @@ export default function RosterManagement() {
                                 <Label className="text-[10px] font-bold uppercase tracking-widest text-debossed-sm">Class Code</Label>
                                 <Input
                                     className="h-11 rounded-xl font-mono"
+                                    ref={studentClassInputRef}
                                     value={formData.class_no}
                                     onChange={e => setFormData({ ...formData, class_no: e.target.value })}
                                 />

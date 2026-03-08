@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ta/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ta/ui/card';
 import { Loader2, Download } from 'lucide-react';
@@ -7,9 +7,40 @@ import { listAttendanceWithSessionNumbers } from '@/features/attendance';
 import { listSessions } from '@/features/sessions';
 import type { AttendanceWithSessionNumber, SessionRow } from '@/features/attendance';
 import type { RosterRow } from '@/features/roster';
+import type {
+    AgentCommandEnvelope,
+    ExportAgentCommand,
+    HelpContextSnapshot,
+} from '@/lib/ta-help-actions';
 
-export default function ExportData() {
+interface ExportDataProps {
+    onContextChange?: (context: string | null) => void;
+    onHelpContextChange?: (snapshot: Partial<HelpContextSnapshot>) => void;
+    agentCommand?: AgentCommandEnvelope<ExportAgentCommand> | null;
+    onAgentCommandHandled?: () => void;
+}
+
+export default function ExportData({
+    onContextChange,
+    onHelpContextChange,
+    agentCommand = null,
+    onAgentCommandHandled,
+}: ExportDataProps = {}) {
     const [isExporting, setIsExporting] = useState(false);
+    const downloadButtonRef = useRef<HTMLButtonElement>(null);
+    const lastHandledAgentCommandTokenRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        onContextChange?.(isExporting ? 'Export Data · exporting csv' : 'Export Data · overview');
+    }, [isExporting, onContextChange]);
+
+    useEffect(() => {
+        onHelpContextChange?.({
+            openSurface: 'export card',
+            screenDescription: 'Download the attendance export as a CSV file.',
+            visibleControls: ['Download CSV'],
+        });
+    }, [onHelpContextChange]);
 
     const handleExport = async (format: 'csv' | 'xlsx') => {
         setIsExporting(true);
@@ -97,6 +128,25 @@ export default function ExportData() {
         }
     };
 
+    useEffect(() => {
+        if (!agentCommand) {
+            return;
+        }
+
+        if (lastHandledAgentCommandTokenRef.current === agentCommand.token) {
+            return;
+        }
+
+        lastHandledAgentCommandTokenRef.current = agentCommand.token;
+
+        if (agentCommand.command.kind === 'download-csv') {
+            window.setTimeout(() => downloadButtonRef.current?.focus(), 0);
+            void handleExport('csv');
+        }
+
+        onAgentCommandHandled?.();
+    }, [agentCommand, onAgentCommandHandled]);
+
     return (
         <div className="ta-module-shell">
             <Card className="ta-module-card">
@@ -105,7 +155,7 @@ export default function ExportData() {
                     <CardDescription>Download full attendance report</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <Button onClick={() => handleExport('csv')} disabled={isExporting} className="w-full sm:w-auto">
+                    <Button ref={downloadButtonRef} onClick={() => handleExport('csv')} disabled={isExporting} className="w-full sm:w-auto">
                         {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                         Download CSV
                     </Button>

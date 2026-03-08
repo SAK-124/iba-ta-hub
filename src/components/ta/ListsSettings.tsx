@@ -13,6 +13,11 @@ import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
 import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
 import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 import { TEST_STUDENT_ERP } from '@/lib/test-student-settings';
+import type {
+    AgentCommandEnvelope,
+    HelpContextSnapshot,
+    SettingsAgentCommand,
+} from '@/lib/ta-help-actions';
 import {
     addSubmission as createSubmission,
     addTaAllowlistEmail,
@@ -103,7 +108,19 @@ interface PersistedSettingsState {
     testStudentPenaltyEntriesJson: string;
 }
 
-export default function ListsSettings() {
+interface ListsSettingsProps {
+    onContextChange?: (context: string | null) => void;
+    onHelpContextChange?: (snapshot: Partial<HelpContextSnapshot>) => void;
+    agentCommand?: AgentCommandEnvelope<SettingsAgentCommand> | null;
+    onAgentCommandHandled?: () => void;
+}
+
+export default function ListsSettings({
+    onContextChange,
+    onHelpContextChange,
+    agentCommand = null,
+    onAgentCommandHandled,
+}: ListsSettingsProps = {}) {
     const { user } = useAuth();
     const userEmail = user?.email ?? null;
     const persistedState = readScopedSessionStorage<PersistedSettingsState>(
@@ -137,12 +154,56 @@ export default function ListsSettings() {
     const [isSavingTestStudent, setIsSavingTestStudent] = useState(false);
     const markRefreshedRef = useRef<() => void>(() => {});
     const lastLoadedTestStudentDraftRef = useRef<TestStudentDraftState | null>(null);
+    const taEmailInputRef = useRef<HTMLInputElement>(null);
+    const submissionInputRef = useRef<HTMLInputElement>(null);
+    const newPasswordInputRef = useRef<HTMLInputElement>(null);
+    const testStudentNameInputRef = useRef<HTMLInputElement>(null);
+    const lastHandledAgentCommandTokenRef = useRef<number | null>(null);
 
     useEffect(() => {
         fetchSettings();
         void fetchTaList();
         void fetchSubmissions();
     }, []);
+
+    useEffect(() => {
+        onContextChange?.(
+            newTaEmail || newSubLabel || newPassword || confirmPassword
+                ? 'Lists & Settings · editing inputs'
+                : 'Lists & Settings · overview',
+        );
+    }, [confirmPassword, newPassword, newSubLabel, newTaEmail, onContextChange]);
+
+    useEffect(() => {
+        onHelpContextChange?.({
+            openSurface: 'settings dashboard',
+            screenDescription: 'Manage portal settings, TA allowlist, submission labels, password, and test student overrides.',
+            visibleControls: [
+                'Roster Verification',
+                'Student Complaints / Tickets',
+                'Save Test Student Overrides',
+                'Update Password',
+                'Add',
+            ],
+            actionTargets: [
+                { kind: 'setting-section', label: 'Global Settings', aliases: ['roster verification', 'student complaints', 'tickets'] },
+                { kind: 'setting-section', label: 'Test Student', aliases: ['test student', '00000'] },
+                { kind: 'setting-section', label: 'My Account Password', aliases: ['password', 'my password'] },
+                { kind: 'setting-section', label: 'TA Management', aliases: ['ta', 'teaching assistant', 'ta allowlist'] },
+                { kind: 'setting-section', label: 'Submission List', aliases: ['submission', 'assignment label'] },
+                ...taEmails.slice(0, 100).map((ta) => ({
+                    kind: 'ta' as const,
+                    id: ta.id,
+                    label: ta.email,
+                })),
+                ...submissions.slice(0, 100).map((submission) => ({
+                    kind: 'submission' as const,
+                    id: submission.id,
+                    label: submission.label,
+                })),
+            ],
+        });
+    }, [onHelpContextChange, submissions, taEmails]);
 
     useEffect(() => {
         writeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, SETTINGS_STORAGE_KEY, {
@@ -166,6 +227,62 @@ export default function ListsSettings() {
         testStudentSessionStatusJson,
         userEmail,
     ]);
+
+    useEffect(() => {
+        if (!agentCommand) {
+            return;
+        }
+
+        if (lastHandledAgentCommandTokenRef.current === agentCommand.token) {
+            return;
+        }
+
+        lastHandledAgentCommandTokenRef.current = agentCommand.token;
+
+        switch (agentCommand.command.kind) {
+            case 'focus-section':
+                if (agentCommand.command.section === 'ta-management') {
+                    window.setTimeout(() => taEmailInputRef.current?.focus(), 0);
+                } else if (agentCommand.command.section === 'submission-list') {
+                    window.setTimeout(() => submissionInputRef.current?.focus(), 0);
+                } else if (agentCommand.command.section === 'password') {
+                    window.setTimeout(() => newPasswordInputRef.current?.focus(), 0);
+                } else if (agentCommand.command.section === 'test-student') {
+                    window.setTimeout(() => testStudentNameInputRef.current?.focus(), 0);
+                }
+                break;
+            case 'prefill-add-ta':
+                setNewTaEmail(agentCommand.command.email ?? '');
+                window.setTimeout(() => taEmailInputRef.current?.focus(), 0);
+                break;
+            case 'prefill-submission':
+                setNewSubLabel(agentCommand.command.submissionLabel ?? '');
+                window.setTimeout(() => submissionInputRef.current?.focus(), 0);
+                break;
+            case 'prefill-password':
+                setNewPassword(agentCommand.command.newPassword ?? '');
+                setConfirmPassword(agentCommand.command.confirmPassword ?? agentCommand.command.newPassword ?? '');
+                window.setTimeout(() => newPasswordInputRef.current?.focus(), 0);
+                break;
+            case 'prefill-test-student':
+                if (agentCommand.command.testStudent?.class_no !== undefined) {
+                    setTestStudentClassNo(agentCommand.command.testStudent.class_no);
+                }
+                if (agentCommand.command.testStudent?.student_name !== undefined) {
+                    setTestStudentName(agentCommand.command.testStudent.student_name);
+                }
+                if (agentCommand.command.testStudent?.total_absences !== undefined) {
+                    setTestStudentAbsences(agentCommand.command.testStudent.total_absences);
+                }
+                if (agentCommand.command.testStudent?.total_penalties !== undefined) {
+                    setTestStudentPenalties(agentCommand.command.testStudent.total_penalties);
+                }
+                window.setTimeout(() => testStudentNameInputRef.current?.focus(), 0);
+                break;
+        }
+
+        onAgentCommandHandled?.();
+    }, [agentCommand, onAgentCommandHandled]);
 
     useEffect(() => {
         if (!user?.email) {
@@ -564,6 +681,7 @@ export default function ListsSettings() {
                         <Label htmlFor="test-student-name">Student Name</Label>
                         <Input
                             id="test-student-name"
+                            ref={testStudentNameInputRef}
                             value={testStudentName}
                             onChange={(event) => setTestStudentName(event.target.value)}
                         />
@@ -662,6 +780,7 @@ export default function ListsSettings() {
                         <Input
                             id="new-ta-password"
                             type="password"
+                            ref={newPasswordInputRef}
                             value={newPassword}
                             minLength={6}
                             onChange={(e) => setNewPassword(e.target.value)}
@@ -700,6 +819,7 @@ export default function ListsSettings() {
                     <div className="flex gap-2">
                         <Input
                             placeholder="TA Email"
+                            ref={taEmailInputRef}
                             value={newTaEmail}
                             onChange={e => setNewTaEmail(e.target.value)}
                         />
@@ -727,6 +847,7 @@ export default function ListsSettings() {
                     <div className="flex gap-2">
                         <Input
                             placeholder="e.g. Assignment 1"
+                            ref={submissionInputRef}
                             value={newSubLabel}
                             onChange={e => setNewSubLabel(e.target.value)}
                         />

@@ -34,6 +34,11 @@ import { useAuth } from '@/lib/auth';
 import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
 import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
 import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
+import type {
+    AgentCommandEnvelope,
+    HelpContextSnapshot,
+    IssueQueueAgentCommand,
+} from '@/lib/ta-help-actions';
 import {
     addRuleExceptionFromTicket,
     deleteTicket as deleteTicketById,
@@ -58,7 +63,42 @@ interface PersistedIssueManagementState {
     searchErp: string;
 }
 
-export default function IssueManagement() {
+interface IssueManagementProps {
+    onContextChange?: (context: string | null) => void;
+    onHelpContextChange?: (snapshot: Partial<HelpContextSnapshot>) => void;
+    agentCommand?: AgentCommandEnvelope<IssueQueueAgentCommand> | null;
+    onAgentCommandHandled?: () => void;
+}
+
+const normalizeIssueValue = (value: string) => value.trim().toLowerCase();
+
+const findMatchingTicket = (tickets: TicketWithStudentName[], query: string) => {
+    const normalizedQuery = normalizeIssueValue(query);
+    if (!normalizedQuery) {
+        return null;
+    }
+
+    const matches = tickets.filter((ticket) =>
+        [
+            ticket.real_name,
+            ticket.entered_erp,
+            ticket.category,
+            ticket.group_type,
+            ticket.subcategory ?? '',
+        ]
+            .map((value) => normalizeIssueValue(String(value ?? '')))
+            .some((value) => value.includes(normalizedQuery) || normalizedQuery.includes(value))
+    );
+
+    return matches.length === 1 ? matches[0] : null;
+};
+
+export default function IssueManagement({
+    onContextChange,
+    onHelpContextChange,
+    agentCommand = null,
+    onAgentCommandHandled,
+}: IssueManagementProps = {}) {
     const { user } = useAuth();
     const userEmail = user?.email ?? null;
     const persistedState = readScopedSessionStorage<PersistedIssueManagementState>(
@@ -76,8 +116,11 @@ export default function IssueManagement() {
     const [filterStatus, setFilterStatus] = useState<string>(persistedState.filterStatus);
     const [filterGroup, setFilterGroup] = useState<string>(persistedState.filterGroup);
     const [searchErp, setSearchErp] = useState(persistedState.searchErp);
+    const [openTicketId, setOpenTicketId] = useState<string | null>(null);
     const markRefreshedRef = useRef<() => void>(() => {});
     const hasLoadedOnceRef = useRef(false);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+    const lastHandledAgentCommandTokenRef = useRef<number | null>(null);
 
     const fetchTickets = useCallback(async (mode: 'initial' | 'silent' = 'initial') => {
         const shouldShowLoader = mode === 'initial' && !hasLoadedOnceRef.current;
@@ -141,6 +184,87 @@ export default function IssueManagement() {
             searchErp,
         });
     }, [filterGroup, filterStatus, searchErp, userEmail]);
+
+    useEffect(() => {
+        const stageLabel = openTicketId
+            ? 'Issue Queue · ticket sheet open'
+            : searchErp.trim() || filterStatus !== 'all' || filterGroup !== 'all'
+                ? 'Issue Queue · filtered list'
+                : 'Issue Queue · overview';
+
+        onContextChange?.(stageLabel);
+    }, [filterGroup, filterStatus, onContextChange, openTicketId, searchErp]);
+
+    useEffect(() => {
+        onHelpContextChange?.({
+            openSurface: openTicketId ? 'ticket sheet' : 'ticket table',
+            screenDescription: 'Review student tickets, filter the queue, and prepare response or escalation actions.',
+            visibleControls: ['Search by ERP or Name...', 'Inspect', 'Resolve Ticket', 'Reopen Ticket', 'Escalate to Exception', 'Delete Ticket'],
+            searchQuery: searchErp,
+            filters: {
+                status: filterStatus,
+                group: filterGroup,
+            },
+            actionTargets: tickets.slice(0, 150).map((ticket) => ({
+                kind: 'ticket' as const,
+                id: ticket.id,
+                label: ticket.real_name || ticket.roster_name || ticket.entered_erp,
+                aliases: [ticket.entered_erp, ticket.category, ticket.group_type, ticket.subcategory ?? ''],
+                meta: {
+                    status: ticket.status,
+                    group_type: ticket.group_type,
+                    category: ticket.category,
+                },
+            })),
+        });
+    }, [filterGroup, filterStatus, onHelpContextChange, openTicketId, searchErp, tickets]);
+
+    useEffect(() => {
+        if (!agentCommand) {
+            return;
+        }
+
+        if (lastHandledAgentCommandTokenRef.current === agentCommand.token) {
+            return;
+        }
+
+        lastHandledAgentCommandTokenRef.current = agentCommand.token;
+
+        switch (agentCommand.command.kind) {
+            case 'filter':
+                setSearchErp(agentCommand.command.query ?? '');
+                setFilterStatus(agentCommand.command.status ?? 'all');
+                setFilterGroup(agentCommand.command.group ?? 'all');
+                window.setTimeout(() => searchInputRef.current?.focus(), 0);
+                break;
+            case 'open-ticket':
+            case 'prepare-resolve-ticket':
+            case 'prepare-escalate-ticket':
+            case 'prepare-delete-ticket':
+            case 'prefill-response': {
+                const query = agentCommand.command.query ?? '';
+                setSearchErp(query);
+                const match = findMatchingTicket(tickets, query);
+                if (match) {
+                    setOpenTicketId(match.id);
+                    if (agentCommand.command.kind === 'prefill-response' && agentCommand.command.response) {
+                        setTickets((prev) =>
+                            prev.map((ticket) =>
+                                ticket.id === match.id
+                                    ? { ...ticket, ta_response: agentCommand.command.response ?? '' }
+                                    : ticket
+                            )
+                        );
+                    }
+                } else {
+                    window.setTimeout(() => searchInputRef.current?.focus(), 0);
+                }
+                break;
+            }
+        }
+
+        onAgentCommandHandled?.();
+    }, [agentCommand, onAgentCommandHandled, tickets]);
 
     const { markRefreshed } = useStaleRefreshOnFocus(
         () => fetchTickets('silent'),
@@ -225,6 +349,7 @@ export default function IssueManagement() {
                     <div className="relative w-full md:w-64 group">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-debossed-sm transition-colors" />
                         <Input
+                            ref={searchInputRef}
                             placeholder="Search by ERP or Name..."
                             value={searchErp}
                             onChange={e => setSearchErp(e.target.value)}
@@ -321,7 +446,7 @@ export default function IssueManagement() {
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="py-4 px-6 text-right flex items-center justify-end gap-2">
-                                                <Sheet>
+                                                <Sheet open={openTicketId === ticket.id} onOpenChange={(open) => setOpenTicketId(open ? ticket.id : null)}>
                                                     <SheetTrigger asChild>
                                                         <Button variant="ghost" size="sm" className="rounded-lg font-bold text-xs uppercase">Inspect</Button>
                                                     </SheetTrigger>

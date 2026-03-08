@@ -17,14 +17,29 @@ import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime
 import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
 import { toast } from 'sonner';
 import { Loader2, Upload } from 'lucide-react';
+import type {
+  AgentCommandEnvelope,
+  ConsolidatedAgentCommand,
+  HelpContextSnapshot,
+} from '@/lib/ta-help-actions';
 
 interface ConsolidatedViewProps {
   isActive: boolean;
+  onContextChange?: (context: string | null) => void;
+  onHelpContextChange?: (snapshot: Partial<HelpContextSnapshot>) => void;
+  agentCommand?: AgentCommandEnvelope<ConsolidatedAgentCommand> | null;
+  onAgentCommandHandled?: () => void;
 }
 
 type FetchMode = 'initial' | 'silent';
 
-export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
+export default function ConsolidatedView({
+  isActive,
+  onContextChange,
+  onHelpContextChange,
+  agentCommand = null,
+  onAgentCommandHandled,
+}: ConsolidatedViewProps) {
   const [sessions, setSessions] = useState<PublicAttendanceSession[]>([]);
   const [students, setStudents] = useState<PublicAttendanceStudent[]>([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -34,6 +49,9 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
   const hasLoadedOnceRef = useRef(false);
   const isFetchInFlightRef = useRef(false);
   const markRefreshedRef = useRef<() => void>(() => {});
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const syncButtonRef = useRef<HTMLButtonElement>(null);
+  const lastHandledAgentCommandTokenRef = useRef<number | null>(null);
 
   const fetchData = useCallback(async (mode: FetchMode) => {
     if (isFetchInFlightRef.current) {
@@ -172,6 +190,72 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
     });
   }, [searchQuery, students]);
 
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    const stageLabel = isSyncing
+      ? 'Consolidated View · syncing sheet'
+      : searchQuery.trim()
+        ? 'Consolidated View · search active'
+        : 'Consolidated View · table review';
+
+    onContextChange?.(stageLabel);
+  }, [isActive, isSyncing, onContextChange, searchQuery]);
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    onHelpContextChange?.({
+      openSurface: 'consolidated table',
+      screenDescription: 'Review the full attendance table and optionally sync the public sheet.',
+      visibleControls: ['Search...', 'Sync Sheet'],
+      searchQuery,
+      actionTargets: students.slice(0, 150).map((student) => ({
+        kind: 'student' as const,
+        label: student.student_name,
+        aliases: [student.erp, student.class_no],
+        meta: {
+          erp: student.erp,
+          class_no: student.class_no,
+          total_absences: student.total_absences,
+          total_penalties: student.total_penalties,
+        },
+      })),
+    });
+  }, [isActive, onHelpContextChange, searchQuery, students]);
+
+  useEffect(() => {
+    if (!agentCommand || !isActive) {
+      return;
+    }
+
+    if (lastHandledAgentCommandTokenRef.current === agentCommand.token) {
+      return;
+    }
+
+    lastHandledAgentCommandTokenRef.current = agentCommand.token;
+
+    switch (agentCommand.command.kind) {
+      case 'search':
+        setSearchQuery(agentCommand.command.query ?? '');
+        window.setTimeout(() => searchInputRef.current?.focus(), 0);
+        break;
+      case 'clear-search':
+        setSearchQuery('');
+        window.setTimeout(() => searchInputRef.current?.focus(), 0);
+        break;
+      case 'focus-sync':
+        window.setTimeout(() => syncButtonRef.current?.focus(), 0);
+        break;
+    }
+
+    onAgentCommandHandled?.();
+  }, [agentCommand, isActive, onAgentCommandHandled]);
+
   const handleSyncPublicAttendanceToSheet = async () => {
     setIsSyncing(true);
 
@@ -204,12 +288,14 @@ export default function ConsolidatedView({ isActive }: ConsolidatedViewProps) {
           </div>
           <div className="flex items-center gap-2">
             <Input
+              ref={searchInputRef}
               placeholder="Search..."
               className="w-[220px]"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
             />
             <Button
+              ref={syncButtonRef}
               onClick={handleSyncPublicAttendanceToSheet}
               disabled={isInitialLoading || isSyncing || students.length === 0}
               variant="outline"

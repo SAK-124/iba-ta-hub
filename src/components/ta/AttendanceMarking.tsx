@@ -30,6 +30,11 @@ import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
 import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
 import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 import type { ZoomSessionReport } from '@/lib/zoom-session-report';
+import type {
+  AgentCommandEnvelope,
+  AttendanceAgentCommand,
+  HelpContextSnapshot,
+} from '@/lib/ta-help-actions';
 import {
   deleteAttendanceBySession,
   insertAttendance,
@@ -56,6 +61,10 @@ const ATTENDANCE_MARKING_STORAGE_KEY = 'module-attendance-marking';
 
 interface AttendanceMarkingProps {
   latestFinalZoomReport?: ZoomSessionReport | null;
+  onContextChange?: (context: string | null) => void;
+  onHelpContextChange?: (snapshot: Partial<HelpContextSnapshot>) => void;
+  agentCommand?: AgentCommandEnvelope<AttendanceAgentCommand> | null;
+  onAgentCommandHandled?: () => void;
 }
 
 interface PersistedAttendanceMarkingState {
@@ -65,7 +74,13 @@ interface PersistedAttendanceMarkingState {
   activeFilters: AttendanceFilterToken[];
 }
 
-export default function AttendanceMarking({ latestFinalZoomReport = null }: AttendanceMarkingProps) {
+export default function AttendanceMarking({
+  latestFinalZoomReport = null,
+  onContextChange,
+  onHelpContextChange,
+  agentCommand = null,
+  onAgentCommandHandled,
+}: AttendanceMarkingProps) {
   const { user } = useAuth();
   const userEmail = user?.email ?? null;
   const persistedState = readScopedSessionStorage<PersistedAttendanceMarkingState>(
@@ -98,6 +113,11 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
 
   const autoSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const markRefreshedRef = useRef<() => void>(() => {});
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const absentErpsTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const submitButtonRef = useRef<HTMLButtonElement>(null);
+  const syncButtonRef = useRef<HTMLButtonElement>(null);
+  const lastHandledAgentCommandTokenRef = useRef<number | null>(null);
 
   useEffect(() => {
     void fetchSessions();
@@ -121,6 +141,44 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
 
     setAttendanceData([]);
   }, [selectedSessionId]);
+
+  useEffect(() => {
+    const stageLabel = !selectedSessionId
+      ? 'Live Attendance · selecting session'
+      : isSaving
+        ? 'Live Attendance · saving attendance'
+        : absentErps.trim()
+          ? 'Live Attendance · reviewing absent ERP list'
+          : `Live Attendance · reviewing session ${selectedSessionId}`;
+
+    onContextChange?.(stageLabel);
+  }, [absentErps, isSaving, onContextChange, selectedSessionId]);
+
+  useEffect(() => {
+    onHelpContextChange?.({
+      openSurface: showOverwriteAlert ? 'overwrite attendance confirmation' : 'attendance table',
+      screenDescription: 'Select a session, paste absent ERPs, and review the attendance table before syncing.',
+      visibleControls: ['Select Session', 'Absent ERPs', 'Submit Attendance', 'Sync to Sheet', 'Search Name or ERP'],
+      searchQuery,
+      filters: {
+        present: String(activeFilters.has('present')),
+        absent: String(activeFilters.has('absent')),
+        penalized: String(activeFilters.has('penalized')),
+      },
+      actionTargets: attendanceData.slice(0, 150).map((record) => ({
+        kind: 'student' as const,
+        id: record.id,
+        label: record.student_name,
+        aliases: [record.erp, record.class_no],
+        meta: {
+          erp: record.erp,
+          class_no: record.class_no,
+          status: record.status,
+          naming_penalty: record.naming_penalty,
+        },
+      })),
+    });
+  }, [activeFilters, attendanceData, onHelpContextChange, searchQuery, showOverwriteAlert]);
 
   useEffect(() => {
     const unsubscribe = subscribeRosterDataUpdated(() => {
@@ -156,6 +214,48 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
       activeFilters: Array.from(activeFilters),
     });
   }, [absentErps, activeFilters, searchQuery, selectedSessionId, userEmail]);
+
+  useEffect(() => {
+    if (!agentCommand) {
+      return;
+    }
+
+    if (lastHandledAgentCommandTokenRef.current === agentCommand.token) {
+      return;
+    }
+
+    lastHandledAgentCommandTokenRef.current = agentCommand.token;
+
+    switch (agentCommand.command.kind) {
+      case 'select-session': {
+        const session = sessions.find((item) => item.session_number === agentCommand.command.sessionNumber);
+        if (session) {
+          setSelectedSessionId(session.id);
+        }
+        break;
+      }
+      case 'prefill-absent-erps':
+        setAbsentErps(agentCommand.command.erpText ?? '');
+        window.setTimeout(() => absentErpsTextareaRef.current?.focus(), 0);
+        break;
+      case 'search':
+      case 'focus-student':
+        setSearchQuery(agentCommand.command.query ?? '');
+        window.setTimeout(() => searchInputRef.current?.focus(), 0);
+        break;
+      case 'filter':
+        setActiveFilters(new Set(agentCommand.command.filters ?? []));
+        break;
+      case 'prepare-submit':
+        window.setTimeout(() => submitButtonRef.current?.focus(), 0);
+        break;
+      case 'prepare-sync':
+        window.setTimeout(() => syncButtonRef.current?.focus(), 0);
+        break;
+    }
+
+    onAgentCommandHandled?.();
+  }, [agentCommand, onAgentCommandHandled, sessions]);
 
   const fetchSessions = async () => {
     try {
@@ -539,6 +639,7 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
           <div className="space-y-2">
             <span className="text-sm font-medium text-debossed-body">Absent ERPs</span>
             <Textarea
+              ref={absentErpsTextareaRef}
               placeholder="Paste ERPs here (space or newline separated)..."
               className="min-h-[200px] font-mono"
               value={absentErps}
@@ -546,7 +647,7 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
             />
           </div>
 
-          <Button className="w-full" onClick={() => handleMarkSubmit(false)} disabled={!selectedSessionId || isSaving}>
+          <Button ref={submitButtonRef} className="w-full" onClick={() => handleMarkSubmit(false)} disabled={!selectedSessionId || isSaving}>
             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
             Submit Attendance
           </Button>
@@ -579,11 +680,12 @@ export default function AttendanceMarking({ latestFinalZoomReport = null }: Atte
               </CardDescription>
             </div>
             <div className="flex space-x-2">
-              <Button variant="outline" size="sm" onClick={handleManualSync} disabled={isSyncing || isSaving}>
+              <Button ref={syncButtonRef} variant="outline" size="sm" onClick={handleManualSync} disabled={isSyncing || isSaving}>
                 {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Sync to Sheet
               </Button>
               <Input
+                ref={searchInputRef}
                 placeholder="Search Name or ERP"
                 className="w-[150px]"
                 value={searchQuery}

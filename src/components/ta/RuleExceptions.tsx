@@ -15,6 +15,11 @@ import { useAuth } from '@/lib/auth';
 import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
 import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
 import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
+import type {
+    AgentCommandEnvelope,
+    HelpContextSnapshot,
+    RuleExceptionsAgentCommand,
+} from '@/lib/ta-help-actions';
 import {
     createRuleException,
     deleteRuleException,
@@ -53,7 +58,36 @@ interface PersistedRuleExceptionsState {
     openDialog: boolean;
 }
 
-export default function RuleExceptions() {
+interface RuleExceptionsProps {
+    onContextChange?: (context: string | null) => void;
+    onHelpContextChange?: (snapshot: Partial<HelpContextSnapshot>) => void;
+    agentCommand?: AgentCommandEnvelope<RuleExceptionsAgentCommand> | null;
+    onAgentCommandHandled?: () => void;
+}
+
+const normalizeTrackerValue = (value: string) => value.trim().toLowerCase();
+
+const findMatchingRosterStudent = (students: RosterStudentRow[], query: string) => {
+    const normalizedQuery = normalizeTrackerValue(query);
+    if (!normalizedQuery) {
+        return null;
+    }
+
+    const matches = students.filter((student) =>
+        [student.student_name, student.erp, student.class_no]
+            .map((value) => normalizeTrackerValue(value))
+            .some((value) => value.includes(normalizedQuery) || normalizedQuery.includes(value))
+    );
+
+    return matches.length === 1 ? matches[0] : null;
+};
+
+export default function RuleExceptions({
+    onContextChange,
+    onHelpContextChange,
+    agentCommand = null,
+    onAgentCommandHandled,
+}: RuleExceptionsProps = {}) {
     const { user } = useAuth();
     const userEmail = user?.email ?? null;
     const persistedState = readScopedSessionStorage<PersistedRuleExceptionsState>(
@@ -82,6 +116,9 @@ export default function RuleExceptions() {
     const markRefreshedRef = useRef<() => void>(() => {});
     const hasLoadedExceptionsRef = useRef(false);
     const hasLoadedRosterRef = useRef(false);
+    const trackerSearchInputRef = useRef<HTMLInputElement>(null);
+    const addExceptionErpInputRef = useRef<HTMLInputElement>(null);
+    const lastHandledAgentCommandTokenRef = useRef<number | null>(null);
 
     // New exception form
     const [newErp, setNewErp] = useState(persistedState.newErp);
@@ -96,6 +133,37 @@ export default function RuleExceptions() {
     }, [cameraWarnings]);
 
     useEffect(() => {
+        const stageLabel = openDialog
+            ? 'Rule Exceptions · add exception dialog'
+            : trackerSearchQuery.trim()
+                ? 'Rule Exceptions · tracker search'
+                : 'Rule Exceptions · overview';
+
+        onContextChange?.(stageLabel);
+    }, [onContextChange, openDialog, trackerSearchQuery]);
+
+    useEffect(() => {
+        onHelpContextChange?.({
+            openSurface: openDialog ? 'add exception dialog' : 'camera tracker',
+            screenDescription: 'Manage saved exceptions and the live camera tracker for warned students.',
+            visibleControls: ['Add Exception', 'Search roster by name, ERP, or class', 'Warned', 'Clear'],
+            searchQuery: trackerSearchQuery,
+            filters: { day: filterDay },
+            actionTargets: rosterStudents.slice(0, 150).map((student) => ({
+                kind: 'student' as const,
+                id: student.id,
+                label: student.student_name,
+                aliases: [student.erp, student.class_no],
+                meta: {
+                    erp: student.erp,
+                    class_no: student.class_no,
+                    warned: Boolean(cameraWarnings[student.erp]),
+                },
+            })),
+        });
+    }, [cameraWarnings, filterDay, onHelpContextChange, openDialog, rosterStudents, trackerSearchQuery]);
+
+    useEffect(() => {
         writeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, RULE_EXCEPTIONS_STORAGE_KEY, {
             filterDay,
             trackerSearchQuery,
@@ -107,6 +175,63 @@ export default function RuleExceptions() {
             openDialog,
         });
     }, [cameraWarnings, filterDay, newDay, newErp, newNotes, newType, openDialog, trackerSearchQuery, userEmail]);
+
+    useEffect(() => {
+        if (!agentCommand) {
+            return;
+        }
+
+        if (lastHandledAgentCommandTokenRef.current === agentCommand.token) {
+            return;
+        }
+
+        lastHandledAgentCommandTokenRef.current = agentCommand.token;
+
+        switch (agentCommand.command.kind) {
+            case 'search-tracker':
+                setTrackerSearchQuery(agentCommand.command.query ?? '');
+                window.setTimeout(() => trackerSearchInputRef.current?.focus(), 0);
+                break;
+            case 'mark-warned': {
+                const query = agentCommand.command.query ?? '';
+                setTrackerSearchQuery(query);
+                const student = findMatchingRosterStudent(rosterStudents, query);
+                if (student) {
+                    markStudentWarned(student.erp);
+                } else {
+                    window.setTimeout(() => trackerSearchInputRef.current?.focus(), 0);
+                }
+                break;
+            }
+            case 'clear-warning': {
+                const query = agentCommand.command.query ?? '';
+                setTrackerSearchQuery(query);
+                const student = findMatchingRosterStudent(rosterStudents, query);
+                if (student) {
+                    clearStudentWarning(student.erp);
+                } else {
+                    window.setTimeout(() => trackerSearchInputRef.current?.focus(), 0);
+                }
+                break;
+            }
+            case 'open-add-exception': {
+                const query = agentCommand.command.query ?? '';
+                const student = findMatchingRosterStudent(rosterStudents, query);
+                setOpenDialog(true);
+                setNewErp(student?.erp ?? query);
+                setNewType(agentCommand.command.issueType ?? 'camera_excused');
+                setNewDay(agentCommand.command.day ?? 'both');
+                setNewNotes(agentCommand.command.notes ?? '');
+                window.setTimeout(() => addExceptionErpInputRef.current?.focus(), 0);
+                break;
+            }
+            case 'prepare-delete-exception':
+                setFilterDay('all');
+                break;
+        }
+
+        onAgentCommandHandled?.();
+    }, [agentCommand, onAgentCommandHandled, rosterStudents]);
 
     useEffect(() => {
         if (Object.keys(cameraWarnings).length === 0) {
@@ -335,7 +460,7 @@ export default function RuleExceptions() {
                                     <div className="space-y-4 py-4">
                                         <div className="space-y-2">
                                             <Label>ERP</Label>
-                                            <Input value={newErp} onChange={e => setNewErp(e.target.value)} placeholder="e.g. 26611" />
+                                            <Input ref={addExceptionErpInputRef} value={newErp} onChange={e => setNewErp(e.target.value)} placeholder="e.g. 26611" />
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Type</Label>
@@ -446,6 +571,7 @@ export default function RuleExceptions() {
                     <div className="relative mt-3 w-full md:max-w-sm">
                         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
+                            ref={trackerSearchInputRef}
                             placeholder="Search roster by name, ERP, or class"
                             value={trackerSearchQuery}
                             onChange={(event) => setTrackerSearchQuery(event.target.value)}

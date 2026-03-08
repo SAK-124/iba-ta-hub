@@ -24,6 +24,11 @@ import { useAuth } from '@/lib/auth';
 import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
 import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
 import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
+import type {
+  AgentCommandEnvelope,
+  HelpContextSnapshot,
+  LateDaysAgentCommand,
+} from '@/lib/ta-help-actions';
 import {
   archiveLateDayAssignment,
   createLateDayAssignment,
@@ -84,7 +89,55 @@ interface PersistedLateDaysManagementState {
   claimPendingDelete: string | null;
 }
 
-export default function LateDaysManagement() {
+interface LateDaysManagementProps {
+  onContextChange?: (context: string | null) => void;
+  onHelpContextChange?: (snapshot: Partial<HelpContextSnapshot>) => void;
+  agentCommand?: AgentCommandEnvelope<LateDaysAgentCommand> | null;
+  onAgentCommandHandled?: () => void;
+}
+
+const normalizeLateDayValue = (value: string) => value.trim().toLowerCase();
+
+const findMatchingRosterStudent = (students: RosterStudent[], query: string) => {
+  const normalizedQuery = normalizeLateDayValue(query);
+  if (!normalizedQuery) {
+    return null;
+  }
+
+  const matches = students.filter((student) =>
+    [student.student_name, student.erp, student.class_no]
+      .map((value) => normalizeLateDayValue(String(value ?? '')))
+      .some((value) => value.includes(normalizedQuery) || normalizedQuery.includes(value))
+  );
+
+  return matches.length === 1 ? matches[0] : null;
+};
+
+const findMatchingClaimGroup = (groups: ClaimGroup[], query: string) => {
+  const normalizedQuery = normalizeLateDayValue(query);
+  if (!normalizedQuery) {
+    return null;
+  }
+
+  const matches = groups.filter((group) =>
+    [
+      group.student_email,
+      group.student_erp,
+      group.assignment_id,
+    ]
+      .map((value) => normalizeLateDayValue(String(value ?? '')))
+      .some((value) => value.includes(normalizedQuery) || normalizedQuery.includes(value))
+  );
+
+  return matches.length === 1 ? matches[0] : null;
+};
+
+export default function LateDaysManagement({
+  onContextChange,
+  onHelpContextChange,
+  agentCommand = null,
+  onAgentCommandHandled,
+}: LateDaysManagementProps = {}) {
   const { user } = useAuth();
   const userEmail = user?.email ?? null;
   const persistedState = readScopedSessionStorage<PersistedLateDaysManagementState>(
@@ -132,6 +185,60 @@ export default function LateDaysManagement() {
   const [grantReason, setGrantReason] = useState(persistedState.grantReason);
   const [isGranting, setIsGranting] = useState(false);
   const [selectedClaimGroupKey, setSelectedClaimGroupKey] = useState<string | null>(persistedState.selectedClaimGroupKey);
+  const rosterSearchInputRef = useRef<HTMLInputElement>(null);
+  const newAssignmentTitleRef = useRef<HTMLInputElement>(null);
+  const grantDaysInputRef = useRef<HTMLInputElement>(null);
+  const lastHandledAgentCommandTokenRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const stageLabel = grantTarget
+      ? `Late Days · granting late days to ${grantTarget.erp}`
+      : editingAssignment
+        ? 'Late Days · editing assignment'
+        : selectedClaimGroupKey
+          ? 'Late Days · reviewing claim details'
+          : newTitle.trim() || newDueAt
+            ? 'Late Days · creating assignment'
+            : 'Late Days · overview';
+
+    onContextChange?.(stageLabel);
+  }, [editingAssignment, grantTarget, newDueAt, newTitle, onContextChange, selectedClaimGroupKey]);
+
+  useEffect(() => {
+    onHelpContextChange?.({
+      openSurface: grantTarget
+        ? 'grant late day dialog'
+        : editingAssignment
+          ? 'edit assignment dialog'
+          : selectedClaimGroupKey
+            ? 'claim breakdown dialog'
+            : 'late days dashboard',
+      screenDescription: 'Manage assignment deadlines, late-day balances, and claim history.',
+      visibleControls: ['Search by class, name, or ERP', 'Add', 'View', 'Grant Late Day', 'Archive', 'Delete Claim'],
+      searchQuery: rosterSearchQuery,
+      actionTargets: [
+        ...rosterStudents.slice(0, 120).map((student) => ({
+          kind: 'student' as const,
+          id: student.id,
+          label: student.student_name,
+          aliases: [student.erp, student.class_no],
+          meta: {
+            erp: student.erp,
+            class_no: student.class_no,
+          },
+        })),
+        ...assignments.slice(0, 60).map((assignment) => ({
+          kind: 'assignment' as const,
+          id: assignment.id,
+          label: assignment.title,
+          meta: {
+            due_at: assignment.due_at,
+            active: assignment.active,
+          },
+        })),
+      ],
+    });
+  }, [assignments, editingAssignment, grantTarget, onHelpContextChange, rosterSearchQuery, rosterStudents, selectedClaimGroupKey]);
 
   const assignmentById = useMemo(
     () =>
@@ -232,6 +339,72 @@ export default function LateDaysManagement() {
       return haystack.includes(query);
     });
   }, [rosterWithBalances, rosterSearchQuery]);
+
+  useEffect(() => {
+    if (!agentCommand) {
+      return;
+    }
+
+    if (lastHandledAgentCommandTokenRef.current === agentCommand.token) {
+      return;
+    }
+
+    lastHandledAgentCommandTokenRef.current = agentCommand.token;
+
+    switch (agentCommand.command.kind) {
+      case 'search-student':
+        setRosterSearchQuery(agentCommand.command.query ?? '');
+        window.setTimeout(() => rosterSearchInputRef.current?.focus(), 0);
+        break;
+      case 'open-grant-dialog': {
+        const query = agentCommand.command.query ?? '';
+        setRosterSearchQuery(query);
+        const match = findMatchingRosterStudent(rosterStudents, query);
+        if (match) {
+          openGrantDialog(match);
+          setGrantDays(agentCommand.command.days ?? '1');
+          setGrantReason(agentCommand.command.reason ?? '');
+          window.setTimeout(() => grantDaysInputRef.current?.focus(), 0);
+        } else {
+          window.setTimeout(() => rosterSearchInputRef.current?.focus(), 0);
+        }
+        break;
+      }
+      case 'prepare-create-assignment':
+        setNewTitle(agentCommand.command.title ?? '');
+        setNewDueAt(agentCommand.command.dueAt ?? '');
+        window.setTimeout(() => newAssignmentTitleRef.current?.focus(), 0);
+        break;
+      case 'open-claim-details': {
+        const group = findMatchingClaimGroup(claimGroups, agentCommand.command.query ?? '');
+        if (group) {
+          openClaimBreakdown(group.key);
+        }
+        break;
+      }
+      case 'prepare-archive-assignment': {
+        const normalizedQuery = normalizeLateDayValue(agentCommand.command.query ?? '');
+        const match = assignments.find((assignment) =>
+          normalizeLateDayValue(assignment.title).includes(normalizedQuery) ||
+          normalizedQuery.includes(normalizeLateDayValue(assignment.title))
+        );
+        if (match) {
+          setAssignmentPendingArchive(match);
+        }
+        break;
+      }
+      case 'prepare-delete-claim': {
+        const group = findMatchingClaimGroup(claimGroups, agentCommand.command.query ?? '');
+        if (group) {
+          openClaimBreakdown(group.key);
+          setClaimPendingDelete(group.events[0]?.id ?? null);
+        }
+        break;
+      }
+    }
+
+    onAgentCommandHandled?.();
+  }, [agentCommand, assignments, claimGroups, onAgentCommandHandled, rosterStudents]);
 
   const fetchLateDaysData = useCallback(async (mode: 'initial' | 'silent' = 'initial') => {
     const shouldShowLoader = mode === 'initial' && !hasLoadedOnceRef.current;
@@ -488,6 +661,7 @@ export default function LateDaysManagement() {
           <CardContent className="space-y-4">
             <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
               <Input
+                ref={newAssignmentTitleRef}
                 placeholder="Assignment title"
                 value={newTitle}
                 onChange={(event) => setNewTitle(event.target.value)}
@@ -633,6 +807,7 @@ export default function LateDaysManagement() {
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
+                ref={rosterSearchInputRef}
                 placeholder="Search by class, name, or ERP"
                 className="pl-9"
                 value={rosterSearchQuery}
@@ -758,10 +933,11 @@ export default function LateDaysManagement() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <Input
-              placeholder="Assignment title"
-              value={editTitle}
-              onChange={(event) => setEditTitle(event.target.value)}
+              <Input
+                ref={newAssignmentTitleRef}
+                placeholder="Assignment title"
+                value={editTitle}
+                onChange={(event) => setEditTitle(event.target.value)}
             />
             <div className="flex items-center gap-2">
               <Input
@@ -801,6 +977,7 @@ export default function LateDaysManagement() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Days to add</label>
               <Input
+                ref={grantDaysInputRef}
                 type="number"
                 min={1}
                 step={1}
