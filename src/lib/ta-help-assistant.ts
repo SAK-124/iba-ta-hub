@@ -1,16 +1,18 @@
 import guideMarkdown from '../../docs/ta-portal-features-guide.md?raw';
 import {
   getScreenContextSummary,
+  type ResolvedConversationIntent,
   type HelpContextSnapshot,
   isContextualPortalQuestion,
 } from './ta-help-actions';
 
 export const DEFAULT_OPENROUTER_HELP_MODEL = 'liquid/lfm-2.5-1.2b-instruct:free';
+export const FALLBACK_OPENROUTER_HELP_MODEL = 'liquid/lfm-2.5-1.2b-instruct:free';
 const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions';
 export const TA_CHAT_NAME = 'Auxilium';
 export const TA_CHAT_LAUNCHER_LABEL = 'Chat with Aux';
 
-const RETRIEVAL_LIMIT = 4;
+const RETRIEVAL_LIMIT = 3;
 const MODULE_ALIASES: Record<string, string[]> = {
   'TA Dashboard': ['ta dashboard', 'dashboard'],
   'Attendance Workspace': ['attendance workspace', 'zoom processor', 'live attendance', 'attendance'],
@@ -45,6 +47,12 @@ interface OpenRouterChoiceMessage {
 
 interface OpenRouterResponse {
   choices?: OpenRouterChoiceMessage[];
+}
+
+export interface HelpAssistantAnswerResult {
+  answer: string;
+  model: string;
+  usedFallback: boolean;
 }
 
 const sanitizeModel = (value: string | undefined) => value?.trim() || DEFAULT_OPENROUTER_HELP_MODEL;
@@ -284,39 +292,60 @@ export const isTaPortalHelpQuestion = (
 
 export const getTaPortalRedirectResponse = () => TA_PORTAL_REDIRECT_RESPONSE;
 
-const buildSystemPrompt = (moduleTitle?: string | null, moduleStage?: string | null, snapshot?: HelpContextSnapshot | null) => {
-  const moduleContext = moduleTitle
-    ? `Current TA dashboard context: ${moduleTitle}. Use it as a relevance hint, not a hard restriction.`
-    : 'Current TA dashboard context: general portal overview.';
-  const stageContext = moduleStage
-    ? `Current module stage: ${moduleStage}. Treat it as the active screen and answer from it first for vague questions.`
-    : 'Current module stage: general overview.';
-
+const buildSystemPrompt = () => {
   return [
     `You are ${TA_CHAT_NAME} for the IBA TA Hub TA Portal.`,
-    'You are only allowed to answer questions that are directly related to the TA portal, its features, its workflows, and its operation.',
-    'If the user asks about anything outside the TA portal, do not answer that question directly.',
-    'Instead, briefly say that you only handle TA portal guidance and invite them to ask about a TA portal workflow or module.',
-    'Never provide general academic, personal, career, health, finance, coding, or world-knowledge advice.',
-    'Answer only from the provided guide excerpts and current portal behavior.',
-    'If the guide does not support a claim, say the feature is not currently documented or not clearly implemented.',
+    'Only answer questions about the TA portal, its workflows, and its visible controls.',
+    'If a question is outside the TA portal, briefly redirect the user back to TA portal workflows.',
+    'Use the current module, current stage, visible controls, remembered target, and guide excerpts as your only source of truth.',
+    'Answer from the current module and stage first for vague prompts.',
+    'For prompts like there, that, continue, what now, or what do I click, use remembered target and current screen first.',
+    'Prefer exact UI labels and visible controls over general workflow narration.',
+    'Do not invent undocumented features, hidden tools, or world knowledge.',
+    'If the guide does not support a claim, say it is not currently documented or not clearly implemented.',
     'If asked who created you, say: Saboor Ali Khan (26475).',
-    'When the user asks how to do something, answer in this format:',
-    '1. Where to go',
-    '2. What to do',
-    '3. What to check before saving',
-    '4. What to do next',
-    'Prefer numbered steps.',
-    'Prefer module names exactly as shown in the UI.',
-    'If the user asks a vague on-screen question like "what do I click now", "what do I press first", "what now", or "what is this", answer from the current module and current module stage first.',
-    'For vague on-screen questions, do not jump to a different module unless the current screen explicitly requires that dependency and you say so clearly.',
-    'For chained workflows, include dependencies such as session creation before Zoom processing and Zoom processing before attendance marking.',
-    'If the user says they want to do a workflow, start them at the workflow entry module first and do not expand into optional side branches unless they asked for them or the current context requires them.',
-    'Do not invent hidden admin tools, backend jobs, undocumented features, or general world knowledge.',
-    'If the current screen provides visible controls or an open dialog, use those controls as the first interpretation anchor.',
-    moduleContext,
-    stageContext,
-    snapshot?.openSurface ? `Open surface: ${snapshot.openSurface}.` : '',
+    'When answering how-to questions, prefer this structure: Where to go, What to do, What to check before saving, What to do next.',
+  ].join('\n');
+};
+
+const buildStateBlock = (
+  moduleTitle: string,
+  moduleStage: string,
+  snapshot?: HelpContextSnapshot | null,
+  rememberedIntent?: ResolvedConversationIntent | null,
+) => [
+  'CURRENT_STATE',
+  `module=${moduleTitle}`,
+  `stage=${moduleStage}`,
+  `open_surface=${snapshot?.openSurface ?? 'none'}`,
+  `visible_controls=${snapshot?.visibleControls?.join('|') || 'none'}`,
+  `search_query=${snapshot?.searchQuery ?? ''}`,
+  `filters=${snapshot?.filters ? Object.entries(snapshot.filters).map(([key, value]) => `${key}:${value}`).join('|') : 'none'}`,
+  `selected=${snapshot?.selected ? `${snapshot.selected.kind}:${snapshot.selected.label}` : 'none'}`,
+  `remembered_target=${rememberedIntent?.workflowId ? `workflow:${rememberedIntent.workflowId}` : rememberedIntent?.moduleTitle ?? 'none'}`,
+].join('\n');
+
+const summarizeHistory = (
+  history: HelpAssistantMessage[],
+  rememberedIntent?: ResolvedConversationIntent | null,
+) => {
+  const recentUserTurns = history.filter((entry) => entry.role === 'user').slice(-3);
+  const lastUserGoal = recentUserTurns.at(-1)?.content ?? 'none';
+  const priorUserGoal = recentUserTurns.at(-2)?.content ?? 'none';
+  const lastAssistantAction = history
+    .filter((entry) => entry.role === 'assistant')
+    .slice(-3)
+    .map((entry) => entry.content.split('\n').slice(0, 2).join(' ').trim())
+    .filter(Boolean)
+    .at(-1) ?? 'none';
+
+  return [
+    'CONVERSATION_MEMORY',
+    `last_user_goal=${lastUserGoal}`,
+    `previous_user_goal=${priorUserGoal}`,
+    `last_resolved_target=${rememberedIntent?.moduleTitle ?? 'none'}`,
+    `last_prepared_action=${rememberedIntent?.nextAction ? JSON.stringify(rememberedIntent.nextAction) : 'none'}`,
+    `pending_next_step=${lastAssistantAction}`,
   ].join('\n');
 };
 
@@ -338,13 +367,22 @@ const buildGuideContext = (
 
 export const getConfiguredHelpModel = () => sanitizeModel(import.meta.env.VITE_OPENROUTER_MODEL);
 
+const getModelFallbackChain = () => {
+  const preferredModel = getConfiguredHelpModel();
+  if (preferredModel === FALLBACK_OPENROUTER_HELP_MODEL) {
+    return [preferredModel];
+  }
+  return [preferredModel, FALLBACK_OPENROUTER_HELP_MODEL];
+};
+
 export const isHelpAssistantConfigured = () => Boolean(import.meta.env.VITE_OPENROUTER_API_KEY?.trim());
 
 export async function requestTaHelpAnswer(params: {
   question: string;
   snapshot?: HelpContextSnapshot | null;
   history?: HelpAssistantMessage[];
-}) {
+  rememberedIntent?: ResolvedConversationIntent | null;
+}): Promise<HelpAssistantAnswerResult> {
   const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY?.trim();
   if (!apiKey) {
     throw new Error('The TA help assistant is not configured yet. Add VITE_OPENROUTER_API_KEY to enable it.');
@@ -367,65 +405,102 @@ export async function requestTaHelpAnswer(params: {
   const moduleStage = params.snapshot?.moduleStage ?? 'General overview';
   const guideContext = buildGuideContext(params.question, moduleTitle, moduleStage, params.snapshot);
   const screenContext = getScreenContextSummary(params.snapshot ?? moduleTitle, moduleStage);
-
-  const response = await fetch(OPENROUTER_CHAT_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': window.location.origin,
-      'X-Title': 'IBA TA Hub Help Assistant',
+  const messages = [
+    {
+      role: 'system' as const,
+      content: buildSystemPrompt(),
     },
-    body: JSON.stringify({
-      model: getConfiguredHelpModel(),
-      temperature: 0.1,
-      max_tokens: 700,
-      messages: [
-        {
-          role: 'system',
-          content: buildSystemPrompt(moduleTitle, moduleStage, params.snapshot),
-        },
-        {
-          role: 'system',
-          content: `Current in-app context:\nModule: ${moduleTitle}\nStage: ${moduleStage}`,
-        },
-        ...(screenContext
-          ? [
-              {
-                role: 'system' as const,
-                content: `Current visible screen summary:\nScreen: ${screenContext.title}\nDescription: ${screenContext.description}\nVisible controls: ${screenContext.visibleControls.join(', ') || 'None provided'}\nPrimary control: ${screenContext.primaryAction ?? 'Not specified'}\nOpen surface: ${params.snapshot?.openSurface ?? 'None'}\nSearch query: ${params.snapshot?.searchQuery ?? 'None'}\nFilters: ${params.snapshot?.filters ? JSON.stringify(params.snapshot.filters) : 'None'}`,
-              },
-            ]
-          : []),
-        {
-          role: 'system',
-          content: `Guide excerpts:\n\n${guideContext}`,
-        },
-        ...recentHistory,
-        {
-          role: 'user',
-          content: params.question,
-        },
-      ],
-    }),
-  });
+    {
+      role: 'system' as const,
+      content: buildStateBlock(moduleTitle, moduleStage, params.snapshot, params.rememberedIntent),
+    },
+    {
+      role: 'system' as const,
+      content: summarizeHistory(recentHistory, params.rememberedIntent),
+    },
+    ...(screenContext
+      ? [
+          {
+            role: 'system' as const,
+            content: [
+              'SCREEN_SUMMARY',
+              `screen=${screenContext.title}`,
+              `description=${screenContext.description}`,
+              `primary_control=${screenContext.primaryAction ?? 'none'}`,
+              `next_steps=${(screenContext.nextSteps ?? []).join(' | ') || 'none'}`,
+            ].join('\n'),
+          },
+        ]
+      : []),
+    {
+      role: 'system' as const,
+      content: `GUIDE_CONTEXT\n${guideContext}`,
+    },
+    ...recentHistory.slice(-3),
+    {
+      role: 'user' as const,
+      content: params.question,
+    },
+  ];
 
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `OpenRouter request failed with status ${response.status}`);
+  const modelChain = getModelFallbackChain();
+  let lastError: Error | null = null;
+
+  for (let index = 0; index < modelChain.length; index += 1) {
+    const model = modelChain[index];
+    const usedFallback = index > 0;
+
+    try {
+      const response = await fetch(OPENROUTER_CHAT_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': window.location.origin,
+          'X-Title': 'IBA TA Hub Help Assistant',
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.1,
+          max_tokens: 700,
+          messages,
+        }),
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        const error = new Error(message || `OpenRouter request failed with status ${response.status}`);
+        if (index < modelChain.length - 1 && (response.status === 429 || response.status >= 500 || /rate-limit|rate limited|rate-limited|provider returned error|unavailable|temporarily/i.test(message))) {
+          lastError = error;
+          continue;
+        }
+        throw error;
+      }
+
+      const data = (await response.json()) as OpenRouterResponse;
+      const answer = data.choices?.[0]?.message?.content?.trim();
+      if (!answer) {
+        throw new Error('OpenRouter returned an empty response.');
+      }
+
+      return {
+        answer: isTaPortalHelpQuestion(answer, params.snapshot ?? moduleTitle, moduleStage)
+          ? answer
+          : TA_PORTAL_REDIRECT_RESPONSE,
+        model,
+        usedFallback,
+      };
+    } catch (error: unknown) {
+      const nextError = error instanceof Error ? error : new Error('Unknown error');
+      if (index < modelChain.length - 1 && /rate-limit|rate limited|rate-limited|provider returned error|unavailable|temporarily|network|fetch/i.test(nextError.message)) {
+        lastError = nextError;
+        continue;
+      }
+      throw nextError;
+    }
   }
 
-  const data = (await response.json()) as OpenRouterResponse;
-  const answer = data.choices?.[0]?.message?.content?.trim();
-  if (!answer) {
-    throw new Error('OpenRouter returned an empty response.');
-  }
-
-  if (!isTaPortalHelpQuestion(answer, params.snapshot ?? moduleTitle, moduleStage)) {
-    return TA_PORTAL_REDIRECT_RESPONSE;
-  }
-
-  return answer;
+  throw lastError ?? new Error('OpenRouter request failed.');
 }
 
 export function getSuggestedHelpPrompts(moduleTitle?: string | null) {

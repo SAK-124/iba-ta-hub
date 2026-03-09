@@ -735,23 +735,31 @@ export default function TAPortal() {
                       key={card.id}
                       onClick={() => handleOpenModule(card.id)}
                       className={cn(
-                        'neo-btn neo-out group cursor-pointer flex flex-col justify-between min-h-[190px] rounded-[32px] p-7 relative text-left',
+                        'ta-dashboard-card neo-btn neo-out group cursor-pointer flex flex-col justify-between min-h-[190px] rounded-[32px] p-7 relative text-left',
                         card.colSpan === 2 ? 'lg:col-span-2' : 'lg:col-span-1',
                       )}
                     >
                       <div className="flex justify-between items-start mb-6">
-                        <div className="w-[72px] h-[72px] rounded-2xl neo-in p-1 flex items-center justify-center">
-                          <Icon className="w-8 h-8 text-debossed-sm status-all-text" />
+                        <div className="ta-dashboard-icon-shell w-[72px] h-[72px] rounded-2xl neo-in p-1 flex items-center justify-center relative overflow-hidden">
+                          <Icon className="ta-dashboard-icon-base relative z-[1] w-8 h-8 text-debossed-sm" />
+                          <Icon
+                            aria-hidden="true"
+                            className="ta-dashboard-icon-glow ta-dashboard-icon-glow--base absolute w-8 h-8 status-all-table-text pointer-events-none"
+                          />
+                          <Icon
+                            aria-hidden="true"
+                            className="ta-dashboard-icon-glow ta-dashboard-icon-glow--hover absolute w-8 h-8 status-all-table-text pointer-events-none"
+                          />
                         </div>
 
                         <div className="w-4 h-4 rounded-full neo-in relative flex items-center justify-center">
-                          <div className="w-2 h-2 rounded-full bg-transparent status-all-led transition-all duration-300 delay-100" />
+                          <div className="ta-dashboard-led w-2 h-2 rounded-full transition-all duration-300 delay-100" />
                         </div>
                       </div>
 
                       <div>
-                        <h3 className="text-debossed font-black mb-1.5 tracking-wide text-lg">{card.title}</h3>
-                        <p className="text-debossed-sm text-sm leading-relaxed font-semibold">{card.description}</p>
+                        <h3 className="ta-dashboard-title text-debossed font-black mb-1.5 tracking-wide text-lg">{card.title}</h3>
+                        <p className="ta-dashboard-description text-debossed-sm text-sm leading-relaxed font-semibold">{card.description}</p>
                       </div>
                     </button>
                   );

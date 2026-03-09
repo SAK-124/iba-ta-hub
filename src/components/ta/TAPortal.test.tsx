@@ -96,4 +96,17 @@ describe('TAPortal persistence', () => {
     expect(await screen.findByText('Attendance Marking Mock')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'LIVE ATTENDANCE' })).toHaveAttribute('aria-selected', 'true');
   });
+
+  it('renders dashboard cards with the enhanced hover-ready icon treatment', async () => {
+    render(
+      <MemoryRouter>
+        <TAPortal />
+      </MemoryRouter>,
+    );
+
+    const zoomCard = screen.getByRole('button', { name: /zoom processor upload logs, review matches, and generate attendance/i });
+    expect(zoomCard).toHaveClass('ta-dashboard-card');
+    expect(zoomCard.querySelector('.ta-dashboard-icon-glow--base')).toBeTruthy();
+    expect(zoomCard.querySelector('.ta-dashboard-icon-glow--hover')).toBeTruthy();
+  });
 });

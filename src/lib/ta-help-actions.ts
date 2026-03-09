@@ -179,6 +179,10 @@ export interface HelpAssistantPlan {
   rememberedIntent?: ResolvedConversationIntent | null;
 }
 
+export interface InferredConversationIntent {
+  rememberedIntent: ResolvedConversationIntent;
+}
+
 export interface AgentCommandEnvelope<T> {
   token: number;
   command: T;
@@ -218,6 +222,8 @@ const WORKFLOW_INTENT_PREFIX =
   /^(?:please\s+)?(?:can you\s+)?(?:i\s+wanna\s+do|i\s+want\s+to\s+do|help\s+me\s+do|i\s+need\s+to\s+do|let'?s\s+do|walk\s+me\s+through)\b/i;
 const FOLLOW_UP_ACTION_PATTERN =
   /^(?:please\s+)?(?:can you\s+)?(?:take me there|go there|open that|take me to it|continue|do that)(?:\s+please)?[.!?]*$/i;
+const BARE_TARGET_SELECTION_PATTERN =
+  /^(?:please\s+)?(?:just\s+)?(?:the\s+)?([a-z][a-z\s&-]{2,60})(?:\s+please)?[.!?]*$/i;
 
 const normalize = (value: string) => value.trim().toLowerCase();
 
@@ -269,12 +275,17 @@ const sanitizeNamedEntity = (value: string | null) => {
     return null;
   }
 
-  const normalized = value.trim().toLowerCase();
+  const cleaned = value
+    .replace(/\s+as\s+(?:warned|warning|absent|present|penalized)\b.*$/i, '')
+    .replace(/\s+(?:warned|warning)\b.*$/i, '')
+    .trim();
+
+  const normalized = cleaned.toLowerCase();
   if (['someone', 'somebody', 'student', 'a student', 'them', 'that student'].includes(normalized)) {
     return null;
   }
 
-  return value.trim();
+  return cleaned || null;
 };
 
 const extractErp = (question: string) => question.match(/\b(\d{4,6})\b/)?.[1] ?? null;
@@ -687,6 +698,76 @@ const buildWorkflowIntentPlan = (params: {
     }),
   );
 
+const inferWorkflowIntent = (question: string): ResolvedConversationIntent | null => {
+  const normalized = normalize(question);
+
+  if ((/zoom/.test(normalized) && /attendance/.test(normalized)) || /process zoom|zoom processor|mark attendance from zoom/.test(normalized)) {
+    return buildRememberedIntent(
+      { type: 'switch-attendance-tab', tab: 'zoom' },
+      {
+        kind: 'workflow',
+        workflowId: 'zoom-attendance',
+      },
+    );
+  }
+
+  if (/fix penalties|naming penalty|naming penalties/.test(normalized)) {
+    return buildRememberedIntent(
+      { type: 'switch-attendance-tab', tab: 'attendance' },
+      {
+        kind: 'workflow',
+        workflowId: 'attendance-penalties',
+      },
+    );
+  }
+
+  if (/add\s+(?:a\s+)?student|new student|student to roster/.test(normalized)) {
+    return buildRememberedIntent(
+      {
+        type: 'roster-command',
+        command: {
+          kind: 'open-add-student',
+          student: {},
+          focusField: 'student_name',
+        },
+      },
+      {
+        kind: 'workflow',
+        workflowId: 'roster-add-student',
+        entityQuery: extractErp(question) ?? sanitizeNamedEntity(extractNamedEntity(question)),
+      },
+    );
+  }
+
+  if (/\bmark\b.*\bwarned\b|\bwarn(?:ed)?\b/.test(normalized)) {
+    return buildRememberedIntent(
+      {
+        type: 'rule-exceptions-command',
+        command: {
+          kind: 'mark-warned',
+          query: extractErp(question) ?? sanitizeNamedEntity(extractNamedEntity(question)) ?? '',
+        },
+      },
+      {
+        kind: 'workflow',
+        workflowId: 'mark-warned',
+        entityQuery: extractErp(question) ?? sanitizeNamedEntity(extractNamedEntity(question)),
+      },
+    );
+  }
+
+  const explicitModule = findExplicitModule(question);
+  if (!explicitModule) {
+    return null;
+  }
+
+  return buildRememberedIntent(
+    explicitModule === 'zoom' || explicitModule === 'attendance'
+      ? { type: 'switch-attendance-tab', tab: explicitModule }
+      : { type: 'open-module', module: explicitModule },
+  );
+};
+
 const buildFollowUpClarification = (snapshot?: HelpContextSnapshot | null) => {
   const defaults = ['Zoom Processor', 'Live Attendance', 'Session Management'];
   const currentModule =
@@ -761,6 +842,34 @@ const parseModuleNavigationPlan = (question: string): HelpAssistantPlan | null =
     };
   }
   return buildModuleOpenPlan(explicitModule);
+};
+
+const parseBareTargetSelectionPlan = (question: string): HelpAssistantPlan | null => {
+  const normalized = normalize(question);
+  if (/^(how|what|where|why|when)\b/i.test(normalized)) {
+    return null;
+  }
+
+  const bareSelection = question.match(BARE_TARGET_SELECTION_PATTERN)?.[1]?.trim() ?? question.trim();
+  const explicitModule = findExplicitModule(bareSelection);
+  if (!explicitModule) {
+    return null;
+  }
+
+  if (explicitModule === 'zoom' || explicitModule === 'attendance') {
+    return withRememberedIntent(
+      {
+        action: { type: 'switch-attendance-tab', tab: explicitModule },
+        response: buildPreparedResponse({
+          done: [`Switched to \`${getModuleName(explicitModule)}\`.`],
+          finalButton: null,
+        }),
+      },
+      buildRememberedIntent({ type: 'switch-attendance-tab', tab: explicitModule }),
+    );
+  }
+
+  return withRememberedIntent(buildModuleOpenPlan(explicitModule));
 };
 
 const parseFollowUpPlan = (
@@ -1292,7 +1401,8 @@ const parseDirectSemanticPlan = (question: string, snapshot?: HelpContextSnapsho
     parseExportPlan(question) ??
     parseZoomPlan(question) ??
     parseAttendancePlan(question) ??
-    parseModuleNavigationPlan(question),
+    parseModuleNavigationPlan(question) ??
+    parseBareTargetSelectionPlan(question),
   );
 };
 
@@ -1310,6 +1420,17 @@ export const planHelpAssistantAction = (
       parseWorkflowIntentPlan(question, snapshot) ??
       parseDirectSemanticPlan(question, snapshot),
   );
+};
+
+export const inferConversationIntent = (
+  question: string,
+): InferredConversationIntent | null => {
+  const rememberedIntent = inferWorkflowIntent(question);
+  if (!rememberedIntent) {
+    return null;
+  }
+
+  return { rememberedIntent };
 };
 
 export const buildActionResultMessage = (action: HelpAssistantAction) => {

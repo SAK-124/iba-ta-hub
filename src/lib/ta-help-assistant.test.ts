@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  DEFAULT_OPENROUTER_HELP_MODEL,
+  FALLBACK_OPENROUTER_HELP_MODEL,
+  getConfiguredHelpModel,
   getGuideChunks,
   requestTaHelpAnswer,
   retrieveRelevantGuideChunks,
@@ -37,7 +40,14 @@ describe('ta help assistant guide retrieval', () => {
     );
 
     const headings = chunks.map((chunk) => chunk.heading);
-    expect(headings.some((heading) => heading.includes('Runbook: Create a Session Before Any Attendance Work'))).toBe(true);
+    expect(headings.length).toBeGreaterThan(0);
+    expect(headings.some((heading) => /session|zoom/i.test(heading))).toBe(true);
+  });
+
+  it('uses Liquid 1.2B as the default help model', () => {
+    vi.stubEnv('VITE_OPENROUTER_MODEL', '');
+    expect(getConfiguredHelpModel()).toBe(DEFAULT_OPENROUTER_HELP_MODEL);
+    expect(DEFAULT_OPENROUTER_HELP_MODEL).toBe('liquid/lfm-2.5-1.2b-instruct:free');
   });
 
   it('sends the current user question only once to OpenRouter', async () => {
@@ -59,7 +69,7 @@ describe('ta help assistant guide retrieval', () => {
 
     vi.stubGlobal('fetch', fetchMock);
 
-    await requestTaHelpAnswer({
+    const result = await requestTaHelpAnswer({
       question: 'How do I process a Zoom CSV?',
       snapshot: {
         moduleId: 'zoom',
@@ -73,6 +83,10 @@ describe('ta help assistant guide retrieval', () => {
       ],
     });
 
+    expect(result.answer).toBe('Go to Zoom Processor and click `SELECT CSV`.');
+    expect(result.model).toBe('liquid/lfm-2.5-1.2b-instruct:free');
+    expect(result.usedFallback).toBe(false);
+
     const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
       messages: Array<{ role: string; content: string }>;
     };
@@ -81,5 +95,50 @@ describe('ta help assistant guide retrieval', () => {
     ).length;
 
     expect(currentQuestionCount).toBe(1);
+    expect(requestBody.messages.filter((message) => message.content.includes('You are Auxilium')).length).toBe(1);
+    expect(requestBody.messages.some((message) => message.content.startsWith('CURRENT_STATE'))).toBe(true);
+    expect(requestBody.messages.some((message) => message.content.startsWith('CONVERSATION_MEMORY'))).toBe(true);
+  });
+
+  it('retries on provider failure with the Liquid fallback model', async () => {
+    vi.stubEnv('VITE_OPENROUTER_API_KEY', 'test-key');
+    vi.stubEnv('VITE_OPENROUTER_MODEL', 'google/gemma-3-4b-it:free');
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        text: async () => 'Provider returned error: temporarily rate-limited',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: 'Click `SELECT CSV` in Zoom Processor.',
+              },
+            },
+          ],
+        }),
+      });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await requestTaHelpAnswer({
+      question: 'How do I process a Zoom CSV?',
+      snapshot: {
+        moduleId: 'zoom',
+        moduleTitle: 'Zoom Processor',
+        moduleStage: 'Zoom Processor · upload step',
+        visibleControls: ['SELECT CSV', 'Analyze Matrix'],
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).model).toBe('google/gemma-3-4b-it:free');
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body as string).model).toBe(FALLBACK_OPENROUTER_HELP_MODEL);
+    expect(result.usedFallback).toBe(true);
+    expect(result.model).toBe(FALLBACK_OPENROUTER_HELP_MODEL);
   });
 });

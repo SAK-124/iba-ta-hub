@@ -72,6 +72,20 @@ describe('ta-help-actions', () => {
     expect(plan?.response).toContain('Add to Roster');
   });
 
+  it('strips action suffixes from warned-student commands', () => {
+    const plan = planHelpAssistantAction('mark zayed as warned');
+
+    expect(plan?.action).toEqual({
+      type: 'rule-exceptions-command',
+      command: {
+        kind: 'mark-warned',
+        query: 'zayed',
+      },
+    });
+    expect(plan?.response).toContain('`zayed`');
+    expect(plan?.response).not.toContain('`zayed as warned`');
+  });
+
   it('resolves zoom-attendance workflow-start requests to the zoom entrypoint', () => {
     const plan = planHelpAssistantAction('i wanna do zoom attendance');
 

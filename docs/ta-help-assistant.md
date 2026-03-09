@@ -11,9 +11,14 @@ Recommended default model:
 Why this model was chosen:
 
 - completely free in the current OpenRouter free catalog
-- lighter than the larger free 3B, 12B, 24B, and 70B models
-- fast enough for short instructional answers
-- well-suited to concise "how do I use this feature?" guidance
+- still fast enough for short instructional answers in the TA portal
+- stable with the current Auxilium prompting and workflow prep setup
+
+Fallback model:
+
+- `liquid/lfm-2.5-1.2b-instruct:free`
+
+If `VITE_OPENROUTER_MODEL` is set to another free model, Auxilium still falls back to Liquid when the configured model request fails.
 
 ## What the Assistant Does
 
