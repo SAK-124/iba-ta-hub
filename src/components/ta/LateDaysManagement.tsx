@@ -618,14 +618,6 @@ export default function LateDaysManagement({
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
   const { markRefreshed } = useStaleRefreshOnFocus(
     () => fetchLateDaysData('silent'),
     { staleAfterMs: 60_000 },
@@ -653,6 +645,14 @@ export default function LateDaysManagement({
       void removeRealtimeChannel(channel);
     };
   }, [fetchLateDaysData, userEmail]);
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="ta-module-shell grid gap-6 xl:grid-cols-3">
