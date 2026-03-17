@@ -3,6 +3,7 @@ import { addHours, format } from 'date-fns';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
+import { formatDate, toValidDate } from '@/lib/date-format';
 import { useERP } from '@/lib/erp-context';
 import { Tables } from '@/integrations/supabase/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -93,7 +94,10 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
   const latestDeadlineByAssignment = useMemo(() => {
     const map = new Map<string, Date>();
     for (const claim of claims) {
-      const candidate = new Date(claim.due_at_after_claim);
+      const candidate = toValidDate(claim.due_at_after_claim);
+      if (!candidate) {
+        continue;
+      }
       const existing = map.get(claim.assignment_id);
       if (!existing || candidate.getTime() > existing.getTime()) {
         map.set(claim.assignment_id, candidate);
@@ -106,12 +110,12 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
     const map = new Map<string, { claimedDays: number; claimCount: number; latestClaimAt: Date | null }>();
     for (const claim of claims) {
       const existing = map.get(claim.assignment_id) ?? { claimedDays: 0, claimCount: 0, latestClaimAt: null };
-      const claimedAt = new Date(claim.claimed_at);
+      const claimedAt = toValidDate(claim.claimed_at);
       map.set(claim.assignment_id, {
         claimedDays: existing.claimedDays + claim.days_used,
         claimCount: existing.claimCount + 1,
         latestClaimAt:
-          !existing.latestClaimAt || claimedAt.getTime() > existing.latestClaimAt.getTime()
+          claimedAt && (!existing.latestClaimAt || claimedAt.getTime() > existing.latestClaimAt.getTime())
             ? claimedAt
             : existing.latestClaimAt,
       });
@@ -124,7 +128,7 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
 
     return assignments.map<AssignmentSummary>((assignment) => {
       const latestClaimDeadline = latestDeadlineByAssignment.get(assignment.id) ?? null;
-      const currentDeadline = latestClaimDeadline ?? (assignment.due_at ? new Date(assignment.due_at) : null);
+      const currentDeadline = latestClaimDeadline ?? toValidDate(assignment.due_at);
       const claimStats = claimStatsByAssignment.get(assignment.id) ?? {
         claimedDays: 0,
         claimCount: 0,
@@ -375,10 +379,10 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {summary.currentDeadline ? format(summary.currentDeadline, 'PPP p') : 'Not set by TA'}
+                        {formatDate(summary.currentDeadline, 'PPP p', 'Not set by TA')}
                       </TableCell>
                       <TableCell>{summary.claimCount > 0 ? `${summary.claimCount} claim(s)` : 'None'}</TableCell>
-                      <TableCell>{summary.latestClaimAt ? format(summary.latestClaimAt, 'PPP p') : '-'}</TableCell>
+                      <TableCell>{formatDate(summary.latestClaimAt, 'PPP p')}</TableCell>
                       <TableCell className="text-right">
                         <Button size="sm" onClick={() => openClaimDialog(summary.assignment.id)} disabled={!summary.canClaim}>
                           Claim
@@ -428,9 +432,9 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
                     <TableRow key={claim.id}>
                       <TableCell className="font-medium">{assignmentTitleById[claim.assignment_id] ?? 'Unknown Assignment'}</TableCell>
                       <TableCell>{claim.days_used}</TableCell>
-                      <TableCell>{format(new Date(claim.claimed_at), 'PPP p')}</TableCell>
-                      <TableCell>{format(new Date(claim.due_at_before_claim), 'PPP p')}</TableCell>
-                      <TableCell>{format(new Date(claim.due_at_after_claim), 'PPP p')}</TableCell>
+                      <TableCell>{formatDate(claim.claimed_at, 'PPP p')}</TableCell>
+                      <TableCell>{formatDate(claim.due_at_before_claim, 'PPP p')}</TableCell>
+                      <TableCell>{formatDate(claim.due_at_after_claim, 'PPP p')}</TableCell>
                     </TableRow>
                   ))
                 )}

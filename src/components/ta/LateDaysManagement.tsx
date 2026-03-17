@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { format } from 'date-fns';
 import { Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tables } from '@/integrations/supabase/types';
@@ -21,6 +20,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
 import { Textarea } from '@/components/ta/ui/textarea';
 import { useAuth } from '@/lib/auth';
+import { formatDate, toValidDate } from '@/lib/date-format';
 import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
 import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
 import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
@@ -60,16 +60,15 @@ interface ClaimGroup {
 }
 
 const toLocalDateTimeInput = (isoValue: string | null) => {
-  if (!isoValue) return '';
-  const date = new Date(isoValue);
+  const date = toValidDate(isoValue);
+  if (!date) return '';
   const timezoneOffsetMs = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - timezoneOffsetMs).toISOString().slice(0, 16);
 };
 
 const toIsoFromLocalDateTime = (localValue: string) => new Date(localValue).toISOString();
 
-const formatDeadline = (deadline: string | null) =>
-  deadline ? format(new Date(deadline), 'PPP p') : 'Not set yet';
+const formatDeadline = (deadline: string | null) => formatDate(deadline, 'PPP p', 'Not set yet');
 
 const TA_STORAGE_SCOPE = 'ta';
 const LATE_DAYS_MANAGEMENT_STORAGE_KEY = 'module-late-days';
@@ -271,10 +270,14 @@ export default function LateDaysManagement({
       }
 
       existing.total_days_used += claim.days_used;
-      if (new Date(claim.claimed_at).getTime() > new Date(existing.latest_claimed_at).getTime()) {
+      const claimCreatedAt = toValidDate(claim.claimed_at);
+      const existingLatestClaimAt = toValidDate(existing.latest_claimed_at);
+      if (claimCreatedAt && (!existingLatestClaimAt || claimCreatedAt.getTime() > existingLatestClaimAt.getTime())) {
         existing.latest_claimed_at = claim.claimed_at;
       }
-      if (new Date(claim.due_at_after_claim).getTime() > new Date(existing.current_due_at).getTime()) {
+      const claimDueAfter = toValidDate(claim.due_at_after_claim);
+      const existingCurrentDueAt = toValidDate(existing.current_due_at);
+      if (claimDueAfter && (!existingCurrentDueAt || claimDueAfter.getTime() > existingCurrentDueAt.getTime())) {
         existing.current_due_at = claim.due_at_after_claim;
       }
       existing.events.push(claim);
@@ -284,11 +287,14 @@ export default function LateDaysManagement({
       .map((group) => ({
         ...group,
         events: group.events.sort(
-          (a, b) => new Date(b.claimed_at).getTime() - new Date(a.claimed_at).getTime()
+          (a, b) =>
+            (toValidDate(b.claimed_at)?.getTime() ?? 0) - (toValidDate(a.claimed_at)?.getTime() ?? 0)
         ),
       }))
       .sort(
-        (a, b) => new Date(b.latest_claimed_at).getTime() - new Date(a.latest_claimed_at).getTime()
+        (a, b) =>
+          (toValidDate(b.latest_claimed_at)?.getTime() ?? 0) -
+          (toValidDate(a.latest_claimed_at)?.getTime() ?? 0)
       );
   }, [claims]);
 
@@ -772,8 +778,8 @@ export default function LateDaysManagement({
                         <TableCell>{group.student_erp}</TableCell>
                         <TableCell>{assignmentById[group.assignment_id]?.title ?? 'Unknown Assignment'}</TableCell>
                         <TableCell>{group.total_days_used}</TableCell>
-                        <TableCell>{format(new Date(group.latest_claimed_at), 'PPP p')}</TableCell>
-                        <TableCell>{format(new Date(group.current_due_at), 'PPP p')}</TableCell>
+                        <TableCell>{formatDate(group.latest_claimed_at, 'PPP p')}</TableCell>
+                        <TableCell>{formatDate(group.current_due_at, 'PPP p')}</TableCell>
                         <TableCell className="text-right">
                           <Button
                             variant="outline"
@@ -892,9 +898,9 @@ export default function LateDaysManagement({
                   {selectedClaimGroup.events.map((claimEvent) => (
                     <TableRow key={claimEvent.id}>
                       <TableCell>{claimEvent.days_used}</TableCell>
-                      <TableCell>{format(new Date(claimEvent.claimed_at), 'PPP p')}</TableCell>
-                      <TableCell>{format(new Date(claimEvent.due_at_before_claim), 'PPP p')}</TableCell>
-                      <TableCell>{format(new Date(claimEvent.due_at_after_claim), 'PPP p')}</TableCell>
+                      <TableCell>{formatDate(claimEvent.claimed_at, 'PPP p')}</TableCell>
+                      <TableCell>{formatDate(claimEvent.due_at_before_claim, 'PPP p')}</TableCell>
+                      <TableCell>{formatDate(claimEvent.due_at_after_claim, 'PPP p')}</TableCell>
                       <TableCell className="text-right">
                         <Button
                           variant="ghost"
