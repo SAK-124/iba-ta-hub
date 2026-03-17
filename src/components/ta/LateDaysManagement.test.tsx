@@ -30,14 +30,18 @@ vi.mock('@/lib/auth', () => ({
   useAuth: useAuthMock,
 }));
 
-vi.mock('@/features/late-days', () => ({
-  archiveLateDayAssignment: archiveLateDayAssignmentMock,
-  createLateDayAssignment: createLateDayAssignmentMock,
-  deleteLateDayClaim: deleteLateDayClaimMock,
-  listLateDaysAdminData: listLateDaysAdminDataMock,
-  taAddLateDay: taAddLateDayMock,
-  updateLateDayAssignment: updateLateDayAssignmentMock,
-}));
+vi.mock('@/features/late-days', async () => {
+  const actual = await vi.importActual<typeof import('@/features/late-days')>('@/features/late-days');
+  return {
+    ...actual,
+    archiveLateDayAssignment: archiveLateDayAssignmentMock,
+    createLateDayAssignment: createLateDayAssignmentMock,
+    deleteLateDayClaim: deleteLateDayClaimMock,
+    listLateDaysAdminData: listLateDaysAdminDataMock,
+    taAddLateDay: taAddLateDayMock,
+    updateLateDayAssignment: updateLateDayAssignmentMock,
+  };
+});
 
 vi.mock('@/features/roster', () => ({
   listRoster: listRosterMock,

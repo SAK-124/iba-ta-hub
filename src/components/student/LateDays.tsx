@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { addHours, format } from 'date-fns';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -13,7 +13,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { sendNtfyNotification } from '@/lib/ntfy';
-import { claimLateDays, listStudentLateDaysData } from '@/features/late-days';
+import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
+import {
+  claimLateDays,
+  getAllowedLateDayClaimOptions,
+  getCurrentLateDayDeadline,
+  getMinimumLateDaysRequired,
+  listStudentLateDaysData,
+} from '@/features/late-days';
 
 type LateDayAssignment = Tables<'late_day_assignments'>;
 type LateDayClaim = Tables<'late_day_claims'>;
@@ -43,14 +50,13 @@ interface AssignmentSummary {
   currentDeadline: Date | null;
   availability: AvailabilityState;
   canClaim: boolean;
+  minimumClaimDays: number | null;
   claimedDays: number;
   claimCount: number;
   latestClaimAt: Date | null;
 }
 
 const BASE_LATE_DAYS = 3;
-
-const isBeforeOrEqual = (left: Date, right: Date) => left.getTime() <= right.getTime();
 
 const availabilityConfig: Record<AvailabilityState, { label: string; className: string }> = {
   claimable: { label: 'Can Claim', className: 'bg-emerald-500 hover:bg-emerald-600 text-white border-transparent' },
@@ -128,7 +134,8 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
 
     return assignments.map<AssignmentSummary>((assignment) => {
       const latestClaimDeadline = latestDeadlineByAssignment.get(assignment.id) ?? null;
-      const currentDeadline = latestClaimDeadline ?? toValidDate(assignment.due_at);
+      const currentDeadline = getCurrentLateDayDeadline(assignment.due_at, latestClaimDeadline);
+      const minimumClaimDays = getMinimumLateDaysRequired(currentDeadline, now);
       const claimStats = claimStatsByAssignment.get(assignment.id) ?? {
         claimedDays: 0,
         claimCount: 0,
@@ -140,10 +147,10 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
         availability = 'archived';
       } else if (!currentDeadline) {
         availability = 'awaiting_deadline';
-      } else if (!isBeforeOrEqual(now, currentDeadline)) {
-        availability = 'closed';
       } else if (remaining <= 0) {
         availability = 'no_balance';
+      } else if (!minimumClaimDays || remaining < minimumClaimDays) {
+        availability = 'closed';
       } else {
         availability = 'claimable';
       }
@@ -153,6 +160,7 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
         currentDeadline,
         availability,
         canClaim: availability === 'claimable',
+        minimumClaimDays,
         claimedDays: claimStats.claimedDays,
         claimCount: claimStats.claimCount,
         latestClaimAt: claimStats.latestClaimAt,
@@ -168,13 +176,20 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
   const selectedSummary = selectedAssignmentId
     ? assignmentSummaries.find((summary) => summary.assignment.id === selectedAssignmentId) ?? null
     : null;
+  const selectedAllowedClaimDays = useMemo(() => {
+    if (!selectedSummary?.canClaim) {
+      return [];
+    }
+
+    return getAllowedLateDayClaimOptions(selectedSummary.currentDeadline, remaining);
+  }, [remaining, selectedSummary]);
   const selectedDaysCount = Number(selectedDays) || 1;
   const previewDueAt =
-    selectedSummary?.currentDeadline && selectedSummary.canClaim
+    selectedSummary?.currentDeadline && selectedSummary.canClaim && selectedAllowedClaimDays.length > 0
       ? addHours(selectedSummary.currentDeadline, selectedDaysCount * 24)
       : null;
 
-  const fetchLateDays = async () => {
+  const fetchLateDays = useCallback(async (mode: 'initial' | 'silent' = 'initial') => {
     if (!user?.email || !erp) {
       setAssignments([]);
       setClaims([]);
@@ -183,7 +198,9 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
       return;
     }
 
-    setIsLoading(true);
+    if (mode === 'initial') {
+      setIsLoading(true);
+    }
 
     try {
       const data = await listStudentLateDaysData();
@@ -197,17 +214,49 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
       setClaims([]);
       setAdjustments([]);
     } finally {
-      setIsLoading(false);
+      if (mode === 'initial') {
+        setIsLoading(false);
+      }
     }
-  };
+  }, [erp, user?.email]);
 
   useEffect(() => {
-    void fetchLateDays();
-  }, [user?.email, erp]);
+    void fetchLateDays('initial');
+  }, [fetchLateDays]);
+
+  useEffect(() => {
+    if (!user?.email || !erp) {
+      return;
+    }
+
+    const channel = subscribeToRealtimeTables(
+      `student-late-days-${user.email}`,
+      [
+        { table: 'late_day_assignments' },
+        { table: 'late_day_claims' },
+        { table: 'late_day_adjustments' },
+      ],
+      () => {
+        void fetchLateDays('silent');
+      },
+    );
+
+    return () => {
+      void removeRealtimeChannel(channel);
+    };
+  }, [erp, fetchLateDays, user?.email]);
 
   const openClaimDialog = (assignmentId?: string) => {
-    setSelectedAssignmentId(assignmentId ?? '');
-    setSelectedDays('1');
+    const nextAssignmentId = assignmentId ?? claimableSummaries[0]?.assignment.id ?? '';
+    const nextSummary = nextAssignmentId
+      ? assignmentSummaries.find((summary) => summary.assignment.id === nextAssignmentId) ?? null
+      : null;
+    const allowedClaimDays = nextSummary
+      ? getAllowedLateDayClaimOptions(nextSummary.currentDeadline, remaining)
+      : [];
+
+    setSelectedAssignmentId(nextAssignmentId);
+    setSelectedDays(allowedClaimDays[0] ? String(allowedClaimDays[0]) : '1');
     setIsDialogOpen(true);
   };
 
@@ -217,6 +266,24 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
     setSelectedDays('1');
   };
 
+  useEffect(() => {
+    if (!selectedSummary) {
+      return;
+    }
+
+    if (selectedAllowedClaimDays.length === 0) {
+      if (selectedDays !== '1') {
+        setSelectedDays('1');
+      }
+      return;
+    }
+
+    const currentSelectedDays = Number(selectedDays);
+    if (!selectedAllowedClaimDays.includes(currentSelectedDays)) {
+      setSelectedDays(String(selectedAllowedClaimDays[0]));
+    }
+  }, [selectedAllowedClaimDays, selectedDays, selectedSummary]);
+
   const handleClaim = async () => {
     if (!selectedSummary) return;
     if (!selectedSummary.canClaim) {
@@ -225,8 +292,13 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
     }
 
     const days = Number(selectedDays);
-    if (!Number.isInteger(days) || days < 1 || days > remaining) {
-      toast.error('Please select a valid number of late days.');
+    const minimumClaimDays = selectedSummary.minimumClaimDays ?? 1;
+    if (!Number.isInteger(days) || !selectedAllowedClaimDays.includes(days)) {
+      toast.error(
+        minimumClaimDays > 1
+          ? `Please claim at least ${minimumClaimDays} late day(s) to cover the current lateness.`
+          : 'Please select a valid number of late days.',
+      );
       return;
     }
 
@@ -328,7 +400,7 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
             <div>
               <CardTitle>Assignment Status</CardTitle>
               <CardDescription>
-                Assignments without deadlines are visible but cannot be claimed until TAs set a deadline.
+                Assignments without deadlines are visible but cannot be claimed until TAs set a deadline. If a deadline has already passed, you can still claim enough late days to cover the current lateness.
               </CardDescription>
             </div>
             <Button onClick={() => openClaimDialog()} disabled={claimableSummaries.length === 0 || remaining <= 0}>
@@ -374,6 +446,11 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
                           {summary.claimCount > 0 && (
                             <Badge variant="outline">
                               Claimed {summary.claimedDays} day{summary.claimedDays === 1 ? '' : 's'}
+                            </Badge>
+                          )}
+                          {summary.canClaim && (summary.minimumClaimDays ?? 1) > 1 && (
+                            <Badge variant="outline">
+                              Need {summary.minimumClaimDays} days now
                             </Badge>
                           )}
                         </div>
@@ -463,7 +540,16 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
                 <div className="text-sm font-medium">Assignment</div>
                 <Select
                   value={selectedAssignmentId}
-                  onValueChange={setSelectedAssignmentId}
+                  onValueChange={(assignmentId) => {
+                    const nextSummary =
+                      assignmentSummaries.find((summary) => summary.assignment.id === assignmentId) ?? null;
+                    const allowedClaimDays = nextSummary
+                      ? getAllowedLateDayClaimOptions(nextSummary.currentDeadline, remaining)
+                      : [];
+
+                    setSelectedAssignmentId(assignmentId);
+                    setSelectedDays(allowedClaimDays[0] ? String(allowedClaimDays[0]) : '1');
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select claimable assignment" />
@@ -487,7 +573,7 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
                         <SelectValue placeholder="Select days" />
                       </SelectTrigger>
                       <SelectContent>
-                        {Array.from({ length: remaining }, (_, index) => index + 1).map((value) => (
+                        {selectedAllowedClaimDays.map((value) => (
                           <SelectItem key={value} value={String(value)}>
                             {value}
                           </SelectItem>
@@ -495,6 +581,12 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {(selectedSummary.minimumClaimDays ?? 1) > 1 && (
+                    <div className="rounded-md border border-amber-300/60 bg-amber-50/50 p-3 text-sm text-amber-900">
+                      This deadline has already passed. Claim at least {selectedSummary.minimumClaimDays} late day(s) to bring it back within the allowed range.
+                    </div>
+                  )}
 
                   <div className="rounded-md border bg-muted/30 p-3 text-sm">
                     <div>Claim timestamp: {format(new Date(), 'PPP p')}</div>

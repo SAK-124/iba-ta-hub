@@ -32,6 +32,7 @@ import type {
 import {
   archiveLateDayAssignment,
   createLateDayAssignment,
+  getCurrentLateDayDeadline,
   deleteLateDayClaim,
   listLateDaysAdminData,
   taAddLateDay,
@@ -252,6 +253,9 @@ export default function LateDaysManagement({
     const groups: Record<string, ClaimGroup> = {};
 
     for (const claim of claims) {
+      const initialCurrentDueAt =
+        getCurrentLateDayDeadline(assignmentById[claim.assignment_id]?.due_at, claim.due_at_after_claim)?.toISOString() ??
+        claim.due_at_after_claim;
       const key = `${claim.student_email}::${claim.student_erp}::${claim.assignment_id}`;
       const existing = groups[key];
 
@@ -263,7 +267,7 @@ export default function LateDaysManagement({
           student_erp: claim.student_erp,
           total_days_used: claim.days_used,
           latest_claimed_at: claim.claimed_at,
-          current_due_at: claim.due_at_after_claim,
+          current_due_at: initialCurrentDueAt,
           events: [claim],
         };
         continue;
@@ -275,10 +279,13 @@ export default function LateDaysManagement({
       if (claimCreatedAt && (!existingLatestClaimAt || claimCreatedAt.getTime() > existingLatestClaimAt.getTime())) {
         existing.latest_claimed_at = claim.claimed_at;
       }
-      const claimDueAfter = toValidDate(claim.due_at_after_claim);
+      const claimDueAfter = getCurrentLateDayDeadline(
+        assignmentById[claim.assignment_id]?.due_at,
+        claim.due_at_after_claim,
+      );
       const existingCurrentDueAt = toValidDate(existing.current_due_at);
       if (claimDueAfter && (!existingCurrentDueAt || claimDueAfter.getTime() > existingCurrentDueAt.getTime())) {
-        existing.current_due_at = claim.due_at_after_claim;
+        existing.current_due_at = claimDueAfter.toISOString();
       }
       existing.events.push(claim);
     }
@@ -296,7 +303,7 @@ export default function LateDaysManagement({
           (toValidDate(b.latest_claimed_at)?.getTime() ?? 0) -
           (toValidDate(a.latest_claimed_at)?.getTime() ?? 0)
       );
-  }, [claims]);
+  }, [assignmentById, claims]);
 
   const selectedClaimGroup = useMemo(
     () => claimGroups.find((group) => group.key === selectedClaimGroupKey) ?? null,
