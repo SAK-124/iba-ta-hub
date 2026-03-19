@@ -8,12 +8,13 @@ import SubmitIssue from './SubmitIssue';
 import MyIssues from './MyIssues';
 import AttendanceView from './AttendanceView';
 import LateDays from './LateDays';
+import Groups from './Groups';
 import { useAuth } from '@/lib/auth';
 import { useAppSettingsQuery } from '@/features/settings';
 import { useLateDaysSummary } from '@/features/late-days';
 import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 
-type StudentPortalTab = 'submit' | 'issues' | 'attendance' | 'late-days';
+type StudentPortalTab = 'submit' | 'issues' | 'attendance' | 'groups' | 'late-days';
 const STUDENT_STORAGE_SCOPE = 'student';
 const ACTIVE_TAB_STORAGE_KEY = 'active-tab';
 
@@ -23,7 +24,7 @@ interface LateDaysSummary {
 }
 
 const isStudentPortalTab = (value: string | null): value is StudentPortalTab =>
-  value === 'submit' || value === 'issues' || value === 'attendance' || value === 'late-days';
+  value === 'submit' || value === 'issues' || value === 'attendance' || value === 'groups' || value === 'late-days';
 
 export default function StudentPortal() {
   const { erp, isVerified, studentName, isLoading } = useERP();
@@ -41,12 +42,9 @@ export default function StudentPortal() {
   const [hasInitializedTab, setHasInitializedTab] = useState(false);
   const { data: appSettings, isLoading: isSettingsLoading } = useAppSettingsQuery();
   const ticketsEnabled = appSettings?.tickets_enabled ?? true;
-  const { data: lateDaysSummary, isLoading: isLateDaysLoading } = useLateDaysSummary(
-    isVerified ? user?.email ?? null : null,
-    isVerified ? erp : null,
-  );
+  const { data: lateDaysSummary, isLoading: isLateDaysLoading } = useLateDaysSummary(isVerified ? erp : null);
   const lateDaysRemaining = lateDaysSummary.remaining;
-  const lateDaysTotal = lateDaysSummary.totalAllowance;
+  const currentGroupNumber = lateDaysSummary.groupNumber ?? null;
 
   useEffect(() => {
     if (!isSettingsLoading && !hasInitializedTab) {
@@ -136,14 +134,22 @@ export default function StudentPortal() {
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <CardTitle>Late Days</CardTitle>
-                  <CardDescription>You can use 3 base late days plus any TA-granted bonus days.</CardDescription>
+                  <CardDescription>
+                    {currentGroupNumber !== null
+                      ? `Your group shares 3 late days. Any member claim reduces the same shared balance for everyone.`
+                      : 'You can use up to 3 late days unless TAs grant extra days.'}
+                  </CardDescription>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="rounded-md border px-3 py-1 text-sm font-semibold">
-                    {isLateDaysLoading ? 'Loading...' : `${lateDaysRemaining} / ${lateDaysTotal} left`}
+                  <span className="rounded-full border px-4 py-2 text-sm font-medium">
+                    {isLateDaysLoading
+                      ? 'Loading late days...'
+                      : currentGroupNumber !== null
+                        ? `${lateDaysRemaining} group late day${lateDaysRemaining === 1 ? '' : 's'} left`
+                        : `${lateDaysRemaining} late day${lateDaysRemaining === 1 ? '' : 's'} left`}
                   </span>
                   <Button onClick={() => setActiveTab('late-days')}>
-                    Avail Late Days
+                    Open Late Days
                   </Button>
                 </div>
               </div>
@@ -164,6 +170,9 @@ export default function StudentPortal() {
               )}
               <TabsTrigger value="attendance" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
                 Attendance
+              </TabsTrigger>
+              <TabsTrigger value="groups" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
+                Groups
               </TabsTrigger>
               <TabsTrigger value="late-days" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
                 Late Days
@@ -194,6 +203,10 @@ export default function StudentPortal() {
                 </Card>
               )}
               <AttendanceView />
+            </TabsContent>
+
+            <TabsContent value="groups" className="mt-6">
+              <Groups />
             </TabsContent>
 
             <TabsContent value="late-days" className="mt-6">

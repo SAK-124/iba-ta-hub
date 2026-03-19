@@ -23,6 +23,7 @@ import {
   type AttendanceAgentCommand,
   type ConsolidatedAgentCommand,
   type ExportAgentCommand,
+  type GroupsAgentCommand,
   type HelpAssistantAction,
   type HelpContextSnapshot,
   type IssueQueueAgentCommand,
@@ -53,6 +54,7 @@ const SessionManagement = lazy(() => import('./SessionManagement'));
 const ConsolidatedView = lazy(() => import('./ConsolidatedView'));
 const RuleExceptions = lazy(() => import('./RuleExceptions'));
 const RosterManagement = lazy(() => import('./RosterManagement'));
+const GroupsManagement = lazy(() => import('./GroupsManagement'));
 const LateDaysManagement = lazy(() => import('./LateDaysManagement'));
 const ExportData = lazy(() => import('./ExportData'));
 const IssueManagement = lazy(() => import('./IssueManagement'));
@@ -65,6 +67,7 @@ type PortalModule =
   | 'consolidated'
   | 'exceptions'
   | 'roster'
+  | 'groups'
   | 'late-days'
   | 'export'
   | 'issues'
@@ -107,6 +110,7 @@ const MODULES: ModuleConfig[] = [
   { id: 'zoom', title: 'Zoom Processor', description: 'Upload logs, review matches, and generate attendance', icon: Video, colSpan: 2 },
   { id: 'attendance', title: 'Live Attendance', description: 'Mark attendance live and apply manual overrides', icon: ClipboardCheck, colSpan: 1 },
   { id: 'roster', title: 'Roster Management', description: 'Import and manage the student master list', icon: Users, colSpan: 1 },
+  { id: 'groups', title: 'Groups', description: 'Assign numbered student groups and recompute grouped late days', icon: Users, colSpan: 1 },
   { id: 'consolidated', title: 'Consolidated View', description: 'Review full attendance with penalties by session', icon: Layers, colSpan: 1 },
   { id: 'sessions', title: 'Session Management', description: 'Configure session calendar and timing rules', icon: CalendarDays, colSpan: 1 },
   { id: 'exceptions', title: 'Rule Exceptions', description: 'Manage approved exceptions and overrides', icon: ShieldAlert, colSpan: 1 },
@@ -169,6 +173,8 @@ const getImmediateStageForModule = (
       return 'Rule Exceptions · overview';
     case 'roster':
       return 'Roster Management · overview';
+    case 'groups':
+      return 'Groups · overview';
     case 'export':
       return 'Export Data · overview';
     case 'issues':
@@ -224,6 +230,7 @@ export default function TAPortal() {
   const [attendanceAgentCommand, setAttendanceAgentCommand] = useState<AgentCommandEnvelope<AttendanceAgentCommand> | null>(null);
   const [sessionAgentCommand, setSessionAgentCommand] = useState<AgentCommandEnvelope<SessionAgentCommand> | null>(null);
   const [rosterAgentCommand, setRosterAgentCommand] = useState<AgentCommandEnvelope<RosterAgentCommand> | null>(null);
+  const [groupsAgentCommand, setGroupsAgentCommand] = useState<AgentCommandEnvelope<GroupsAgentCommand> | null>(null);
   const [consolidatedAgentCommand, setConsolidatedAgentCommand] = useState<AgentCommandEnvelope<ConsolidatedAgentCommand> | null>(null);
   const [ruleExceptionsAgentCommand, setRuleExceptionsAgentCommand] = useState<AgentCommandEnvelope<RuleExceptionsAgentCommand> | null>(null);
   const [issueQueueAgentCommand, setIssueQueueAgentCommand] = useState<AgentCommandEnvelope<IssueQueueAgentCommand> | null>(null);
@@ -347,6 +354,7 @@ export default function TAPortal() {
     setAttendanceAgentCommand(null);
     setSessionAgentCommand(null);
     setRosterAgentCommand(null);
+    setGroupsAgentCommand(null);
     setConsolidatedAgentCommand(null);
     setRuleExceptionsAgentCommand(null);
     setIssueQueueAgentCommand(null);
@@ -437,6 +445,19 @@ export default function TAPortal() {
         );
         setActiveModule('roster');
         setRosterAgentCommand(makeCommandEnvelope(action.command, nextCommandToken()));
+        return;
+      case 'groups-command':
+        setHelpModuleStage(
+          action.command.kind === 'prepare-recompute-group'
+            ? 'Groups · recomputing late days'
+            : action.command.kind === 'prepare-assign-student'
+              ? 'Groups · assigning student'
+              : action.command.kind === 'prepare-remove-student'
+                ? 'Groups · removing student'
+                : 'Groups · overview',
+        );
+        setActiveModule('groups');
+        setGroupsAgentCommand(makeCommandEnvelope(action.command, nextCommandToken()));
         return;
       case 'consolidated-command':
         setHelpModuleStage(
@@ -632,6 +653,17 @@ export default function TAPortal() {
               onHelpContextChange={setHelpSnapshotDetails}
               agentCommand={rosterAgentCommand}
               onAgentCommandHandled={() => setRosterAgentCommand(null)}
+            />
+          </Suspense>
+        );
+      case 'groups':
+        return (
+          <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
+            <GroupsManagement
+              onContextChange={setHelpModuleStage}
+              onHelpContextChange={setHelpSnapshotDetails}
+              agentCommand={groupsAgentCommand}
+              onAgentCommandHandled={() => setGroupsAgentCommand(null)}
             />
           </Suspense>
         );

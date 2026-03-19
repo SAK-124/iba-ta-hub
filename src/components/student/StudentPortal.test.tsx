@@ -41,6 +41,10 @@ vi.mock('./LateDays', () => ({
   default: () => <div>Late Days Mock</div>,
 }));
 
+vi.mock('./Groups', () => ({
+  default: () => <div>Groups Mock</div>,
+}));
+
 describe('StudentPortal persistence', () => {
   beforeEach(() => {
     window.sessionStorage.clear();
@@ -67,12 +71,12 @@ describe('StudentPortal persistence', () => {
   it('restores the persisted active tab', async () => {
     window.sessionStorage.setItem(
       'aamd-workspace:student:test.00000@khi.iba.edu.pk:active-tab',
-      JSON.stringify('late-days'),
+      JSON.stringify('groups'),
     );
 
     render(<StudentPortal />);
 
-    expect(await screen.findByText('Late Days Mock')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Late Days' })).toHaveAttribute('data-state', 'active');
+    expect(await screen.findByText('Groups Mock')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Groups' })).toHaveAttribute('data-state', 'active');
   });
 });

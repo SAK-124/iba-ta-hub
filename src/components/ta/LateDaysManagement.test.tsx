@@ -69,6 +69,7 @@ describe('LateDaysManagement', () => {
     });
     listLateDaysAdminDataMock.mockResolvedValue({
       assignments: [],
+      batches: [],
       claims: [],
       adjustments: [],
     });

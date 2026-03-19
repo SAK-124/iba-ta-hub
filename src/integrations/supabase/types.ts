@@ -140,14 +140,76 @@ export type Database = {
         }
         Relationships: []
       }
+      late_day_claim_batches: {
+        Row: {
+          assignment_id: string
+          claimed_at: string
+          claimed_by_email: string
+          claimed_by_erp: string
+          created_at: string
+          days_used: number
+          group_id: string | null
+          id: string
+          membership_snapshot: Json
+          recomputed_at: string | null
+          recomputed_by_email: string | null
+        }
+        Insert: {
+          assignment_id: string
+          claimed_at?: string
+          claimed_by_email: string
+          claimed_by_erp: string
+          created_at?: string
+          days_used: number
+          group_id?: string | null
+          id?: string
+          membership_snapshot?: Json
+          recomputed_at?: string | null
+          recomputed_by_email?: string | null
+        }
+        Update: {
+          assignment_id?: string
+          claimed_at?: string
+          claimed_by_email?: string
+          claimed_by_erp?: string
+          created_at?: string
+          days_used?: number
+          group_id?: string | null
+          id?: string
+          membership_snapshot?: Json
+          recomputed_at?: string | null
+          recomputed_by_email?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "late_day_claim_batches_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "late_day_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "late_day_claim_batches_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "student_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       late_day_claims: {
         Row: {
           assignment_id: string
           claimed_at: string
+          claim_batch_id: string | null
+          claim_role: string
+          claimed_by_email: string
+          claimed_by_erp: string
           created_at: string
           days_used: number
           due_at_after_claim: string
           due_at_before_claim: string
+          group_id: string | null
           id: string
           student_email: string
           student_erp: string
@@ -155,10 +217,15 @@ export type Database = {
         Insert: {
           assignment_id: string
           claimed_at?: string
+          claim_batch_id?: string | null
+          claim_role?: string
+          claimed_by_email: string
+          claimed_by_erp: string
           created_at?: string
           days_used: number
           due_at_after_claim: string
           due_at_before_claim: string
+          group_id?: string | null
           id?: string
           student_email: string
           student_erp: string
@@ -166,10 +233,15 @@ export type Database = {
         Update: {
           assignment_id?: string
           claimed_at?: string
+          claim_batch_id?: string | null
+          claim_role?: string
+          claimed_by_email?: string
+          claimed_by_erp?: string
           created_at?: string
           days_used?: number
           due_at_after_claim?: string
           due_at_before_claim?: string
+          group_id?: string | null
           id?: string
           student_email?: string
           student_erp?: string
@@ -180,6 +252,20 @@ export type Database = {
             columns: ["assignment_id"]
             isOneToOne: false
             referencedRelation: "late_day_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "late_day_claims_claim_batch_id_fkey"
+            columns: ["claim_batch_id"]
+            isOneToOne: false
+            referencedRelation: "late_day_claim_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "late_day_claims_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "student_groups"
             referencedColumns: ["id"]
           },
         ]
@@ -277,6 +363,84 @@ export type Database = {
           zoom_report_saved_at?: string | null
           session_date?: string
           session_number?: number
+        }
+        Relationships: []
+      }
+      student_group_members: {
+        Row: {
+          added_by_erp: string
+          added_by_role: string
+          created_at: string
+          group_id: string
+          id: string
+          student_erp: string
+          updated_at: string
+        }
+        Insert: {
+          added_by_erp: string
+          added_by_role: string
+          created_at?: string
+          group_id: string
+          id?: string
+          student_erp: string
+          updated_at?: string
+        }
+        Update: {
+          added_by_erp?: string
+          added_by_role?: string
+          created_at?: string
+          group_id?: string
+          id?: string
+          student_erp?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_group_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "student_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_group_members_student_erp_fkey"
+            columns: ["student_erp"]
+            isOneToOne: false
+            referencedRelation: "students_roster"
+            referencedColumns: ["erp"]
+          },
+        ]
+      }
+      student_groups: {
+        Row: {
+          created_at: string
+          created_by_email: string
+          created_by_erp: string | null
+          created_by_role: string
+          group_number: number
+          id: string
+          student_edit_locked_at: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by_email: string
+          created_by_erp?: string | null
+          created_by_role?: string
+          group_number: number
+          id?: string
+          student_edit_locked_at?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by_email?: string
+          created_by_erp?: string | null
+          created_by_role?: string
+          group_number?: number
+          id?: string
+          student_edit_locked_at?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -414,11 +578,41 @@ export type Database = {
         Args: { p_assignment_id: string; p_days: number }
         Returns: Json
       }
+      current_student_erp_from_auth: { Args: never; Returns: string | null }
+      get_late_day_summary: {
+        Args: { p_student_erp?: string }
+        Returns: Json
+      }
       get_public_attendance_board: { Args: never; Returns: Json }
+      get_student_groups_state: { Args: never; Returns: Json }
       get_student_attendance: { Args: { student_erp: string }; Returns: Json }
       is_ta: { Args: { user_email: string }; Returns: boolean }
+      list_group_admin_state: { Args: never; Returns: Json }
+      reassign_group_creator_if_needed: {
+        Args: { p_actor_email: string; p_group_id: string; p_removed_student_erp: string }
+        Returns: undefined
+      }
+      student_add_group_member: {
+        Args: { p_group_number: number; p_student_erp: string }
+        Returns: Json
+      }
+      student_create_group: { Args: { p_group_number: number }; Returns: Json }
+      student_join_group: { Args: { p_group_number: number }; Returns: Json }
+      student_leave_group: { Args: never; Returns: Json }
+      student_remove_group_member: {
+        Args: { p_group_number: number; p_student_erp: string }
+        Returns: Json
+      }
       ta_add_late_day: {
         Args: { p_days: number; p_reason?: string; p_student_erp: string }
+        Returns: Json
+      }
+      ta_recompute_group_late_days: {
+        Args: { p_group_number: number }
+        Returns: Json
+      }
+      ta_set_student_group: {
+        Args: { p_group_number?: number; p_student_erp: string }
         Returns: Json
       }
       verify_ta_setup: {

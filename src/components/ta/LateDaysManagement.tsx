@@ -41,6 +41,7 @@ import {
 import { listRoster } from '@/features/roster';
 
 type LateDayAssignment = Tables<'late_day_assignments'>;
+type LateDayClaimBatch = Tables<'late_day_claim_batches'>;
 type LateDayClaim = Tables<'late_day_claims'>;
 type LateDayAdjustment = Tables<'late_day_adjustments'>;
 type RosterStudent = Pick<Tables<'students_roster'>, 'id' | 'erp' | 'student_name' | 'class_no'>;
@@ -52,11 +53,12 @@ interface GrantRpcResult {
 interface ClaimGroup {
   key: string;
   assignment_id: string;
-  student_email: string;
-  student_erp: string;
+  claimed_by_erp: string;
   total_days_used: number;
   latest_claimed_at: string;
   current_due_at: string;
+  member_count: number;
+  group_id: string | null;
   events: LateDayClaim[];
 }
 
@@ -121,8 +123,7 @@ const findMatchingClaimGroup = (groups: ClaimGroup[], query: string) => {
 
   const matches = groups.filter((group) =>
     [
-      group.student_email,
-      group.student_erp,
+      group.claimed_by_erp,
       group.assignment_id,
     ]
       .map((value) => normalizeLateDayValue(String(value ?? '')))
@@ -160,6 +161,7 @@ export default function LateDaysManagement({
     },
   );
   const [assignments, setAssignments] = useState<LateDayAssignment[]>([]);
+  const [claimBatches, setClaimBatches] = useState<LateDayClaimBatch[]>([]);
   const [claims, setClaims] = useState<LateDayClaim[]>([]);
   const [adjustments, setAdjustments] = useState<LateDayAdjustment[]>([]);
   const [rosterStudents, setRosterStudents] = useState<RosterStudent[]>([]);
@@ -249,61 +251,53 @@ export default function LateDaysManagement({
     [assignments]
   );
 
+  const rosterNameByErp = useMemo(
+    () =>
+      rosterStudents.reduce<Record<string, string>>((acc, student) => {
+        acc[student.erp] = student.student_name;
+        return acc;
+      }, {}),
+    [rosterStudents]
+  );
+
   const claimGroups = useMemo(() => {
-    const groups: Record<string, ClaimGroup> = {};
-
-    for (const claim of claims) {
-      const initialCurrentDueAt =
-        getCurrentLateDayDeadline(assignmentById[claim.assignment_id]?.due_at, claim.due_at_after_claim)?.toISOString() ??
-        claim.due_at_after_claim;
-      const key = `${claim.student_email}::${claim.student_erp}::${claim.assignment_id}`;
-      const existing = groups[key];
-
-      if (!existing) {
-        groups[key] = {
-          key,
-          assignment_id: claim.assignment_id,
-          student_email: claim.student_email,
-          student_erp: claim.student_erp,
-          total_days_used: claim.days_used,
-          latest_claimed_at: claim.claimed_at,
-          current_due_at: initialCurrentDueAt,
-          events: [claim],
-        };
-        continue;
-      }
-
-      existing.total_days_used += claim.days_used;
-      const claimCreatedAt = toValidDate(claim.claimed_at);
-      const existingLatestClaimAt = toValidDate(existing.latest_claimed_at);
-      if (claimCreatedAt && (!existingLatestClaimAt || claimCreatedAt.getTime() > existingLatestClaimAt.getTime())) {
-        existing.latest_claimed_at = claim.claimed_at;
-      }
-      const claimDueAfter = getCurrentLateDayDeadline(
-        assignmentById[claim.assignment_id]?.due_at,
-        claim.due_at_after_claim,
-      );
-      const existingCurrentDueAt = toValidDate(existing.current_due_at);
-      if (claimDueAfter && (!existingCurrentDueAt || claimDueAfter.getTime() > existingCurrentDueAt.getTime())) {
-        existing.current_due_at = claimDueAfter.toISOString();
-      }
-      existing.events.push(claim);
-    }
-
-    return Object.values(groups)
-      .map((group) => ({
-        ...group,
-        events: group.events.sort(
+    const groups = claimBatches.map((batch) => {
+      const events = claims
+        .filter((claim) => claim.claim_batch_id === batch.id)
+        .sort(
           (a, b) =>
             (toValidDate(b.claimed_at)?.getTime() ?? 0) - (toValidDate(a.claimed_at)?.getTime() ?? 0)
-        ),
+        );
+      const latestClaim = events[0] ?? null;
+      const currentDueAt =
+        latestClaim?.due_at_after_claim ??
+        getCurrentLateDayDeadline(assignmentById[batch.assignment_id]?.due_at, batch.claimed_at)?.toISOString() ??
+        batch.claimed_at;
+
+      return {
+        key: batch.id,
+        assignment_id: batch.assignment_id,
+        claimed_by_erp: batch.claimed_by_erp,
+        total_days_used: batch.days_used,
+        latest_claimed_at: batch.claimed_at,
+        current_due_at: currentDueAt,
+        member_count: Array.isArray(batch.membership_snapshot) ? batch.membership_snapshot.length : 0,
+        group_id: batch.group_id,
+        events,
+      };
+    });
+
+    return groups
+      .map((group) => ({
+        ...group,
+        latest_claimed_at: group.events[0]?.claimed_at ?? group.latest_claimed_at,
       }))
       .sort(
         (a, b) =>
           (toValidDate(b.latest_claimed_at)?.getTime() ?? 0) -
           (toValidDate(a.latest_claimed_at)?.getTime() ?? 0)
       );
-  }, [assignmentById, claims]);
+  }, [assignmentById, claimBatches, claims]);
 
   const selectedClaimGroup = useMemo(
     () => claimGroups.find((group) => group.key === selectedClaimGroupKey) ?? null,
@@ -318,7 +312,7 @@ export default function LateDaysManagement({
     return map;
   }, [claims]);
 
-  const grantedByErp = useMemo(() => {
+  const adjustmentByErp = useMemo(() => {
     const map: Record<string, number> = {};
     for (const adjustment of adjustments) {
       map[adjustment.student_erp] = (map[adjustment.student_erp] ?? 0) + adjustment.days_delta;
@@ -330,17 +324,17 @@ export default function LateDaysManagement({
     () =>
       rosterStudents.map((student) => {
         const used = usedByErp[student.erp] ?? 0;
-        const granted = grantedByErp[student.erp] ?? 0;
-        const totalAllowance = 3 + granted;
+        const adjustment = adjustmentByErp[student.erp] ?? 0;
+        const totalAllowance = 3 + adjustment;
         const remaining = Math.max(totalAllowance - used, 0);
         return {
           ...student,
           used,
-          granted,
+          adjustment,
           remaining,
         };
       }),
-    [rosterStudents, usedByErp, grantedByErp]
+    [adjustmentByErp, rosterStudents, usedByErp]
   );
 
   const filteredRosterWithBalances = useMemo(() => {
@@ -427,6 +421,7 @@ export default function LateDaysManagement({
     try {
       const [lateDaysData, rosterData] = await Promise.all([listLateDaysAdminData(), listRoster()]);
       setAssignments(lateDaysData.assignments ?? []);
+      setClaimBatches(lateDaysData.batches ?? []);
       setClaims(lateDaysData.claims ?? []);
       setAdjustments(lateDaysData.adjustments ?? []);
       setRosterStudents((rosterData.rows ?? [])
@@ -437,6 +432,7 @@ export default function LateDaysManagement({
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Failed to load late-day data: ${message}`);
       setAssignments([]);
+      setClaimBatches([]);
       setClaims([]);
       setRosterStudents([]);
       setAdjustments([]);
@@ -751,17 +747,19 @@ export default function LateDaysManagement({
           <CardHeader>
             <CardTitle>Late Day Claims</CardTitle>
             <CardDescription>
-              Grouped by student and assignment. Click a row to view day-by-day claim history.
+              Grouped by claim batch so group usage is shown once. Click a row to view day-by-day claim history.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Table containerClassName="max-h-[360px]">
                 <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow>
-                    <TableHead>Student</TableHead>
-                    <TableHead>ERP</TableHead>
+                    <TableHead>Assignment</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Claimed By</TableHead>
                     <TableHead>Assignment</TableHead>
                     <TableHead>Total Days</TableHead>
+                    <TableHead>Members</TableHead>
                     <TableHead>Latest Claim</TableHead>
                     <TableHead>Current Due</TableHead>
                     <TableHead className="text-right">Details</TableHead>
@@ -770,7 +768,7 @@ export default function LateDaysManagement({
                 <TableBody>
                   {claimGroups.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                         No late-day claims found.
                       </TableCell>
                     </TableRow>
@@ -781,10 +779,11 @@ export default function LateDaysManagement({
                         className="cursor-pointer"
                         onClick={() => openClaimBreakdown(group.key)}
                       >
-                        <TableCell className="font-medium">{group.student_email}</TableCell>
-                        <TableCell>{group.student_erp}</TableCell>
-                        <TableCell>{assignmentById[group.assignment_id]?.title ?? 'Unknown Assignment'}</TableCell>
+                        <TableCell className="font-medium">{assignmentById[group.assignment_id]?.title ?? 'Unknown Assignment'}</TableCell>
+                        <TableCell>{group.group_id ? 'Group claim' : 'Self claim'}</TableCell>
+                        <TableCell>{rosterNameByErp[group.claimed_by_erp] ?? group.claimed_by_erp}</TableCell>
                         <TableCell>{group.total_days_used}</TableCell>
+                        <TableCell>{group.member_count}</TableCell>
                         <TableCell>{formatDate(group.latest_claimed_at, 'PPP p')}</TableCell>
                         <TableCell>{formatDate(group.current_due_at, 'PPP p')}</TableCell>
                         <TableCell className="text-right">
@@ -833,7 +832,7 @@ export default function LateDaysManagement({
                   <TableRow>
                     <TableHead>Student</TableHead>
                     <TableHead className="text-right">Used</TableHead>
-                    <TableHead className="text-right">Granted</TableHead>
+                    <TableHead className="text-right">Adjust.</TableHead>
                     <TableHead className="text-right">Remaining</TableHead>
                     <TableHead className="text-right">Action</TableHead>
                   </TableRow>
@@ -857,7 +856,7 @@ export default function LateDaysManagement({
                           </div>
                         </TableCell>
                         <TableCell className="text-right">{student.used}</TableCell>
-                        <TableCell className="text-right">{student.granted}</TableCell>
+                        <TableCell className="text-right">{student.adjustment}</TableCell>
                         <TableCell className="text-right">
                           <Badge variant="outline" className="font-semibold">{student.remaining}</Badge>
                         </TableCell>
@@ -881,7 +880,7 @@ export default function LateDaysManagement({
             <DialogTitle>Claim Breakdown</DialogTitle>
             <DialogDescription>
               {selectedClaimGroup
-                ? `${selectedClaimGroup.student_email} (${selectedClaimGroup.student_erp}) · ${
+                ? `${rosterNameByErp[selectedClaimGroup.claimed_by_erp] ?? 'Unknown Student'} (${selectedClaimGroup.claimed_by_erp}) · ${
                     assignmentById[selectedClaimGroup.assignment_id]?.title ?? 'Unknown Assignment'
                   }`
                 : 'This claim group is no longer available.'}
@@ -895,6 +894,7 @@ export default function LateDaysManagement({
                 <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow>
                     <TableHead>Days</TableHead>
+                    <TableHead>Source</TableHead>
                     <TableHead>Claimed At</TableHead>
                     <TableHead>Due Before</TableHead>
                     <TableHead>Due After</TableHead>
@@ -905,6 +905,13 @@ export default function LateDaysManagement({
                   {selectedClaimGroup.events.map((claimEvent) => (
                     <TableRow key={claimEvent.id}>
                       <TableCell>{claimEvent.days_used}</TableCell>
+                      <TableCell>
+                        {claimEvent.claim_role === 'group_member'
+                          ? `Group sync for ${rosterNameByErp[claimEvent.student_erp] ?? claimEvent.student_erp}`
+                          : claimEvent.claim_role === 'initiator'
+                            ? `Initiated by ${claimEvent.claimed_by_erp}`
+                            : 'Direct self claim'}
+                      </TableCell>
                       <TableCell>{formatDate(claimEvent.claimed_at, 'PPP p')}</TableCell>
                       <TableCell>{formatDate(claimEvent.due_at_before_claim, 'PPP p')}</TableCell>
                       <TableCell>{formatDate(claimEvent.due_at_after_claim, 'PPP p')}</TableCell>

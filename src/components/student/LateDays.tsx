@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { sendNtfyNotification } from '@/lib/ntfy';
 import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
+import { useStudentGroupsState } from '@/features/groups';
 import {
   claimLateDays,
   getAllowedLateDayClaimOptions,
@@ -23,6 +24,7 @@ import {
 } from '@/features/late-days';
 
 type LateDayAssignment = Tables<'late_day_assignments'>;
+type LateDayClaimBatch = Tables<'late_day_claim_batches'>;
 type LateDayClaim = Tables<'late_day_claims'>;
 type LateDayAdjustment = Tables<'late_day_adjustments'>;
 
@@ -30,6 +32,8 @@ interface ClaimLateDaysResult {
   claim?: LateDayClaim;
   remaining_late_days?: number;
   total_allowance?: number;
+  group_number?: number;
+  affected_students_count?: number;
 }
 
 interface LateDaysSummary {
@@ -57,6 +61,7 @@ interface AssignmentSummary {
 }
 
 const BASE_LATE_DAYS = 3;
+const GROUP_SYNC_REASON_PREFIX = 'group-shared-sync:';
 
 const availabilityConfig: Record<AvailabilityState, { label: string; className: string }> = {
   claimable: { label: 'Can Claim', className: 'bg-emerald-500 hover:bg-emerald-600 text-white border-transparent' },
@@ -66,11 +71,25 @@ const availabilityConfig: Record<AvailabilityState, { label: string; className: 
   archived: { label: 'Archived', className: 'bg-muted text-muted-foreground border-border' },
 };
 
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as { message?: unknown }).message === 'string') {
+    return (error as { message: string }).message;
+  }
+
+  return fallback;
+};
+
 export default function LateDays({ onSummaryChange }: LateDaysProps) {
   const { user } = useAuth();
   const { erp } = useERP();
+  const { data: groupState } = useStudentGroupsState(Boolean(user?.email));
 
   const [assignments, setAssignments] = useState<LateDayAssignment[]>([]);
+  const [claimBatches, setClaimBatches] = useState<LateDayClaimBatch[]>([]);
   const [claims, setClaims] = useState<LateDayClaim[]>([]);
   const [adjustments, setAdjustments] = useState<LateDayAdjustment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -88,10 +107,52 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
     [assignments]
   );
 
-  const grantedDays = useMemo(() => adjustments.reduce((sum, adjustment) => sum + adjustment.days_delta, 0), [adjustments]);
+  const manualAdjustments = useMemo(
+    () => adjustments.filter((adjustment) => !String(adjustment.reason ?? '').startsWith(GROUP_SYNC_REASON_PREFIX)),
+    [adjustments],
+  );
+  const groupSyncAdjustments = useMemo(
+    () => adjustments.filter((adjustment) => String(adjustment.reason ?? '').startsWith(GROUP_SYNC_REASON_PREFIX)),
+    [adjustments],
+  );
+  const grantedDays = useMemo(() => manualAdjustments.reduce((sum, adjustment) => sum + adjustment.days_delta, 0), [manualAdjustments]);
+  const totalAdjustmentDays = useMemo(() => adjustments.reduce((sum, adjustment) => sum + adjustment.days_delta, 0), [adjustments]);
+  const groupSyncDays = useMemo(
+    () => Math.max(groupSyncAdjustments.reduce((sum, adjustment) => sum - adjustment.days_delta, 0), 0),
+    [groupSyncAdjustments],
+  );
   const usedDays = useMemo(() => claims.reduce((sum, claim) => sum + claim.days_used, 0), [claims]);
-  const totalAllowance = BASE_LATE_DAYS + grantedDays;
+  const totalAllowance = BASE_LATE_DAYS + totalAdjustmentDays;
   const remaining = Math.max(totalAllowance - usedDays, 0);
+  const currentGroup = useMemo(
+    () => groupState.groups.find((group) => group.id === groupState.current_group_id) ?? null,
+    [groupState.current_group_id, groupState.groups],
+  );
+  const currentGroupBatches = useMemo(
+    () => claimBatches.filter((batch) => batch.group_id !== null && batch.group_id === currentGroup?.id),
+    [claimBatches, currentGroup?.id],
+  );
+  const personalClaims = useMemo(
+    () => claims.filter((claim) => claim.student_erp === erp),
+    [claims, erp],
+  );
+  const groupUsedDays = useMemo(() => Math.max(usedDays + groupSyncDays, usedDays), [groupSyncDays, usedDays]);
+  const groupRemainingDays = Math.max(BASE_LATE_DAYS - groupUsedDays, 0);
+  const currentGroupMemberNames = useMemo(
+    () =>
+      new Map(
+        (currentGroup?.members ?? []).map((member) => [member.erp, member.student_name]),
+      ),
+    [currentGroup?.members],
+  );
+  const groupClaimActivity = useMemo(
+    () =>
+      currentGroupBatches.map((batch) => ({
+        ...batch,
+        claimantName: currentGroupMemberNames.get(batch.claimed_by_erp) ?? batch.claimed_by_erp,
+      })),
+    [currentGroupBatches, currentGroupMemberNames],
+  );
 
   useEffect(() => {
     onSummaryChange?.({ remaining, totalAllowance, grantedDays, usedDays });
@@ -192,6 +253,7 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
   const fetchLateDays = useCallback(async (mode: 'initial' | 'silent' = 'initial') => {
     if (!user?.email || !erp) {
       setAssignments([]);
+      setClaimBatches([]);
       setClaims([]);
       setAdjustments([]);
       setIsLoading(false);
@@ -205,12 +267,14 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
     try {
       const data = await listStudentLateDaysData();
       setAssignments(data.assignments ?? []);
+      setClaimBatches(data.batches ?? []);
       setClaims(data.claims ?? []);
       setAdjustments(data.adjustments ?? []);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Failed to load late-day data: ${message}`);
       setAssignments([]);
+      setClaimBatches([]);
       setClaims([]);
       setAdjustments([]);
     } finally {
@@ -233,6 +297,7 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
       `student-late-days-${user.email}`,
       [
         { table: 'late_day_assignments' },
+        { table: 'late_day_claim_batches' },
         { table: 'late_day_claims' },
         { table: 'late_day_adjustments' },
       ],
@@ -308,16 +373,11 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
       const result = await claimLateDays(selectedSummary.assignment.id, days);
       payload = (result.data ?? null) as ClaimLateDaysResult | null;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      toast.error(message);
+      toast.error(getErrorMessage(error, 'Unknown error'));
       setIsClaiming(false);
       return;
     }
-    if (payload?.claim) {
-      setClaims((prev) => [payload.claim as LateDayClaim, ...prev]);
-    } else {
-      await fetchLateDays();
-    }
+    await fetchLateDays('silent');
 
     const claimedAt = payload?.claim?.claimed_at ?? new Date().toISOString();
     const dueAfterClaim =
@@ -335,6 +395,9 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
       `Claimed At: ${claimedAt}`,
       `New Due: ${dueAfterClaim ?? '-'}`,
       `Remaining Late Days: ${remainingAfterClaim}`,
+      ...(typeof payload?.group_number === 'number'
+        ? [`Group: ${payload.group_number}`, `Affected Members: ${payload.affected_students_count ?? 1}`]
+        : []),
     ].join('\n');
 
     void sendNtfyNotification({
@@ -348,7 +411,11 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
       }
     });
 
-    toast.success('Late days claimed successfully.');
+    toast.success(
+      typeof payload?.group_number === 'number'
+        ? `Late days claimed for Group ${payload.group_number}.`
+        : 'Late days claimed successfully.',
+    );
     setIsClaiming(false);
     closeClaimDialog();
   };
@@ -363,36 +430,58 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Remaining Late Days</CardDescription>
+            <CardDescription>{currentGroup ? 'Shared Late Days Left' : 'Late Days Left'}</CardDescription>
             <CardTitle>{remaining}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Used Days</CardDescription>
+            <CardDescription>Your Claimed Days</CardDescription>
             <CardTitle>{usedDays}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Can Claim Now</CardDescription>
-            <CardTitle>{claimableSummaries.length}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Awaiting Deadline</CardDescription>
-            <CardTitle>{awaitingDeadlineCount}</CardTitle>
+            <CardDescription>{currentGroup ? 'Group Late Days Remaining' : 'Awaiting Deadline'}</CardDescription>
+            <CardTitle>{currentGroup ? groupRemainingDays : awaitingDeadlineCount}</CardTitle>
           </CardHeader>
         </Card>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Total allowance: {totalAllowance} (base {BASE_LATE_DAYS}{grantedDays > 0 ? ` + ${grantedDays} TA-granted` : ''}). Claimed across {claimedAssignmentCount} assignment(s).
+      <p className="text-sm text-muted-foreground">
+        {currentGroup
+          ? `Your group shares a total of ${BASE_LATE_DAYS} late days. When any member claims late days, the shared total goes down for everyone in the group.`
+          : `You can use up to ${BASE_LATE_DAYS} late days unless TAs add more.`}
       </p>
+
+      {currentGroup && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Group Late Days</CardTitle>
+            <CardDescription>
+              Group {currentGroup.group_number} shares one pool of {BASE_LATE_DAYS} late days. Any claim by a member reduces the remaining group balance.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline">{groupUsedDays} used</Badge>
+              <Badge variant="outline">{groupRemainingDays} left</Badge>
+            </div>
+            <div className="text-muted-foreground">
+              {groupClaimActivity.length > 0
+                ? 'Below is the claim activity for members in your group.'
+                : usedDays > 0
+                  ? `You have already used ${usedDays} late day${usedDays === 1 ? '' : 's'}. No other member in your current group has claimed a late day yet.`
+                  : groupUsedDays > 0
+                    ? `${groupUsedDays} late day${groupUsedDays === 1 ? '' : 's'} are already counted against this group's balance, but there are no visible claim records from the current group roster yet.`
+                    : 'No one in your group has claimed a late day yet.'}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -400,11 +489,11 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
             <div>
               <CardTitle>Assignment Status</CardTitle>
               <CardDescription>
-                Assignments without deadlines are visible but cannot be claimed until TAs set a deadline. If a deadline has already passed, you can still claim enough late days to cover the current lateness.
+                Claiming late days always uses your remaining balance. If you are in a group, the claim also uses the shared group total.
               </CardDescription>
             </div>
             <Button onClick={() => openClaimDialog()} disabled={claimableSummaries.length === 0 || remaining <= 0}>
-              Avail Late Days
+              Use Late Days
             </Button>
           </div>
         </CardHeader>
@@ -412,6 +501,11 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
           {grantedDays > 0 && (
             <div className="mb-4 rounded-lg border border-emerald-300/50 bg-emerald-50/40 p-3 text-sm text-emerald-800">
               TA grants applied: +{grantedDays} late day(s).
+            </div>
+          )}
+          {groupSyncDays > 0 && (
+            <div className="mb-4 rounded-lg border border-amber-300/50 bg-amber-50/40 p-3 text-sm text-amber-900">
+              Your current balance already reflects late days claimed by your group.
             </div>
           )}
 
@@ -482,8 +576,8 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Claim History</CardTitle>
-          <CardDescription>Immutable history of each claim you have made.</CardDescription>
+          <CardTitle>Your Claim History</CardTitle>
+          <CardDescription>Claims you personally made.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border overflow-x-auto">
@@ -491,6 +585,7 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Assignment</TableHead>
+                  <TableHead>Claim Type</TableHead>
                   <TableHead>Days Used</TableHead>
                   <TableHead>Claimed At</TableHead>
                   <TableHead>Previous Due</TableHead>
@@ -498,22 +593,25 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {claims.length === 0 ? (
+                {personalClaims.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                      No late-day claims yet.
+                    <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                      You have not claimed late days yet.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  claims.map((claim) => (
-                    <TableRow key={claim.id}>
-                      <TableCell className="font-medium">{assignmentTitleById[claim.assignment_id] ?? 'Unknown Assignment'}</TableCell>
-                      <TableCell>{claim.days_used}</TableCell>
-                      <TableCell>{formatDate(claim.claimed_at, 'PPP p')}</TableCell>
-                      <TableCell>{formatDate(claim.due_at_before_claim, 'PPP p')}</TableCell>
-                      <TableCell>{formatDate(claim.due_at_after_claim, 'PPP p')}</TableCell>
-                    </TableRow>
-                  ))
+                  personalClaims.map((claim) => {
+                    return (
+                      <TableRow key={claim.id}>
+                        <TableCell className="font-medium">{assignmentTitleById[claim.assignment_id] ?? 'Unknown Assignment'}</TableCell>
+                        <TableCell>{claim.group_id ? 'Claimed while grouped' : 'Self claim'}</TableCell>
+                        <TableCell>{claim.days_used}</TableCell>
+                        <TableCell>{formatDate(claim.claimed_at, 'PPP p')}</TableCell>
+                        <TableCell>{formatDate(claim.due_at_before_claim, 'PPP p')}</TableCell>
+                        <TableCell>{formatDate(claim.due_at_after_claim, 'PPP p')}</TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
@@ -521,12 +619,53 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
         </CardContent>
       </Card>
 
+      {currentGroup && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Group Claim Activity</CardTitle>
+            <CardDescription>Who in your group claimed late days, when they claimed, and how many days they used.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Assignment</TableHead>
+                    <TableHead>Claimed By</TableHead>
+                    <TableHead>Days Used</TableHead>
+                    <TableHead>Claimed At</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {groupClaimActivity.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                        No group claims yet.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    groupClaimActivity.map((batch) => (
+                      <TableRow key={batch.id}>
+                        <TableCell className="font-medium">{assignmentTitleById[batch.assignment_id] ?? 'Unknown Assignment'}</TableCell>
+                        <TableCell>{batch.claimantName}</TableCell>
+                        <TableCell>{batch.days_used}</TableCell>
+                        <TableCell>{formatDate(batch.claimed_at, 'PPP p')}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Dialog open={isDialogOpen} onOpenChange={(open) => (!open ? closeClaimDialog() : setIsDialogOpen(true))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Avail Late Days</DialogTitle>
+            <DialogTitle>Use Late Days</DialogTitle>
             <DialogDescription>
-              Choose a claimable assignment and how many late days to apply.
+              Choose a claimable assignment and how many late days to apply from your remaining balance.
             </DialogDescription>
           </DialogHeader>
 
@@ -593,6 +732,11 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
                     <div className="mt-1">
                       New due date if claimed: {previewDueAt ? format(previewDueAt, 'PPP p') : '-'}
                     </div>
+                    {currentGroup && (
+                      <div className="mt-1">
+                        Group late days left after this claim: {Math.max(groupRemainingDays - selectedDaysCount, 0)}
+                      </div>
+                    )}
                   </div>
                 </>
               )}

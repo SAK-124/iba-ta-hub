@@ -5,29 +5,40 @@ import type {
   ClaimLateDaysResult,
   LateDayAdjustmentRow,
   LateDayAssignmentRow,
+  LateDayClaimBatchRow,
   LateDayClaimRow,
   LateDaySummary,
 } from './types';
 
-export const getLateDaysSummary = async (studentEmail: string, studentErp: string): Promise<LateDaySummary> => {
-  const [{ data: claims, error: claimsError }, { data: adjustments, error: adjustmentsError }] = await Promise.all([
-    supabase.from('late_day_claims').select('days_used').eq('student_email', studentEmail),
-    supabase.from('late_day_adjustments').select('days_delta').eq('student_erp', studentErp),
-  ]);
+export const getLateDaysSummary = async (studentErp: string): Promise<LateDaySummary> => {
+  const { data, error } = await supabase.rpc('get_late_day_summary', {
+    p_student_erp: studentErp,
+  });
 
-  if (claimsError || adjustmentsError) {
-    throw toAppError(claimsError || adjustmentsError, 'late_days_summary_fetch_failed');
+  if (error) {
+    throw toAppError(error, 'late_days_summary_fetch_failed');
   }
 
-  const used = (claims ?? []).reduce((sum, claim) => sum + toNumberOr(claim.days_used), 0);
-  const granted = (adjustments ?? []).reduce((sum, adjustment) => sum + toNumberOr(adjustment.days_delta), 0);
-  const totalAllowance = 3 + granted;
+  if (!isObjectRecord(data)) {
+    return {
+      remaining: 3,
+      totalAllowance: 3,
+      used: 0,
+      granted: 0,
+      groupNumber: null,
+      groupUsed: 0,
+      groupRemaining: 3,
+    };
+  }
 
   return {
-    remaining: Math.max(totalAllowance - used, 0),
-    totalAllowance,
-    used,
-    granted,
+    remaining: toNumberOr(data.remaining, 3),
+    totalAllowance: toNumberOr(data.totalAllowance, 3),
+    used: toNumberOr(data.used, 0),
+    granted: toNumberOr(data.granted, 0),
+    groupNumber: typeof data.group_number === 'number' ? data.group_number : null,
+    groupUsed: toNumberOr(data.group_used, 0),
+    groupRemaining: toNumberOr(data.group_remaining, 3),
   };
 };
 
@@ -76,21 +87,26 @@ export const taAddLateDay = async (studentErp: string, days: number, reason?: st
 
 export const listLateDaysAdminData = async (): Promise<{
   assignments: LateDayAssignmentRow[];
+  batches: LateDayClaimBatchRow[];
   claims: LateDayClaimRow[];
   adjustments: LateDayAdjustmentRow[];
 }> => {
-  const [assignmentResponse, claimResponse, adjustmentsResponse] = await Promise.all([
+  const [assignmentResponse, batchResponse, claimResponse, adjustmentsResponse] = await Promise.all([
     supabase
       .from('late_day_assignments')
       .select('*')
       .order('active', { ascending: false })
       .order('due_at', { ascending: true, nullsFirst: false }),
+    supabase.from('late_day_claim_batches').select('*').order('claimed_at', { ascending: false }),
     supabase.from('late_day_claims').select('*').order('claimed_at', { ascending: false }),
     supabase.from('late_day_adjustments').select('*').order('created_at', { ascending: false }),
   ]);
 
   if (assignmentResponse.error) {
     throw toAppError(assignmentResponse.error, 'late_days_assignments_fetch_failed');
+  }
+  if (batchResponse.error) {
+    throw toAppError(batchResponse.error, 'late_days_claim_batches_fetch_failed');
   }
   if (claimResponse.error) {
     throw toAppError(claimResponse.error, 'late_days_claims_fetch_failed');
@@ -101,6 +117,7 @@ export const listLateDaysAdminData = async (): Promise<{
 
   return {
     assignments: assignmentResponse.data ?? [],
+    batches: batchResponse.data ?? [],
     claims: claimResponse.data ?? [],
     adjustments: adjustmentsResponse.data ?? [],
   };
@@ -108,21 +125,26 @@ export const listLateDaysAdminData = async (): Promise<{
 
 export const listStudentLateDaysData = async (): Promise<{
   assignments: LateDayAssignmentRow[];
+  batches: LateDayClaimBatchRow[];
   claims: LateDayClaimRow[];
   adjustments: LateDayAdjustmentRow[];
 }> => {
-  const [assignmentResponse, claimsResponse, adjustmentResponse] = await Promise.all([
+  const [assignmentResponse, batchResponse, claimsResponse, adjustmentResponse] = await Promise.all([
     supabase
       .from('late_day_assignments')
       .select('*')
       .order('active', { ascending: false })
       .order('due_at', { ascending: true, nullsFirst: false }),
+    supabase.from('late_day_claim_batches').select('*').order('claimed_at', { ascending: false }),
     supabase.from('late_day_claims').select('*').order('claimed_at', { ascending: false }),
     supabase.from('late_day_adjustments').select('*').order('created_at', { ascending: false }),
   ]);
 
   if (assignmentResponse.error) {
     throw toAppError(assignmentResponse.error, 'late_days_assignments_fetch_failed');
+  }
+  if (batchResponse.error) {
+    throw toAppError(batchResponse.error, 'late_days_claim_batches_fetch_failed');
   }
   if (claimsResponse.error) {
     throw toAppError(claimsResponse.error, 'late_days_claims_fetch_failed');
@@ -133,6 +155,7 @@ export const listStudentLateDaysData = async (): Promise<{
 
   return {
     assignments: assignmentResponse.data ?? [],
+    batches: batchResponse.data ?? [],
     claims: claimsResponse.data ?? [],
     adjustments: adjustmentResponse.data ?? [],
   };

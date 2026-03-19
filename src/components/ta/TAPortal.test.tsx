@@ -35,6 +35,10 @@ vi.mock('./RosterManagement', () => ({
   default: () => <div>Roster Management Mock</div>,
 }));
 
+vi.mock('./GroupsManagement', () => ({
+  default: () => <div>Groups Management Mock</div>,
+}));
+
 vi.mock('./LateDaysManagement', () => ({
   default: () => <div>Late Days Management Mock</div>,
 }));
@@ -64,7 +68,7 @@ describe('TAPortal persistence', () => {
   it('restores the persisted TA module', async () => {
     window.sessionStorage.setItem(
       'aamd-workspace:ta:ayeshamaqsood5100@gmail.com:active-module',
-      JSON.stringify('issues'),
+      JSON.stringify('groups'),
     );
 
     render(
@@ -73,7 +77,7 @@ describe('TAPortal persistence', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('Issue Management Mock')).toBeInTheDocument();
+    expect(await screen.findByText('Groups Management Mock')).toBeInTheDocument();
     expect(screen.queryByText('Zoom Processor')).not.toBeInTheDocument();
   });
 

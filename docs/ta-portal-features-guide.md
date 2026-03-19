@@ -23,6 +23,7 @@ The guide is intentionally procedural. It focuses on what exists in the current 
 - `Consolidated View`
 - `Session Management`
 - `Rule Exceptions`
+- `Groups`
 - `Late Days`
 - `Issue Queue`
 - `Export Data`
@@ -654,6 +655,7 @@ Create late-day-enabled assignments, review student claims, and grant extra late
 ### Important rule
 
 Students have a base allowance of `3` late days, plus any TA-granted adjustments.
+If a student is in a group, the group shares one effective pool of `3` late days. Original claim rows remain attached to the student who actually claimed, but the remaining balance for every current group member is recalculated from that group's current claim usage. Historical group syncing only changes when a TA explicitly recalculates from `Groups`, and deleting all groups removes derived group syncing without deleting original personal claim rows or TA manual grants.
 
 ### Create assignment workflow
 
@@ -687,9 +689,10 @@ Students have a base allowance of `3` late days, plus any TA-granted adjustments
 ### Review claim workflow
 
 1. In `Late Day Claims`, open the relevant claim breakdown.
-2. Review the claim rows.
+2. Review which rows are original claims and which balances reflect grouped usage.
 3. If a claim row is invalid, delete it carefully.
-4. Confirm the balances now look correct.
+4. If a group balance looks stale after membership changes, return to `Groups` and use the recalculation action there.
+5. Confirm the balances now look correct.
 
 ### What to review before leaving
 
@@ -702,7 +705,128 @@ Students have a base allowance of `3` late days, plus any TA-granted adjustments
 - If assignment creation/update complains about schema issues:
   - the database schema may be outdated for nullable deadlines
 - If a student balance looks wrong:
-  - check both granted adjustments and claim rows
+  - check both granted adjustments and original claim rows
+  - if the student is grouped, also verify the current group membership and whether group balances need recalculation from `Groups`
+
+---
+
+## Runbook: Manage Groups
+
+### Goal
+
+Create and maintain course-wide numbered groups, move students between groups, reopen or relock student editing windows, and recalculate shared late-day balances when membership changes should retroactively affect balances.
+
+### Where to go
+
+- `TA Dashboard` -> `Groups`
+
+### Important rules
+
+- Group numbers are global course-wide labels such as `Group 1`, `Group 2`, and `Group 3`.
+- A student can belong to only one group at a time.
+- Groups can have up to `5` members.
+- Students can edit their own group only during the first `3` days after the group is created.
+- The `Groups` module has a left-side group directory and a right-side student roster.
+- The top metric tiles filter the roster on the right. They do not change the group list on the left.
+- Per-student assignment is done only from the target group input on that student's row.
+- The top group search box is only for finding groups. It is not a shared assignment target.
+- `Recalculate All Groups` updates shared group late-day balances from current original claims.
+- `Delete All Groups` removes groups, memberships, and derived group-sync effects, but keeps original personal late-day claims and TA manual grants.
+
+### Understand the layout
+
+1. Open `Groups`.
+2. Use the left side to search, inspect, and multi-select groups.
+3. Use the right side to search the roster, apply metric filters, and assign or remove individual students.
+4. Use the icon actions in the top-right of the group card area for:
+   - `+` to create a new group
+   - recalculate all group late-day balances
+   - delete all groups
+
+### Create a new group workflow
+
+1. Open `Groups`.
+2. Click the `+` button.
+3. Enter the required group number.
+4. Optionally enter a display name.
+5. Set the student edit deadline.
+6. Use the left student column to search grouped students by ERP, name, or current group.
+7. Use the right student column to search unassigned students by ERP or name.
+8. Select the students you want in the new group.
+9. Save the group.
+10. Confirm the new group appears in the left directory with the expected members.
+
+### Assign or move a student workflow
+
+1. Open `Groups`.
+2. Use the top metric tiles if you want to narrow the roster first, for example `Unassigned Students`.
+3. Search by ERP, name, class, or current group in the right-side roster search.
+4. Enter the target group number on that student's row.
+5. Click `Assign Group`.
+6. Confirm the student now shows the expected current group.
+
+### Remove a student from a group workflow
+
+1. Search for the student in the right-side roster.
+2. Click `Remove From Group`.
+3. Confirm the student now appears as unassigned.
+
+### Enable student editing workflow
+
+1. Open `Groups`.
+2. To reopen editing for every group, click `Enable Editing For Everyone`.
+3. To reopen editing for specific groups only:
+4. Select those groups from the left directory.
+5. Click `Enable Editing For Selected`.
+6. Confirm the selected groups no longer show as locked.
+
+### Set edit deadline workflow
+
+1. Open `Groups`.
+2. Click `Set Deadline For Everyone` or select groups and click `Set Deadline For Selected`.
+3. Enter the new deadline in the dialog.
+4. Save the deadline.
+5. Confirm the updated editable-until timestamp on the affected groups.
+
+### Recalculate shared late-day balances workflow
+
+1. Open `Groups`.
+2. Click the recalculate icon in the top-right action cluster.
+3. Review the confirmation carefully.
+4. Confirm the recalculation.
+5. Re-check affected balances in `Late Days` if you need to validate the result.
+
+### Delete all groups workflow
+
+1. Open `Groups`.
+2. Click the delete icon in the top-right action cluster.
+3. Review the confirmation carefully.
+4. Confirm the delete.
+5. Verify the group list is empty and that student rows are now unassigned.
+6. If you need to validate late days afterward, open `Late Days` and confirm original claims still exist.
+
+### What to review before leaving
+
+- The correct students are assigned to the correct group number.
+- No group exceeds `5` members.
+- The intended edit locks or deadlines are visible on the affected groups.
+- You only recalculated balances when retroactive late-day changes were intentional.
+- You only deleted all groups when you intended to remove the entire group structure.
+
+### Common mistakes and recovery
+
+- If a student cannot be assigned:
+  - check whether they are already in another group
+  - check whether the target group is already full
+- If a group create attempt fails:
+  - check whether the group number already exists
+  - check whether at least one student was selected
+- If recalculation fails:
+  - review whether the latest group state has finished syncing
+  - refresh `Groups` and retry
+- If a delete-all action fails:
+  - check whether the latest safe-update migration has been applied
+  - retry after refreshing the module
 
 ---
 
@@ -1583,6 +1707,20 @@ Auxilium should favor the primary path before optional prerequisites.
 | `prepare archive for assignment 4` | Select the assignment and open archive confirmation | `Archive` | Prepared | User clicks `Archive` |
 | `prepare delete claim for ahsan` | Open claim history and ready the delete confirmation | `Delete Claim` | Prepared | User clicks `Delete Claim` |
 
+### `Groups`
+
+| User intent | What Auxilium should infer | Buttons / controls involved | Auto behavior | Final boundary |
+| --- | --- | --- | --- | --- |
+| `open groups` | Open the `Groups` module | dashboard group card | Direct | None |
+| `move 26611 to group 4` | Search the roster and prepare a move to `Group 4` on that student's row | right-side roster search, row target input, `Assign Group` | Prepared | User clicks `Assign Group` |
+| `remove ahsan from group` | Search the roster row and prepare removal | right-side roster search, `Remove From Group` | Prepared | User clicks `Remove From Group` |
+| `recompute group late days` | Open `Groups` and explain that the recalculate icon updates all groups, not just one group row | recalculate icon | Guided | User confirms recalculation |
+| `create group 12` | Open `Groups` and guide the TA to the `+` modal with group number entry | `+`, group number input, member selectors | Guided | User clicks `Create Group` |
+| `show unassigned students` | Open `Groups` and activate the roster filter for unassigned rows | `Unassigned Students` metric tile | Direct | None |
+| `enable editing for selected groups` | Open `Groups` and guide the TA to select groups from the left directory first | group checkboxes, `Enable Editing For Selected` | Guided | User clicks the button |
+| `set a group deadline` | Open `Groups` and point to the deadline controls | `Set Deadline For Everyone`, `Set Deadline For Selected` | Guided | User saves the deadline |
+| `delete all groups` | Open `Groups` and prepare the destructive confirmation | delete icon | Prepared | User confirms delete |
+
 ### `Export Data`
 
 | User intent | What Auxilium should infer | Buttons / controls involved | Auto behavior | Final boundary |
@@ -1619,6 +1757,7 @@ These files currently define the TA workflows described above:
 - `src/components/ta/AttendanceMarking.tsx`
 - `src/components/ta/SessionManagement.tsx`
 - `src/components/ta/RosterManagement.tsx`
+- `src/components/ta/GroupsManagement.tsx`
 - `src/components/ta/ConsolidatedView.tsx`
 - `src/components/ta/RuleExceptions.tsx`
 - `src/components/ta/LateDaysManagement.tsx`

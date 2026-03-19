@@ -5,6 +5,7 @@ export type TAHelpModuleId =
   | 'consolidated'
   | 'exceptions'
   | 'roster'
+  | 'groups'
   | 'late-days'
   | 'export'
   | 'issues'
@@ -14,6 +15,7 @@ export type TAHelpAttendanceTab = 'zoom' | 'attendance';
 export type AttendanceFilterToken = 'present' | 'absent' | 'penalized';
 export type HelpActionTargetKind =
   | 'student'
+  | 'group'
   | 'session'
   | 'ticket'
   | 'assignment'
@@ -125,6 +127,12 @@ export interface LateDaysAgentCommand {
   dueAt?: string;
 }
 
+export interface GroupsAgentCommand {
+  kind: 'search-student' | 'prepare-assign-student' | 'prepare-remove-student' | 'prepare-recompute-group';
+  query?: string;
+  groupNumber?: number;
+}
+
 export interface ExportAgentCommand {
   kind: 'download-csv';
 }
@@ -154,6 +162,7 @@ export type HelpAssistantAction =
   | { type: 'consolidated-command'; command: ConsolidatedAgentCommand }
   | { type: 'rule-exceptions-command'; command: RuleExceptionsAgentCommand }
   | { type: 'issue-queue-command'; command: IssueQueueAgentCommand }
+  | { type: 'groups-command'; command: GroupsAgentCommand }
   | { type: 'late-days-command'; command: LateDaysAgentCommand }
   | { type: 'export-command'; command: ExportAgentCommand }
   | { type: 'settings-command'; command: SettingsAgentCommand };
@@ -195,6 +204,7 @@ const MODULE_NAME_BY_ID: Record<TAHelpModuleId, string> = {
   consolidated: 'Consolidated View',
   exceptions: 'Rule Exceptions',
   roster: 'Roster Management',
+  groups: 'Groups',
   'late-days': 'Late Days',
   export: 'Export Data',
   issues: 'Issue Queue',
@@ -208,6 +218,7 @@ const MODULE_ALIASES: Array<{ module: TAHelpModuleId; aliases: string[] }> = [
   { module: 'consolidated', aliases: ['consolidated view', 'consolidated', 'attendance table'] },
   { module: 'exceptions', aliases: ['rule exceptions', 'rule exception', 'exceptions', 'camera tracker', 'warned tracker'] },
   { module: 'roster', aliases: ['roster management', 'roster', 'student list'] },
+  { module: 'groups', aliases: ['groups', 'group management', 'student groups', 'group tab'] },
   { module: 'late-days', aliases: ['late days', 'late day', 'claims'] },
   { module: 'export', aliases: ['export data', 'export', 'download attendance'] },
   { module: 'issues', aliases: ['issue queue', 'issue tracker', 'issues', 'tickets', 'ticket'] },
@@ -623,6 +634,8 @@ const getActionModuleId = (action: HelpAssistantAction): TAHelpModuleId => {
       return 'exceptions';
     case 'issue-queue-command':
       return 'issues';
+    case 'groups-command':
+      return 'groups';
     case 'late-days-command':
       return 'late-days';
     case 'export-command':
@@ -1203,6 +1216,63 @@ const parseIssuePlan = (question: string): HelpAssistantPlan | null => {
   };
 };
 
+const parseGroupsPlan = (question: string): HelpAssistantPlan | null => {
+  const normalized = normalize(question);
+  if (!/\bgroups?\b/.test(normalized)) return null;
+
+  const query = extractErp(question) ?? sanitizeNamedEntity(extractNamedEntity(question));
+  const groupNumber = extractInteger(question, /group\s+#?(\d+)/i);
+
+  if (/recompute|resync|re-?apply/.test(normalized) && groupNumber) {
+    return {
+      action: { type: 'groups-command', command: { kind: 'prepare-recompute-group', groupNumber } },
+      response: buildPreparedResponse({
+        done: ['Opened `Groups`.', `Prepared the retroactive late-day recompute for \`Group ${groupNumber}\`.`],
+        missing: ['Review the warning before you confirm the recompute because it can change historical balances.'],
+        finalButton: 'Recompute Late Days',
+      }),
+    };
+  }
+
+  if (/assign|move/.test(normalized) && query && groupNumber) {
+    return {
+      action: { type: 'groups-command', command: { kind: 'prepare-assign-student', query, groupNumber } },
+      response: buildPreparedResponse({
+        done: ['Opened `Groups`.', `Searched for \`${query}\`.`, `Prepared the assignment to \`Group ${groupNumber}\`.`],
+        finalButton: 'Assign Group',
+      }),
+    };
+  }
+
+  if (/(remove|unassign).*(group|groups)/.test(normalized) && query) {
+    return {
+      action: { type: 'groups-command', command: { kind: 'prepare-remove-student', query } },
+      response: buildPreparedResponse({
+        done: ['Opened `Groups`.', `Searched for \`${query}\`.`],
+        finalButton: 'Remove From Group',
+      }),
+    };
+  }
+
+  if ((/search|find|show/.test(normalized) && query) || (/student/.test(normalized) && query && !groupNumber)) {
+    return {
+      action: { type: 'groups-command', command: { kind: 'search-student', query } },
+      response: buildPreparedResponse({
+        done: ['Opened `Groups`.', `Prepared the student search for \`${query}\`.`],
+        finalButton: null,
+      }),
+    };
+  }
+
+  return {
+    action: { type: 'open-module', module: 'groups' },
+    response: buildPreparedResponse({
+      done: ['Opened `Groups`.'],
+      finalButton: null,
+    }),
+  };
+};
+
 const parseLateDaysPlan = (question: string): HelpAssistantPlan | null => {
   const normalized = normalize(question);
   if (!/\blate day|late days|claim\b/.test(normalized)) return null;
@@ -1218,7 +1288,7 @@ const parseLateDaysPlan = (question: string): HelpAssistantPlan | null => {
     }
 
     return {
-      action: { type: 'late-days-command', command: { kind: 'open-grant-dialog', query, days, reason: null ?? undefined } },
+      action: { type: 'late-days-command', command: { kind: 'open-grant-dialog', query, days } },
       response: buildPreparedResponse({
         done: ['Opened `Late Days`.', `Searched the roster balances for \`${query}\`.`, `Prepared the grant dialog with \`${days}\` late day${days === '1' ? '' : 's'}.`],
         missing: ['Add a reason if you want it recorded before the final grant click.'],
@@ -1395,6 +1465,7 @@ const parseDirectSemanticPlan = (question: string, snapshot?: HelpContextSnapsho
     parseSessionPlan(question) ??
     parseRosterPlan(question, snapshot) ??
     parseIssuePlan(question) ??
+    parseGroupsPlan(question) ??
     parseLateDaysPlan(question) ??
     parseSettingsPlan(question) ??
     parseConsolidatedPlan(question) ??
@@ -1494,6 +1565,18 @@ export const buildActionResultMessage = (action: HelpAssistantAction) => {
               ? 'Escalate to Exception'
               : action.command.kind === 'prepare-delete-ticket'
                 ? 'Delete'
+                : null,
+      });
+    case 'groups-command':
+      return buildPreparedResponse({
+        done: ['Opened `Groups`.'],
+        finalButton:
+          action.command.kind === 'prepare-assign-student'
+            ? 'Assign Group'
+            : action.command.kind === 'prepare-remove-student'
+              ? 'Remove From Group'
+              : action.command.kind === 'prepare-recompute-group'
+                ? 'Recompute Late Days'
                 : null,
       });
     case 'late-days-command':

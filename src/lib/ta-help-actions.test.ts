@@ -171,4 +171,32 @@ describe('ta-help-actions', () => {
     expect(summary?.primaryAction).toBe('Search...');
     expect(summary?.visibleControls).toContain('Sync Sheet');
   });
+
+  it('prepares a group assignment workflow from natural language', () => {
+    const plan = planHelpAssistantAction('move student 26611 to group 4');
+
+    expect(plan?.action).toEqual({
+      type: 'groups-command',
+      command: {
+        kind: 'prepare-assign-student',
+        query: '26611',
+        groupNumber: 4,
+      },
+    });
+    expect(plan?.response).toContain('Opened `Groups`.');
+    expect(plan?.response).toContain('Group 4');
+  });
+
+  it('prepares a grouped late-day recompute request', () => {
+    const plan = planHelpAssistantAction('recompute group 3 late days');
+
+    expect(plan?.action).toEqual({
+      type: 'groups-command',
+      command: {
+        kind: 'prepare-recompute-group',
+        groupNumber: 3,
+      },
+    });
+    expect(plan?.response).toContain('Recompute Late Days');
+  });
 });
