@@ -85,6 +85,28 @@ export const taAddLateDay = async (studentErp: string, days: number, reason?: st
   };
 };
 
+export const taClaimLateDays = async (studentErp: string, assignmentId: string, days: number): Promise<ClaimLateDaysResult> => {
+  const { data, error } = await supabase.rpc('ta_claim_late_days', {
+    p_student_erp: studentErp,
+    p_assignment_id: assignmentId,
+    p_days: days,
+  });
+
+  if (error) {
+    throw toAppError(error, 'late_days_ta_claim_failed');
+  }
+
+  if (!isObjectRecord(data)) {
+    return { success: true };
+  }
+
+  return {
+    success: data.success !== false,
+    message: typeof data.message === 'string' ? data.message : undefined,
+    data,
+  };
+};
+
 export const listLateDaysAdminData = async (): Promise<{
   assignments: LateDayAssignmentRow[];
   batches: LateDayClaimBatchRow[];

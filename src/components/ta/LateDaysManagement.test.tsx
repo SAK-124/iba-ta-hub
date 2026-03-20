@@ -10,6 +10,7 @@ const {
   archiveLateDayAssignmentMock,
   deleteLateDayClaimMock,
   taAddLateDayMock,
+  taClaimLateDayMock,
   listRosterMock,
   subscribeToRealtimeTablesMock,
   removeRealtimeChannelMock,
@@ -21,6 +22,7 @@ const {
   archiveLateDayAssignmentMock: vi.fn(),
   deleteLateDayClaimMock: vi.fn(),
   taAddLateDayMock: vi.fn(),
+  taClaimLateDayMock: vi.fn(),
   listRosterMock: vi.fn(),
   subscribeToRealtimeTablesMock: vi.fn(),
   removeRealtimeChannelMock: vi.fn(),
@@ -39,6 +41,7 @@ vi.mock('@/features/late-days', async () => {
     deleteLateDayClaim: deleteLateDayClaimMock,
     listLateDaysAdminData: listLateDaysAdminDataMock,
     taAddLateDay: taAddLateDayMock,
+    taClaimLateDays: taClaimLateDayMock,
     updateLateDayAssignment: updateLateDayAssignmentMock,
   };
 });
@@ -92,8 +95,9 @@ describe('LateDaysManagement', () => {
     render(<LateDaysManagement />);
 
     expect(await screen.findByText('Late Day Assignments')).toBeInTheDocument();
-    expect(screen.getByText('Late Day Claims')).toBeInTheDocument();
+    expect(screen.getByText('Original Individual Claims')).toBeInTheDocument();
     expect(screen.getByText('Student Roster Balances')).toBeInTheDocument();
     expect(screen.getByText('Student One')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Claim' })).toBeInTheDocument();
   });
 });

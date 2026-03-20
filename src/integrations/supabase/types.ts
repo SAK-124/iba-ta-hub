@@ -607,6 +607,10 @@ export type Database = {
         Args: { p_days: number; p_reason?: string; p_student_erp: string }
         Returns: Json
       }
+      ta_claim_late_days: {
+        Args: { p_assignment_id: string; p_days: number; p_student_erp: string }
+        Returns: Json
+      }
       ta_recompute_group_late_days: {
         Args: { p_group_number: number }
         Returns: Json

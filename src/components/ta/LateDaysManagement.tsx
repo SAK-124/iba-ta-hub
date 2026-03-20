@@ -17,6 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ta/ui/alert-dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ta/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
 import { Textarea } from '@/components/ta/ui/textarea';
 import { useAuth } from '@/lib/auth';
@@ -33,34 +34,26 @@ import {
   archiveLateDayAssignment,
   createLateDayAssignment,
   getCurrentLateDayDeadline,
+  getAllowedLateDayClaimOptions,
   deleteLateDayClaim,
   listLateDaysAdminData,
   taAddLateDay,
+  taClaimLateDays,
   updateLateDayAssignment,
 } from '@/features/late-days';
 import { listRoster } from '@/features/roster';
 
 type LateDayAssignment = Tables<'late_day_assignments'>;
-type LateDayClaimBatch = Tables<'late_day_claim_batches'>;
 type LateDayClaim = Tables<'late_day_claims'>;
 type LateDayAdjustment = Tables<'late_day_adjustments'>;
 type RosterStudent = Pick<Tables<'students_roster'>, 'id' | 'erp' | 'student_name' | 'class_no'>;
 
-interface GrantRpcResult {
+interface BalanceRpcResult {
   remaining_late_days?: number;
 }
 
-interface ClaimGroup {
-  key: string;
-  assignment_id: string;
-  claimed_by_erp: string;
-  total_days_used: number;
-  latest_claimed_at: string;
-  current_due_at: string;
-  member_count: number;
-  group_id: string | null;
-  events: LateDayClaim[];
-}
+const isOriginalClaimEvent = (claim: LateDayClaim) =>
+  claim.claim_role === 'self' || claim.claim_role === 'initiator';
 
 const toLocalDateTimeInput = (isoValue: string | null) => {
   const date = toValidDate(isoValue);
@@ -86,7 +79,10 @@ interface PersistedLateDaysManagementState {
   grantTarget: RosterStudent | null;
   grantDays: string;
   grantReason: string;
-  selectedClaimGroupKey: string | null;
+  claimTarget: RosterStudent | null;
+  claimAssignmentId: string;
+  claimDays: string;
+  selectedClaimId: string | null;
   assignmentPendingArchive: LateDayAssignment | null;
   claimPendingDelete: string | null;
 }
@@ -115,16 +111,22 @@ const findMatchingRosterStudent = (students: RosterStudent[], query: string) => 
   return matches.length === 1 ? matches[0] : null;
 };
 
-const findMatchingClaimGroup = (groups: ClaimGroup[], query: string) => {
+const findMatchingOriginalClaim = (
+  originalClaims: LateDayClaim[],
+  rosterNameByErp: Record<string, string>,
+  assignmentById: Record<string, LateDayAssignment>,
+  query: string,
+) => {
   const normalizedQuery = normalizeLateDayValue(query);
   if (!normalizedQuery) {
     return null;
   }
 
-  const matches = groups.filter((group) =>
+  const matches = originalClaims.filter((claim) =>
     [
-      group.claimed_by_erp,
-      group.assignment_id,
+      claim.student_erp,
+      rosterNameByErp[claim.student_erp] ?? '',
+      assignmentById[claim.assignment_id]?.title ?? '',
     ]
       .map((value) => normalizeLateDayValue(String(value ?? '')))
       .some((value) => value.includes(normalizedQuery) || normalizedQuery.includes(value))
@@ -155,13 +157,15 @@ export default function LateDaysManagement({
       grantTarget: null,
       grantDays: '1',
       grantReason: '',
-      selectedClaimGroupKey: null,
+      claimTarget: null,
+      claimAssignmentId: '',
+      claimDays: '1',
+      selectedClaimId: null,
       assignmentPendingArchive: null,
       claimPendingDelete: null,
     },
   );
   const [assignments, setAssignments] = useState<LateDayAssignment[]>([]);
-  const [claimBatches, setClaimBatches] = useState<LateDayClaimBatch[]>([]);
   const [claims, setClaims] = useState<LateDayClaim[]>([]);
   const [adjustments, setAdjustments] = useState<LateDayAdjustment[]>([]);
   const [rosterStudents, setRosterStudents] = useState<RosterStudent[]>([]);
@@ -186,37 +190,45 @@ export default function LateDaysManagement({
   const [grantDays, setGrantDays] = useState(persistedState.grantDays);
   const [grantReason, setGrantReason] = useState(persistedState.grantReason);
   const [isGranting, setIsGranting] = useState(false);
-  const [selectedClaimGroupKey, setSelectedClaimGroupKey] = useState<string | null>(persistedState.selectedClaimGroupKey);
+  const [claimTarget, setClaimTarget] = useState<RosterStudent | null>(persistedState.claimTarget);
+  const [claimAssignmentId, setClaimAssignmentId] = useState(persistedState.claimAssignmentId);
+  const [claimDays, setClaimDays] = useState(persistedState.claimDays);
+  const [isClaimingForStudent, setIsClaimingForStudent] = useState(false);
+  const [selectedClaimId, setSelectedClaimId] = useState<string | null>(persistedState.selectedClaimId);
   const rosterSearchInputRef = useRef<HTMLInputElement>(null);
   const newAssignmentTitleRef = useRef<HTMLInputElement>(null);
   const grantDaysInputRef = useRef<HTMLInputElement>(null);
   const lastHandledAgentCommandTokenRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const stageLabel = grantTarget
+    const stageLabel = claimTarget
+      ? `Late Days · claiming for ${claimTarget.erp}`
+      : grantTarget
       ? `Late Days · granting late days to ${grantTarget.erp}`
       : editingAssignment
         ? 'Late Days · editing assignment'
-        : selectedClaimGroupKey
+        : selectedClaimId
           ? 'Late Days · reviewing claim details'
           : newTitle.trim() || newDueAt
             ? 'Late Days · creating assignment'
             : 'Late Days · overview';
 
     onContextChange?.(stageLabel);
-  }, [editingAssignment, grantTarget, newDueAt, newTitle, onContextChange, selectedClaimGroupKey]);
+  }, [claimTarget, editingAssignment, grantTarget, newDueAt, newTitle, onContextChange, selectedClaimId]);
 
   useEffect(() => {
     onHelpContextChange?.({
-      openSurface: grantTarget
+      openSurface: claimTarget
+        ? 'ta claim dialog'
+        : grantTarget
         ? 'grant late day dialog'
         : editingAssignment
           ? 'edit assignment dialog'
-          : selectedClaimGroupKey
-            ? 'claim breakdown dialog'
+          : selectedClaimId
+            ? 'claim detail dialog'
             : 'late days dashboard',
       screenDescription: 'Manage assignment deadlines, late-day balances, and claim history.',
-      visibleControls: ['Search by class, name, or ERP', 'Add', 'View', 'Grant Late Day', 'Archive', 'Delete Claim'],
+      visibleControls: ['Search by class, name, or ERP', 'Add', 'Claim Late Day', 'View Details', 'Archive', 'Delete Claim'],
       searchQuery: rosterSearchQuery,
       actionTargets: [
         ...rosterStudents.slice(0, 120).map((student) => ({
@@ -240,7 +252,7 @@ export default function LateDaysManagement({
         })),
       ],
     });
-  }, [assignments, editingAssignment, grantTarget, onHelpContextChange, rosterSearchQuery, rosterStudents, selectedClaimGroupKey]);
+  }, [assignments, claimTarget, editingAssignment, grantTarget, onHelpContextChange, rosterSearchQuery, rosterStudents, selectedClaimId]);
 
   const assignmentById = useMemo(
     () =>
@@ -260,48 +272,20 @@ export default function LateDaysManagement({
     [rosterStudents]
   );
 
-  const claimGroups = useMemo(() => {
-    const groups = claimBatches.map((batch) => {
-      const events = claims
-        .filter((claim) => claim.claim_batch_id === batch.id)
+  const originalClaimEvents = useMemo(
+    () =>
+      claims
+        .filter(isOriginalClaimEvent)
         .sort(
           (a, b) =>
             (toValidDate(b.claimed_at)?.getTime() ?? 0) - (toValidDate(a.claimed_at)?.getTime() ?? 0)
-        );
-      const latestClaim = events[0] ?? null;
-      const currentDueAt =
-        latestClaim?.due_at_after_claim ??
-        getCurrentLateDayDeadline(assignmentById[batch.assignment_id]?.due_at, batch.claimed_at)?.toISOString() ??
-        batch.claimed_at;
+        ),
+    [claims],
+  );
 
-      return {
-        key: batch.id,
-        assignment_id: batch.assignment_id,
-        claimed_by_erp: batch.claimed_by_erp,
-        total_days_used: batch.days_used,
-        latest_claimed_at: batch.claimed_at,
-        current_due_at: currentDueAt,
-        member_count: Array.isArray(batch.membership_snapshot) ? batch.membership_snapshot.length : 0,
-        group_id: batch.group_id,
-        events,
-      };
-    });
-
-    return groups
-      .map((group) => ({
-        ...group,
-        latest_claimed_at: group.events[0]?.claimed_at ?? group.latest_claimed_at,
-      }))
-      .sort(
-        (a, b) =>
-          (toValidDate(b.latest_claimed_at)?.getTime() ?? 0) -
-          (toValidDate(a.latest_claimed_at)?.getTime() ?? 0)
-      );
-  }, [assignmentById, claimBatches, claims]);
-
-  const selectedClaimGroup = useMemo(
-    () => claimGroups.find((group) => group.key === selectedClaimGroupKey) ?? null,
-    [claimGroups, selectedClaimGroupKey]
+  const selectedClaim = useMemo(
+    () => originalClaimEvents.find((claim) => claim.id === selectedClaimId) ?? null,
+    [originalClaimEvents, selectedClaimId],
   );
 
   const usedByErp = useMemo(() => {
@@ -347,6 +331,50 @@ export default function LateDaysManagement({
     });
   }, [rosterWithBalances, rosterSearchQuery]);
 
+  const claimTargetBalance = useMemo(() => {
+    if (!claimTarget) {
+      return null;
+    }
+
+    return rosterWithBalances.find((student) => student.erp === claimTarget.erp) ?? null;
+  }, [claimTarget, rosterWithBalances]);
+
+  const claimableAssignmentsForTarget = useMemo(() => {
+    if (!claimTargetBalance) {
+      return [];
+    }
+
+    const now = new Date();
+    return assignments
+      .filter((assignment) => assignment.active)
+      .map((assignment) => {
+        const latestClaimDeadline =
+          claims
+            .filter((claim) => claim.assignment_id === assignment.id && claim.student_erp === claimTargetBalance.erp)
+            .reduce<Date | null>((latest, claim) => {
+              const candidate = toValidDate(claim.due_at_after_claim);
+              if (!candidate) {
+                return latest;
+              }
+              return !latest || candidate.getTime() > latest.getTime() ? candidate : latest;
+            }, null);
+        const currentDeadline = getCurrentLateDayDeadline(assignment.due_at, latestClaimDeadline?.toISOString() ?? null);
+        const allowedDays = getAllowedLateDayClaimOptions(currentDeadline, claimTargetBalance.remaining);
+
+        return {
+          assignment,
+          currentDeadline,
+          allowedDays,
+        };
+      })
+      .filter((summary) => summary.allowedDays.length > 0);
+  }, [assignments, claimTargetBalance, claims]);
+
+  const selectedClaimAssignment = useMemo(
+    () => claimableAssignmentsForTarget.find((summary) => summary.assignment.id === claimAssignmentId) ?? null,
+    [claimAssignmentId, claimableAssignmentsForTarget],
+  );
+
   useEffect(() => {
     if (!agentCommand) {
       return;
@@ -383,9 +411,14 @@ export default function LateDaysManagement({
         window.setTimeout(() => newAssignmentTitleRef.current?.focus(), 0);
         break;
       case 'open-claim-details': {
-        const group = findMatchingClaimGroup(claimGroups, agentCommand.command.query ?? '');
-        if (group) {
-          openClaimBreakdown(group.key);
+        const claim = findMatchingOriginalClaim(
+          originalClaimEvents,
+          rosterNameByErp,
+          assignmentById,
+          agentCommand.command.query ?? '',
+        );
+        if (claim) {
+          openClaimDetail(claim.id);
         }
         break;
       }
@@ -401,17 +434,22 @@ export default function LateDaysManagement({
         break;
       }
       case 'prepare-delete-claim': {
-        const group = findMatchingClaimGroup(claimGroups, agentCommand.command.query ?? '');
-        if (group) {
-          openClaimBreakdown(group.key);
-          setClaimPendingDelete(group.events[0]?.id ?? null);
+        const claim = findMatchingOriginalClaim(
+          originalClaimEvents,
+          rosterNameByErp,
+          assignmentById,
+          agentCommand.command.query ?? '',
+        );
+        if (claim) {
+          openClaimDetail(claim.id);
+          setClaimPendingDelete(claim.id);
         }
         break;
       }
     }
 
     onAgentCommandHandled?.();
-  }, [agentCommand, assignments, claimGroups, onAgentCommandHandled, rosterStudents]);
+  }, [agentCommand, assignmentById, onAgentCommandHandled, originalClaimEvents, rosterNameByErp, rosterStudents]);
 
   const fetchLateDaysData = useCallback(async (mode: 'initial' | 'silent' = 'initial') => {
     const shouldShowLoader = mode === 'initial' && !hasLoadedOnceRef.current;
@@ -421,7 +459,6 @@ export default function LateDaysManagement({
     try {
       const [lateDaysData, rosterData] = await Promise.all([listLateDaysAdminData(), listRoster()]);
       setAssignments(lateDaysData.assignments ?? []);
-      setClaimBatches(lateDaysData.batches ?? []);
       setClaims(lateDaysData.claims ?? []);
       setAdjustments(lateDaysData.adjustments ?? []);
       setRosterStudents((rosterData.rows ?? [])
@@ -432,7 +469,6 @@ export default function LateDaysManagement({
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Failed to load late-day data: ${message}`);
       setAssignments([]);
-      setClaimBatches([]);
       setClaims([]);
       setRosterStudents([]);
       setAdjustments([]);
@@ -458,7 +494,10 @@ export default function LateDaysManagement({
       grantTarget,
       grantDays,
       grantReason,
-      selectedClaimGroupKey,
+      claimTarget,
+      claimAssignmentId,
+      claimDays,
+      selectedClaimId,
       assignmentPendingArchive,
       claimPendingDelete,
     });
@@ -471,18 +510,15 @@ export default function LateDaysManagement({
     grantDays,
     grantReason,
     grantTarget,
+    claimAssignmentId,
+    claimDays,
+    claimTarget,
     newDueAt,
     newTitle,
     rosterSearchQuery,
-    selectedClaimGroupKey,
+    selectedClaimId,
     userEmail,
   ]);
-
-  useEffect(() => {
-    if (selectedClaimGroupKey && !selectedClaimGroup) {
-      setSelectedClaimGroupKey(null);
-    }
-  }, [selectedClaimGroupKey, selectedClaimGroup]);
 
   const handleCreateAssignment = async () => {
     if (!newTitle.trim()) {
@@ -569,6 +605,7 @@ export default function LateDaysManagement({
       await deleteLateDayClaim(claimId);
       toast.success('Claim deleted.');
       setClaims((prev) => prev.filter((claim) => claim.id !== claimId));
+      setSelectedClaimId((current) => (current === claimId ? null : current));
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Failed to delete claim: ${message}`);
@@ -578,8 +615,8 @@ export default function LateDaysManagement({
     setDeletingClaimId(null);
   };
 
-  const openClaimBreakdown = (claimGroupKey: string) => {
-    setSelectedClaimGroupKey(claimGroupKey);
+  const openClaimDetail = (claimId: string) => {
+    setSelectedClaimId(claimId);
   };
 
   const openGrantDialog = (student: RosterStudent) => {
@@ -594,6 +631,18 @@ export default function LateDaysManagement({
     setGrantReason('');
   };
 
+  const openTaClaimDialog = (student: RosterStudent) => {
+    setClaimTarget(student);
+    setClaimAssignmentId('');
+    setClaimDays('1');
+  };
+
+  const closeTaClaimDialog = () => {
+    setClaimTarget(null);
+    setClaimAssignmentId('');
+    setClaimDays('1');
+  };
+
   const handleGrantLateDays = async () => {
     if (!grantTarget) return;
     const days = Number(grantDays);
@@ -605,7 +654,7 @@ export default function LateDaysManagement({
     setIsGranting(true);
     try {
       const result = await taAddLateDay(grantTarget.erp, days, grantReason.trim() ? grantReason.trim() : undefined);
-      const payload = (result.data ?? null) as GrantRpcResult | null;
+      const payload = (result.data ?? null) as BalanceRpcResult | null;
       toast.success(
         typeof payload?.remaining_late_days === 'number'
           ? `Late days added. New remaining: ${payload.remaining_late_days}`
@@ -618,6 +667,38 @@ export default function LateDaysManagement({
       toast.error(`Failed to add late day: ${message}`);
     } finally {
       setIsGranting(false);
+    }
+  };
+
+  const handleTaClaimLateDays = async () => {
+    if (!claimTarget) return;
+
+    const days = Number(claimDays);
+    if (!claimAssignmentId) {
+      toast.error('Choose an assignment first.');
+      return;
+    }
+    if (!Number.isInteger(days) || days < 1) {
+      toast.error('Days must be a whole number greater than 0.');
+      return;
+    }
+
+    setIsClaimingForStudent(true);
+    try {
+      const result = await taClaimLateDays(claimTarget.erp, claimAssignmentId, days);
+      const payload = (result.data ?? null) as BalanceRpcResult | null;
+      toast.success(
+        typeof payload?.remaining_late_days === 'number'
+          ? `Late-day claim recorded. New remaining: ${payload.remaining_late_days}`
+          : 'Late-day claim recorded.',
+      );
+      closeTaClaimDialog();
+      await fetchLateDaysData('silent');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to claim late day: ${message}`);
+    } finally {
+      setIsClaimingForStudent(false);
     }
   };
 
@@ -745,57 +826,55 @@ export default function LateDaysManagement({
 
         <Card className="ta-module-card">
           <CardHeader>
-            <CardTitle>Late Day Claims</CardTitle>
+            <CardTitle>Original Individual Claims</CardTitle>
             <CardDescription>
-              Grouped by claim batch so group usage is shown once. Click a row to view day-by-day claim history.
+              Actual student claim events, including TA claims recorded on behalf of students.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Table containerClassName="max-h-[360px]">
+            <Table containerClassName="max-h-[320px]">
                 <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow>
                     <TableHead>Assignment</TableHead>
-                    <TableHead>Type</TableHead>
                     <TableHead>Claimed By</TableHead>
-                    <TableHead>Assignment</TableHead>
-                    <TableHead>Total Days</TableHead>
-                    <TableHead>Members</TableHead>
-                    <TableHead>Latest Claim</TableHead>
-                    <TableHead>Current Due</TableHead>
-                    <TableHead className="text-right">Details</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead>Days Used</TableHead>
+                    <TableHead>Claimed At</TableHead>
+                    <TableHead>New Due</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {claimGroups.length === 0 ? (
+                  {originalClaimEvents.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
-                        No late-day claims found.
+                      <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                        No original individual claims found.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    claimGroups.map((group) => (
-                      <TableRow
-                        key={group.key}
-                        className="cursor-pointer"
-                        onClick={() => openClaimBreakdown(group.key)}
-                      >
-                        <TableCell className="font-medium">{assignmentById[group.assignment_id]?.title ?? 'Unknown Assignment'}</TableCell>
-                        <TableCell>{group.group_id ? 'Group claim' : 'Self claim'}</TableCell>
-                        <TableCell>{rosterNameByErp[group.claimed_by_erp] ?? group.claimed_by_erp}</TableCell>
-                        <TableCell>{group.total_days_used}</TableCell>
-                        <TableCell>{group.member_count}</TableCell>
-                        <TableCell>{formatDate(group.latest_claimed_at, 'PPP p')}</TableCell>
-                        <TableCell>{formatDate(group.current_due_at, 'PPP p')}</TableCell>
+                    originalClaimEvents.map((claim) => (
+                      <TableRow key={claim.id}>
+                        <TableCell className="font-medium">{assignmentById[claim.assignment_id]?.title ?? 'Unknown Assignment'}</TableCell>
+                        <TableCell>{rosterNameByErp[claim.student_erp] ?? claim.student_erp}</TableCell>
+                        <TableCell>
+                          {claim.claimed_by_email !== claim.student_email
+                            ? claim.group_id
+                              ? 'TA on behalf while grouped'
+                              : 'TA on behalf'
+                            : claim.group_id
+                              ? 'Claimed while grouped'
+                              : 'Direct self claim'}
+                        </TableCell>
+                        <TableCell>{claim.days_used}</TableCell>
+                        <TableCell>{formatDate(claim.claimed_at, 'PPP p')}</TableCell>
+                        <TableCell>{formatDate(claim.due_at_after_claim, 'PPP p')}</TableCell>
                         <TableCell className="text-right">
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              openClaimBreakdown(group.key);
-                            }}
+                            onClick={() => openClaimDetail(claim.id)}
                           >
-                            View
+                            Details
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -812,7 +891,7 @@ export default function LateDaysManagement({
           <CardHeader>
             <CardTitle>Student Roster Balances</CardTitle>
             <CardDescription>
-              Search any student and grant extra late days whenever needed.
+              Search any student and either grant extra days or record a claim on their behalf.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -834,7 +913,7 @@ export default function LateDaysManagement({
                     <TableHead className="text-right">Used</TableHead>
                     <TableHead className="text-right">Adjust.</TableHead>
                     <TableHead className="text-right">Remaining</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -861,9 +940,14 @@ export default function LateDaysManagement({
                           <Badge variant="outline" className="font-semibold">{student.remaining}</Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button size="sm" onClick={() => openGrantDialog(student)}>
-                            Add
-                          </Button>
+                          <div className="inline-flex items-center gap-2">
+                            <Button size="sm" variant="outline" onClick={() => openTaClaimDialog(student)}>
+                              Claim
+                            </Button>
+                            <Button size="sm" onClick={() => openGrantDialog(student)}>
+                              Add
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
@@ -874,70 +958,160 @@ export default function LateDaysManagement({
         </Card>
       </div>
 
-      <Dialog open={Boolean(selectedClaimGroupKey)} onOpenChange={(open) => (!open ? setSelectedClaimGroupKey(null) : undefined)}>
-        <DialogContent className="sm:max-w-5xl">
+      <Dialog open={Boolean(selectedClaimId)} onOpenChange={(open) => (!open ? setSelectedClaimId(null) : undefined)}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Claim Breakdown</DialogTitle>
+            <DialogTitle>Claim Details</DialogTitle>
             <DialogDescription>
-              {selectedClaimGroup
-                ? `${rosterNameByErp[selectedClaimGroup.claimed_by_erp] ?? 'Unknown Student'} (${selectedClaimGroup.claimed_by_erp}) · ${
-                    assignmentById[selectedClaimGroup.assignment_id]?.title ?? 'Unknown Assignment'
+              {selectedClaim
+                ? `${rosterNameByErp[selectedClaim.student_erp] ?? selectedClaim.student_erp} · ${
+                    assignmentById[selectedClaim.assignment_id]?.title ?? 'Unknown Assignment'
                   }`
                 : 'This claim group is no longer available.'}
             </DialogDescription>
           </DialogHeader>
 
-          {!selectedClaimGroup ? (
+          {!selectedClaim ? (
             <p className="text-sm text-muted-foreground">No claim events to show.</p>
           ) : (
-            <Table containerClassName="max-h-[420px]">
-                <TableHeader className="sticky top-0 z-10 bg-background">
-                  <TableRow>
-                    <TableHead>Days</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>Claimed At</TableHead>
-                    <TableHead>Due Before</TableHead>
-                    <TableHead>Due After</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {selectedClaimGroup.events.map((claimEvent) => (
-                    <TableRow key={claimEvent.id}>
-                      <TableCell>{claimEvent.days_used}</TableCell>
-                      <TableCell>
-                        {claimEvent.claim_role === 'group_member'
-                          ? `Group sync for ${rosterNameByErp[claimEvent.student_erp] ?? claimEvent.student_erp}`
-                          : claimEvent.claim_role === 'initiator'
-                            ? `Initiated by ${claimEvent.claimed_by_erp}`
-                            : 'Direct self claim'}
-                      </TableCell>
-                      <TableCell>{formatDate(claimEvent.claimed_at, 'PPP p')}</TableCell>
-                      <TableCell>{formatDate(claimEvent.due_at_before_claim, 'PPP p')}</TableCell>
-                      <TableCell>{formatDate(claimEvent.due_at_after_claim, 'PPP p')}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setClaimPendingDelete(claimEvent.id)}
-                          disabled={deletingClaimId === claimEvent.id}
-                        >
-                          {deletingClaimId === claimEvent.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4 status-absent-text" />
-                          )}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            <div className="space-y-4 text-sm">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Source</div>
+                  <div className="mt-1 font-medium">
+                    {selectedClaim.claimed_by_email !== selectedClaim.student_email
+                      ? 'TA on behalf of student'
+                      : selectedClaim.group_id
+                        ? 'Student claimed while grouped'
+                        : 'Direct self claim'}
+                  </div>
+                </div>
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Days Used</div>
+                  <div className="mt-1 font-medium">{selectedClaim.days_used}</div>
+                </div>
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Claimed At</div>
+                  <div className="mt-1 font-medium">{formatDate(selectedClaim.claimed_at, 'PPP p')}</div>
+                </div>
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Previous Due</div>
+                  <div className="mt-1 font-medium">{formatDate(selectedClaim.due_at_before_claim, 'PPP p')}</div>
+                </div>
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">New Due</div>
+                  <div className="mt-1 font-medium">{formatDate(selectedClaim.due_at_after_claim, 'PPP p')}</div>
+                </div>
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Actor Email</div>
+                  <div className="mt-1 font-medium break-all">{selectedClaim.claimed_by_email}</div>
+                </div>
+              </div>
+            </div>
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSelectedClaimGroupKey(null)}>
+            {selectedClaim ? (
+              <Button
+                variant="destructive"
+                onClick={() => setClaimPendingDelete(selectedClaim.id)}
+                disabled={deletingClaimId === selectedClaim.id}
+              >
+                {deletingClaimId === selectedClaim.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Delete Claim
+              </Button>
+            ) : null}
+            <Button variant="outline" onClick={() => setSelectedClaimId(null)}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(claimTarget)} onOpenChange={(open) => (!open ? closeTaClaimDialog() : undefined)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Claim Late Days For Student</DialogTitle>
+            <DialogDescription>
+              Record a late-day claim using the same rules as the student flow. If the student is grouped, the claim will affect the shared group balance too.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!claimTarget || !claimTargetBalance ? (
+            <p className="text-sm text-muted-foreground">Student details are no longer available.</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-md border bg-muted/20 p-3 text-sm">
+                <div className="font-medium">{claimTarget.student_name}</div>
+                <div className="text-muted-foreground">
+                  {claimTarget.class_no} · {claimTarget.erp}
+                </div>
+                <div className="mt-1 text-muted-foreground">
+                  Remaining balance: {claimTargetBalance.remaining}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Assignment</div>
+                <Select
+                  value={claimAssignmentId}
+                  onValueChange={(value) => {
+                    const nextAssignment = claimableAssignmentsForTarget.find((summary) => summary.assignment.id === value) ?? null;
+                    setClaimAssignmentId(value);
+                    setClaimDays(nextAssignment?.allowedDays[0] ? String(nextAssignment.allowedDays[0]) : '1');
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select claimable assignment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {claimableAssignmentsForTarget.map((summary) => (
+                      <SelectItem key={summary.assignment.id} value={summary.assignment.id}>
+                        {summary.assignment.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Late days to claim</div>
+                <Select value={claimDays} onValueChange={setClaimDays} disabled={!selectedClaimAssignment}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select days" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(selectedClaimAssignment?.allowedDays ?? []).map((value) => (
+                      <SelectItem key={value} value={String(value)}>
+                        {value}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedClaimAssignment ? (
+                <div className="rounded-md border bg-muted/20 p-3 text-sm">
+                  <div>Current due date: {formatDate(selectedClaimAssignment.currentDeadline, 'PPP p', 'Not set by TA')}</div>
+                  <div className="mt-1">
+                    Remaining after claim: {Math.max(claimTargetBalance.remaining - Number(claimDays || '1'), 0)}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+                  No assignments are currently claimable for this student under the existing rules.
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeTaClaimDialog} disabled={isClaimingForStudent}>
+              Cancel
+            </Button>
+            <Button onClick={handleTaClaimLateDays} disabled={isClaimingForStudent || !selectedClaimAssignment}>
+              {isClaimingForStudent && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Claim Late Day
             </Button>
           </DialogFooter>
         </DialogContent>
