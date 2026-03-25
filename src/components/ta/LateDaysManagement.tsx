@@ -34,7 +34,6 @@ import {
   archiveLateDayAssignment,
   createLateDayAssignment,
   getCurrentLateDayDeadline,
-  getAllowedLateDayClaimOptions,
   deleteLateDayClaim,
   listLateDaysAdminData,
   taAddLateDay,
@@ -68,6 +67,7 @@ const formatDeadline = (deadline: string | null) => formatDate(deadline, 'PPP p'
 
 const TA_STORAGE_SCOPE = 'ta';
 const LATE_DAYS_MANAGEMENT_STORAGE_KEY = 'module-late-days';
+const BASE_LATE_DAYS = 3;
 
 interface PersistedLateDaysManagementState {
   newTitle: string;
@@ -309,7 +309,7 @@ export default function LateDaysManagement({
       rosterStudents.map((student) => {
         const used = usedByErp[student.erp] ?? 0;
         const adjustment = adjustmentByErp[student.erp] ?? 0;
-        const totalAllowance = 3 + adjustment;
+        const totalAllowance = BASE_LATE_DAYS + adjustment;
         const remaining = Math.max(totalAllowance - used, 0);
         return {
           ...student,
@@ -344,9 +344,8 @@ export default function LateDaysManagement({
       return [];
     }
 
-    const now = new Date();
     return assignments
-      .filter((assignment) => assignment.active)
+      .filter((assignment) => assignment.active && toValidDate(assignment.due_at))
       .map((assignment) => {
         const latestClaimDeadline =
           claims
@@ -359,7 +358,10 @@ export default function LateDaysManagement({
               return !latest || candidate.getTime() > latest.getTime() ? candidate : latest;
             }, null);
         const currentDeadline = getCurrentLateDayDeadline(assignment.due_at, latestClaimDeadline?.toISOString() ?? null);
-        const allowedDays = getAllowedLateDayClaimOptions(currentDeadline, claimTargetBalance.remaining);
+        const allowedDays = Array.from(
+          { length: claimTargetBalance.remaining },
+          (_, index) => index + 1,
+        );
 
         return {
           assignment,
@@ -1033,7 +1035,7 @@ export default function LateDaysManagement({
           <DialogHeader>
             <DialogTitle>Claim Late Days For Student</DialogTitle>
             <DialogDescription>
-              Record a late-day claim using the same rules as the student flow. If the student is grouped, the claim will affect the shared group balance too.
+              Record a late-day claim on behalf of the student. TA claims can be applied even when the student self-claim window has already passed, and grouped students still affect the shared balance.
             </DialogDescription>
           </DialogHeader>
 
@@ -1097,9 +1099,13 @@ export default function LateDaysManagement({
                     Remaining after claim: {Math.max(claimTargetBalance.remaining - Number(claimDays || '1'), 0)}
                   </div>
                 </div>
+              ) : claimableAssignmentsForTarget.length > 0 ? (
+                <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+                  Select an assignment to preview the resulting due date and remaining balance.
+                </div>
               ) : (
                 <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
-                  No assignments are currently claimable for this student under the existing rules.
+                  No active assignments with deadlines are currently available for TA claiming for this student.
                 </div>
               )}
             </div>

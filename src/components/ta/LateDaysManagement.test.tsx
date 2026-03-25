@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import LateDaysManagement from './LateDaysManagement';
 
@@ -99,5 +99,30 @@ describe('LateDaysManagement', () => {
     expect(screen.getByText('Student Roster Balances')).toBeInTheDocument();
     expect(screen.getByText('Student One')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Claim' })).toBeInTheDocument();
+  });
+
+  it('lets TAs open overdue assignments in the claim dialog even when the student flow would block them', async () => {
+    listLateDaysAdminDataMock.mockResolvedValue({
+      assignments: [
+        {
+          id: 'assignment-1',
+          title: 'Assignment 1',
+          due_at: '2026-03-01T10:00:00.000Z',
+          active: true,
+        },
+      ],
+      batches: [],
+      claims: [],
+      adjustments: [],
+    });
+
+    render(<LateDaysManagement />);
+
+    expect(await screen.findByText('Student One')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Claim' }));
+
+    expect(await screen.findByText('Claim Late Days For Student')).toBeInTheDocument();
+    expect(screen.getByText(/Select an assignment to preview the resulting due date/i)).toBeInTheDocument();
+    expect(screen.queryByText(/No assignments are currently claimable/i)).not.toBeInTheDocument();
   });
 });
