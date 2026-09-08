@@ -24,8 +24,8 @@ export default function ERPInput() {
 
   return (
     <Card className="mb-6">
-      <CardContent className="pt-6">
-        <div className="flex flex-col sm:flex-row gap-4">
+      <CardContent className="p-4 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row">
           <div className="flex-1">
             <Label htmlFor="erp-input" className="text-sm font-medium mb-2 block">
               Enter your ERP

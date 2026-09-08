@@ -10,6 +10,7 @@ import { Loader2, Trash2, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { emitRosterDataUpdated } from '@/lib/data-sync-events';
 import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
+import { useRefreshController } from '@/hooks/use-refresh-controller';
 import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
 import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 import { TEST_STUDENT_ERP } from '@/lib/test-student-settings';
@@ -378,10 +379,11 @@ export default function ListsSettings({
         }
     };
 
+    const { requestRefresh, isUpdating } = useRefreshController(async () => {
+        await Promise.all([fetchSettings(), fetchTaList(), fetchSubmissions()]);
+    });
     const { markRefreshed } = useStaleRefreshOnFocus(
-        async () => {
-            await Promise.all([fetchSettings(), fetchTaList(), fetchSubmissions()]);
-        },
+        () => requestRefresh('background'),
         { staleAfterMs: 60_000 },
     );
 
@@ -398,16 +400,14 @@ export default function ListsSettings({
                 { table: 'ta_allowlist' },
             ],
             () => {
-                void fetchSettings();
-                void fetchTaList();
-                void fetchSubmissions();
+                void requestRefresh('background');
             },
         );
 
         return () => {
             void removeRealtimeChannel(channel);
         };
-    }, []);
+    }, [requestRefresh]);
 
     const toggleStudentTickets = async (checked: boolean) => {
         if (!settings) return;
@@ -607,11 +607,11 @@ export default function ListsSettings({
         <div className="ta-module-shell grid gap-6 md:grid-cols-2">
             <Card className="ta-module-card">
                 <CardHeader>
-                    <CardTitle>Global Settings</CardTitle>
+                    <CardTitle className="flex items-center justify-between"><span>Global Settings</span><span className={`w-24 text-right text-xs font-normal text-muted-foreground transition-opacity ${isUpdating ? 'opacity-100' : 'opacity-0'}`} aria-live="polite">Updating…</span></CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     <div className="flex items-center justify-between space-x-2">
-                        <Label htmlFor="roster-verification" className="flex flex-col space-y-1">
+                        <Label htmlFor="roster-verification" className="flex flex-col space-y-2">
                             <span>Roster Verification</span>
                             <span className="font-normal text-xs text-muted-foreground">
                                 If checked, students must be in the roster to access the portal.
@@ -625,7 +625,7 @@ export default function ListsSettings({
                     </div>
 
                     <div className="flex items-center justify-between space-x-2">
-                        <Label htmlFor="student-tickets" className="flex flex-col space-y-1">
+                        <Label htmlFor="student-tickets" className="flex flex-col space-y-2">
                             <span>Student Complaints / Tickets</span>
                             <span className="font-normal text-xs text-muted-foreground">
                                 Controls whether students can submit and view ticket complaints in the portal.
@@ -649,7 +649,7 @@ export default function ListsSettings({
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="flex items-center justify-between space-x-2">
-                        <Label htmlFor="show-test-student-ta" className="flex flex-col space-y-1">
+                        <Label htmlFor="show-test-student-ta" className="flex flex-col space-y-2">
                             <span>Show in TA Roster & Consolidated View</span>
                             <span className="font-normal text-xs text-muted-foreground">
                                 Controls visibility only in TA modules.
@@ -662,7 +662,7 @@ export default function ListsSettings({
                         />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div className="space-y-2">
                             <Label htmlFor="test-student-class">Class No</Label>
                             <Input
@@ -687,7 +687,7 @@ export default function ListsSettings({
                         />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div className="space-y-2">
                             <Label htmlFor="test-student-absences">Total Absences</Label>
                             <Input
@@ -752,7 +752,7 @@ export default function ListsSettings({
 
                     <div className="space-y-2">
                         <Label htmlFor="current-ta-password">Current Password</Label>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                             <Input
                                 id="current-ta-password"
                                 type={currentPasswordInputType}
@@ -816,7 +816,7 @@ export default function ListsSettings({
                     <CardDescription>Add or remove Teaching Assistants</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         <Input
                             placeholder="TA Email"
                             ref={taEmailInputRef}
@@ -844,7 +844,7 @@ export default function ListsSettings({
                     <CardDescription>Manage options for "Grading Query"</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         <Input
                             placeholder="e.g. Assignment 1"
                             ref={submissionInputRef}

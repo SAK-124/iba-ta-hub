@@ -23,7 +23,9 @@ import { Textarea } from '@/components/ta/ui/textarea';
 import { useAuth } from '@/lib/auth';
 import { formatDate, toValidDate } from '@/lib/date-format';
 import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
+import { useRefreshController } from '@/hooks/use-refresh-controller';
 import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
+import { sortStudentRows, STUDENT_SERIAL_CLASS, STUDENT_SERIAL_HEADER } from '@/lib/student-table';
 import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 import type {
   AgentCommandEnvelope,
@@ -463,17 +465,18 @@ export default function LateDaysManagement({
       setAssignments(lateDaysData.assignments ?? []);
       setClaims(lateDaysData.claims ?? []);
       setAdjustments(lateDaysData.adjustments ?? []);
-      setRosterStudents((rosterData.rows ?? [])
-        .sort((a, b) => a.class_no.localeCompare(b.class_no) || a.student_name.localeCompare(b.student_name)) as RosterStudent[]);
+      setRosterStudents(sortStudentRows(rosterData.rows ?? []) as RosterStudent[]);
       hasLoadedOnceRef.current = true;
       markRefreshedRef.current();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Failed to load late-day data: ${message}`);
-      setAssignments([]);
-      setClaims([]);
-      setRosterStudents([]);
-      setAdjustments([]);
+      if (shouldShowLoader) {
+        setAssignments([]);
+        setClaims([]);
+        setRosterStudents([]);
+        setAdjustments([]);
+      }
     } finally {
       if (shouldShowLoader) {
         setIsLoading(false);
@@ -704,8 +707,9 @@ export default function LateDaysManagement({
     }
   };
 
+  const { requestRefresh, isUpdating } = useRefreshController(async () => fetchLateDaysData('silent'));
   const { markRefreshed } = useStaleRefreshOnFocus(
-    () => fetchLateDaysData('silent'),
+    () => requestRefresh('background'),
     { staleAfterMs: 60_000 },
   );
 
@@ -723,14 +727,14 @@ export default function LateDaysManagement({
         { table: 'students_roster' },
       ],
       () => {
-        void fetchLateDaysData('silent');
+        void requestRefresh('background');
       },
     );
 
     return () => {
       void removeRealtimeChannel(channel);
     };
-  }, [fetchLateDaysData, userEmail]);
+  }, [requestRefresh, userEmail]);
 
   if (isLoading) {
     return (
@@ -745,7 +749,7 @@ export default function LateDaysManagement({
       <div className="space-y-6 xl:col-span-2">
         <Card className="ta-module-card">
           <CardHeader>
-            <CardTitle>Late Day Assignments</CardTitle>
+          <CardTitle className="flex items-center justify-between"><span>Late Day Assignments</span><span className={`w-24 text-right text-xs font-normal text-muted-foreground transition-opacity ${isUpdating ? 'opacity-100' : 'opacity-0'}`} aria-live="polite">Updating…</span></CardTitle>
             <CardDescription>
               Add assignments now and set deadlines later. Students can only claim once a deadline exists.
             </CardDescription>
@@ -911,6 +915,7 @@ export default function LateDaysManagement({
             <Table containerClassName="max-h-[620px]">
                 <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow>
+                    <TableHead className={STUDENT_SERIAL_CLASS}>{STUDENT_SERIAL_HEADER}</TableHead>
                     <TableHead>Student</TableHead>
                     <TableHead className="text-right">Used</TableHead>
                     <TableHead className="text-right">Adjust.</TableHead>
@@ -921,13 +926,14 @@ export default function LateDaysManagement({
                 <TableBody>
                   {filteredRosterWithBalances.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
                         No students match your search.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredRosterWithBalances.map((student) => (
+                    filteredRosterWithBalances.map((student, index) => (
                       <TableRow key={student.id}>
+                        <TableCell className={STUDENT_SERIAL_CLASS}>{index + 1}</TableCell>
                         <TableCell>
                           <div className="flex flex-col">
                             <span className="font-medium">{student.student_name}</span>
@@ -980,7 +986,7 @@ export default function LateDaysManagement({
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-md border bg-muted/20 p-3">
                   <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Source</div>
-                  <div className="mt-1 font-medium">
+                  <div className="mt-2 font-medium">
                     {selectedClaim.claimed_by_email !== selectedClaim.student_email
                       ? 'TA on behalf of student'
                       : selectedClaim.group_id
@@ -990,23 +996,23 @@ export default function LateDaysManagement({
                 </div>
                 <div className="rounded-md border bg-muted/20 p-3">
                   <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Days Used</div>
-                  <div className="mt-1 font-medium">{selectedClaim.days_used}</div>
+                  <div className="mt-2 font-medium">{selectedClaim.days_used}</div>
                 </div>
                 <div className="rounded-md border bg-muted/20 p-3">
                   <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Claimed At</div>
-                  <div className="mt-1 font-medium">{formatDate(selectedClaim.claimed_at, 'PPP p')}</div>
+                  <div className="mt-2 font-medium">{formatDate(selectedClaim.claimed_at, 'PPP p')}</div>
                 </div>
                 <div className="rounded-md border bg-muted/20 p-3">
                   <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Previous Due</div>
-                  <div className="mt-1 font-medium">{formatDate(selectedClaim.due_at_before_claim, 'PPP p')}</div>
+                  <div className="mt-2 font-medium">{formatDate(selectedClaim.due_at_before_claim, 'PPP p')}</div>
                 </div>
                 <div className="rounded-md border bg-muted/20 p-3">
                   <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">New Due</div>
-                  <div className="mt-1 font-medium">{formatDate(selectedClaim.due_at_after_claim, 'PPP p')}</div>
+                  <div className="mt-2 font-medium">{formatDate(selectedClaim.due_at_after_claim, 'PPP p')}</div>
                 </div>
                 <div className="rounded-md border bg-muted/20 p-3">
                   <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Actor Email</div>
-                  <div className="mt-1 font-medium break-all">{selectedClaim.claimed_by_email}</div>
+                  <div className="mt-2 font-medium break-all">{selectedClaim.claimed_by_email}</div>
                 </div>
               </div>
             </div>
@@ -1048,7 +1054,7 @@ export default function LateDaysManagement({
                 <div className="text-muted-foreground">
                   {claimTarget.class_no} · {claimTarget.erp}
                 </div>
-                <div className="mt-1 text-muted-foreground">
+                <div className="mt-2 text-muted-foreground">
                   Remaining balance: {claimTargetBalance.remaining}
                 </div>
               </div>
@@ -1095,7 +1101,7 @@ export default function LateDaysManagement({
               {selectedClaimAssignment ? (
                 <div className="rounded-md border bg-muted/20 p-3 text-sm">
                   <div>Current due date: {formatDate(selectedClaimAssignment.currentDeadline, 'PPP p', 'Not set by TA')}</div>
-                  <div className="mt-1">
+                  <div className="mt-2">
                     Remaining after claim: {Math.max(claimTargetBalance.remaining - Number(claimDays || '1'), 0)}
                   </div>
                 </div>

@@ -17,7 +17,7 @@ const MODULE_ALIASES: Record<string, string[]> = {
   'TA Dashboard': ['ta dashboard', 'dashboard'],
   'Attendance Workspace': ['attendance workspace', 'zoom processor', 'live attendance', 'attendance'],
   'Zoom Processor': ['zoom processor', 'zoom csv', 'zoom file', 'process zoom', 'zoom'],
-  'Live Attendance': ['live attendance', 'mark attendance', 'attendance list', 'absent erp', 'naming penalty'],
+  'Live Attendance': ['live attendance', 'mark attendance', 'attendance list', 'absent erp', 'name penalty', 'naming penalty'],
   'Roster Management': ['roster management', 'roster', 'import roster', 'student roster'],
   'Consolidated View': ['consolidated view', 'full attendance', 'sync sheet', 'public sheet'],
   'Session Management': ['session management', 'create session', 'edit session', 'session'],
@@ -198,7 +198,7 @@ const scoreChunk = (
     }
   }
 
-  if (/mark attendance|zoom csv|naming penalty|session/i.test(question) && /class-day attendance operation/i.test(haystack)) {
+  if (/mark attendance|zoom csv|name penalty|name penalties|naming penalty|naming penalties|session/i.test(question) && /class-day attendance operation/i.test(haystack)) {
     score += 8;
   }
 
@@ -244,6 +244,7 @@ const TA_PORTAL_KEYWORDS = [
   'consolidated',
   'export',
   'settings',
+  'name penalty',
   'naming penalty',
   'absent erp',
 ];
@@ -507,7 +508,7 @@ export function getSuggestedHelpPrompts(moduleTitle?: string | null) {
   const generalPrompts = [
     'How do I mark attendance from a Zoom CSV from start to finish?',
     'How do I create a session before processing Zoom attendance?',
-    'How do I fix a naming penalty after attendance is saved?',
+    'How do I fix a name penalty after attendance is saved?',
     'How do I resolve a ticket and turn it into a rule exception?',
   ];
 
@@ -520,7 +521,7 @@ export function getSuggestedHelpPrompts(moduleTitle?: string | null) {
     'Live Attendance': [
       'How do I mark attendance after Zoom processing?',
       'How do I overwrite existing attendance safely?',
-      'How do I fix a wrong status or naming penalty?',
+      'How do I fix a wrong status or name penalty?',
     ],
     'Session Management': [
       'How do I create a session before any attendance work?',

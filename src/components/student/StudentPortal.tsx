@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useERP } from '@/lib/erp-context';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import SubmitIssue from './SubmitIssue';
 import MyIssues from './MyIssues';
 import AttendanceView from './AttendanceView';
@@ -11,17 +9,11 @@ import LateDays from './LateDays';
 import Groups from './Groups';
 import { useAuth } from '@/lib/auth';
 import { useAppSettingsQuery } from '@/features/settings';
-import { useLateDaysSummary } from '@/features/late-days';
 import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 
 type StudentPortalTab = 'submit' | 'issues' | 'attendance' | 'groups' | 'late-days';
 const STUDENT_STORAGE_SCOPE = 'student';
 const ACTIVE_TAB_STORAGE_KEY = 'active-tab';
-
-interface LateDaysSummary {
-  remaining: number;
-  totalAllowance: number;
-}
 
 const isStudentPortalTab = (value: string | null): value is StudentPortalTab =>
   value === 'submit' || value === 'issues' || value === 'attendance' || value === 'groups' || value === 'late-days';
@@ -42,9 +34,6 @@ export default function StudentPortal() {
   const [hasInitializedTab, setHasInitializedTab] = useState(false);
   const { data: appSettings, isLoading: isSettingsLoading } = useAppSettingsQuery();
   const ticketsEnabled = appSettings?.tickets_enabled ?? true;
-  const { data: lateDaysSummary, isLoading: isLateDaysLoading } = useLateDaysSummary(isVerified ? erp : null);
-  const lateDaysRemaining = lateDaysSummary.remaining;
-  const currentGroupNumber = lateDaysSummary.groupNumber ?? null;
 
   useEffect(() => {
     if (!isSettingsLoading && !hasInitializedTab) {
@@ -74,10 +63,6 @@ export default function StudentPortal() {
     writeScopedSessionStorage(STUDENT_STORAGE_SCOPE, storageUserKey, ACTIVE_TAB_STORAGE_KEY, activeTab);
   }, [activeTab, hasInitializedTab, storageUserKey]);
 
-  const handleLateDaysSummaryChange = (_summary: LateDaysSummary) => {
-    // Keep callback for LateDays component contract; source of truth is feature hook above.
-  };
-
   if (isLoading || isSettingsLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -87,9 +72,9 @@ export default function StudentPortal() {
   }
 
   return (
-    <div className="container max-w-5xl mx-auto p-4 md:p-8 space-y-8 animate-fade-in">
+    <div className="mx-auto w-full max-w-5xl space-y-8 animate-fade-in">
       <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
-        <div className="space-y-1 text-center md:text-left">
+        <div className="space-y-2 text-center md:text-left">
           <h1 className="text-4xl font-extrabold tracking-tight text-foreground text-center md:text-left">
             Student Portal
           </h1>
@@ -129,88 +114,53 @@ export default function StudentPortal() {
         </div>
       ) : isVerified ? (
         <div className="space-y-6">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <CardTitle>Late Days</CardTitle>
-                  <CardDescription>
-                    {currentGroupNumber !== null
-                      ? `Your group shares 3 late days. Any member claim reduces the same shared balance for everyone.`
-                      : 'You can use up to 3 late days unless TAs grant extra days.'}
-                  </CardDescription>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="rounded-full border px-4 py-2 text-sm font-medium">
-                    {isLateDaysLoading
-                      ? 'Loading late days...'
-                      : currentGroupNumber !== null
-                        ? `${lateDaysRemaining} group late day${lateDaysRemaining === 1 ? '' : 's'} left`
-                        : `${lateDaysRemaining} late day${lateDaysRemaining === 1 ? '' : 's'} left`}
-                  </span>
-                  <Button onClick={() => setActiveTab('late-days')}>
-                    Open Late Days
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-          </Card>
-
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as StudentPortalTab)} className="w-full space-y-8">
-            <TabsList className="flex w-full bg-muted/30 p-1.5 rounded-xl h-auto overflow-x-auto no-scrollbar">
-              {ticketsEnabled && (
-                <TabsTrigger value="submit" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
-                  Submit Issue
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as StudentPortalTab)} className="w-full space-y-6">
+            <div className="w-full overflow-x-auto no-scrollbar">
+              <TabsList className="flex h-auto min-w-full w-max justify-start gap-1 rounded-xl bg-muted/30 p-1.5">
+                {ticketsEnabled && (
+                  <TabsTrigger value="submit" className="min-w-[8rem] flex-1 rounded-lg px-4 py-3 transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg sm:min-w-0">
+                    Submit Issue
+                  </TabsTrigger>
+                )}
+                {ticketsEnabled && (
+                  <TabsTrigger value="issues" className="min-w-[8rem] flex-1 rounded-lg px-4 py-3 transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg sm:min-w-0">
+                    My Issues
+                  </TabsTrigger>
+                )}
+                <TabsTrigger value="attendance" className="min-w-[8rem] flex-1 rounded-lg px-4 py-3 transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg sm:min-w-0">
+                  Attendance
                 </TabsTrigger>
-              )}
-              {ticketsEnabled && (
-                <TabsTrigger value="issues" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
-                  My Issues
+                <TabsTrigger value="groups" className="min-w-[8rem] flex-1 rounded-lg px-4 py-3 transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg sm:min-w-0">
+                  Groups
                 </TabsTrigger>
-              )}
-              <TabsTrigger value="attendance" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
-                Attendance
-              </TabsTrigger>
-              <TabsTrigger value="groups" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
-                Groups
-              </TabsTrigger>
-              <TabsTrigger value="late-days" className="flex-1 py-3 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
-                Late Days
-              </TabsTrigger>
-            </TabsList>
+                <TabsTrigger value="late-days" className="min-w-[8rem] flex-1 rounded-lg px-4 py-3 transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg sm:min-w-0">
+                  Late Days
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
             {ticketsEnabled && (
-              <TabsContent value="submit" className="mt-6">
+              <TabsContent value="submit" className="mt-0">
                 <SubmitIssue />
               </TabsContent>
             )}
 
             {ticketsEnabled && (
-              <TabsContent value="issues" className="mt-6">
+              <TabsContent value="issues" className="mt-0">
                 <MyIssues />
               </TabsContent>
             )}
 
-            <TabsContent value="attendance" className="mt-6">
-              {!ticketsEnabled && (
-                <Card className="mb-6 border-amber-300/60 bg-amber-50/50">
-                  <CardHeader>
-                    <CardTitle className="text-lg">Ticketing is currently disabled</CardTitle>
-                    <CardDescription>
-                      Complaints/ticket submission is temporarily turned off by the TA team. Please email the TAs directly for support.
-                    </CardDescription>
-                  </CardHeader>
-                </Card>
-              )}
+            <TabsContent value="attendance" className="mt-0">
               <AttendanceView />
             </TabsContent>
 
-            <TabsContent value="groups" className="mt-6">
+            <TabsContent value="groups" className="mt-0">
               <Groups />
             </TabsContent>
 
-            <TabsContent value="late-days" className="mt-6">
-              <LateDays onSummaryChange={handleLateDaysSummaryChange} />
+            <TabsContent value="late-days" className="mt-0">
+              <LateDays />
             </TabsContent>
           </Tabs>
         </div>

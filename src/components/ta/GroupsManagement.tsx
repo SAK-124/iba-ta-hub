@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarClock, Loader2, Plus, RefreshCcw, Search, Trash2, Unlock, Users } from 'lucide-react';
+import { CalendarClock, Check, Download, Loader2, Plus, RefreshCcw, Search, Trash2, Unlock, Users, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
 import { formatDate } from '@/lib/date-format';
+import { formatDistanceToNow } from 'date-fns';
 import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
+import { STUDENT_SERIAL_CLASS, STUDENT_SERIAL_HEADER } from '@/lib/student-table';
 import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 import { getErrorMessage } from '@/shared/errors';
 import { Tables } from '@/integrations/supabase/types';
@@ -16,12 +18,18 @@ import {
   taAdjustAllGroupLateDays,
   taClearGroupRoster,
   taCreateGroup,
+  taDeleteGroup,
+  taSetGroupPoc,
   taEnableGroupEditingAll,
   taEnableGroupEditingSelected,
   taSetGroupEditDeadlineAll,
   taSetGroupEditDeadlineSelected,
   taSetStudentGroup,
+  respondToGroupJoinRequest,
+  buildGroupsCsv,
   useGroupAdminState,
+  orderGroupMembers,
+  type GroupSummary,
 } from '@/features/groups';
 import { listLateDaysAdminData } from '@/features/late-days';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ta/ui/alert-dialog';
@@ -32,6 +40,7 @@ import { Checkbox } from '@/components/ta/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ta/ui/dialog';
 import { Input } from '@/components/ta/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ta/ui/select';
 
 const TA_STORAGE_SCOPE = 'ta';
 const GROUPS_MANAGEMENT_STORAGE_KEY = 'module-groups';
@@ -118,7 +127,7 @@ export default function GroupsManagement({
     },
   );
 
-  const { data, setData, isLoading, refetch } = useGroupAdminState(Boolean(userEmail));
+  const { data, setData, isLoading, isUpdating, refetch } = useGroupAdminState(Boolean(userEmail));
   const [rosterSearchQuery, setRosterSearchQuery] = useState(persistedState.rosterSearchQuery);
   const [groupedStudentSearch, setGroupedStudentSearch] = useState(persistedState.groupedStudentSearch);
   const [unassignedStudentSearch, setUnassignedStudentSearch] = useState(persistedState.unassignedStudentSearch);
@@ -128,6 +137,7 @@ export default function GroupsManagement({
   const [activeRosterFilter, setActiveRosterFilter] = useState<RosterFilter>(persistedState.activeRosterFilter);
   const [pendingRecomputeAll, setPendingRecomputeAll] = useState(Boolean(persistedState.pendingRecomputeAll));
   const [pendingClearRoster, setPendingClearRoster] = useState(Boolean(persistedState.pendingClearRoster));
+  const [pendingDeleteGroup, setPendingDeleteGroup] = useState<GroupSummary | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [claims, setClaims] = useState<LateDayClaim[]>([]);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -135,10 +145,19 @@ export default function GroupsManagement({
   const [createGroupName, setCreateGroupName] = useState('');
   const [createGroupDeadline, setCreateGroupDeadline] = useState(defaultDeadlineValue);
   const [selectedCreateStudentErps, setSelectedCreateStudentErps] = useState<string[]>([]);
+  const [createPocErp, setCreatePocErp] = useState('');
+  const [pocDrafts, setPocDrafts] = useState<Record<string, string>>({});
   const [deadlineDialogScope, setDeadlineDialogScope] = useState<DeadlineScope>(null);
   const [deadlineInput, setDeadlineInput] = useState(defaultDeadlineValue);
   const lastHandledAgentCommandTokenRef = useRef<number | null>(null);
   const rosterSearchInputRef = useRef<HTMLInputElement>(null);
+
+  const selectedCreateStudents = useMemo(
+    () => data.roster
+      .filter((entry) => selectedCreateStudentErps.includes(entry.erp))
+      .sort((a, b) => a.class_no.localeCompare(b.class_no) || a.student_name.localeCompare(b.student_name) || a.erp.localeCompare(b.erp)),
+    [data.roster, selectedCreateStudentErps],
+  );
 
   const fetchGroupLateDays = useCallback(async () => {
     const lateDaysData = await listLateDaysAdminData();
@@ -278,6 +297,35 @@ export default function GroupsManagement({
     }
     void fetchGroupLateDays();
   }, [fetchGroupLateDays, userEmail]);
+
+  useEffect(() => {
+    const availableErps = new Set(data.roster.map((entry) => entry.erp));
+    setSelectedCreateStudentErps((previous) => {
+      const next = previous.filter((erp) => availableErps.has(erp));
+      return next.length === previous.length ? previous : next;
+    });
+  }, [data.roster]);
+
+  useEffect(() => {
+    if (createPocErp && !selectedCreateStudentErps.includes(createPocErp)) {
+      setCreatePocErp('');
+    }
+  }, [createPocErp, selectedCreateStudentErps]);
+
+  useEffect(() => {
+    setPocDrafts((previous) => {
+      const next = { ...previous };
+      let changed = false;
+      data.groups.forEach((group) => {
+        const draft = next[group.id];
+        if (draft && !group.members.some((member) => member.erp === draft)) {
+          next[group.id] = group.created_by_erp ?? '';
+          changed = true;
+        }
+      });
+      return changed ? next : previous;
+    });
+  }, [data.groups]);
 
   useEffect(() => {
     if (!userEmail) {
@@ -456,6 +504,28 @@ export default function GroupsManagement({
     });
   };
 
+  const handleRespondToRequest = async (requestId: string, accept: boolean) => {
+    await runAction(`${accept ? 'accept' : 'decline'}-request-${requestId}`, async () => {
+      const result = await respondToGroupJoinRequest(requestId, accept);
+      if ('viewer_email' in result.state) setData(result.state);
+      toast.success(accept ? 'Join request approved.' : 'Join request declined.');
+    }).catch((error: unknown) => {
+      toast.error(getErrorMessage(error, 'Failed to respond to group request.'));
+    });
+  };
+
+  const handleExportGroups = () => {
+    const blob = new Blob([buildGroupsCsv(data)], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `group_roster_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const handleRecompute = async () => {
     await runAction('recompute-all-groups', async () => {
       for (const group of data.groups) {
@@ -480,6 +550,23 @@ export default function GroupsManagement({
       toast.success(`Cleared ${result.removed_groups} group(s) and ${result.removed_members} memberships.`);
     }).catch((error: unknown) => {
       toast.error(getErrorMessage(error, 'Failed to clear group roster.'));
+    });
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!pendingDeleteGroup) return;
+    const groupNumber = pendingDeleteGroup.group_number;
+
+    await runAction(`delete-group-${groupNumber}`, async () => {
+      const result = await taDeleteGroup(groupNumber);
+      await refetch();
+      await fetchGroupLateDays();
+      setPendingDeleteGroup(null);
+      setSelectedGroupNumbers((previous) => previous.filter((value) => value !== groupNumber));
+      toast.success(`Deleted Group ${groupNumber}. Attendance and roster records were preserved.`);
+      return result;
+    }).catch((error: unknown) => {
+      toast.error(getErrorMessage(error, 'Failed to delete group.'));
     });
   };
 
@@ -536,6 +623,10 @@ export default function GroupsManagement({
       toast.error('Select at least one student for the new group.');
       return;
     }
+    if (!createPocErp || !selectedCreateStudentErps.includes(createPocErp)) {
+      toast.error('Select one group POC from the selected students.');
+      return;
+    }
     const deadline = new Date(createGroupDeadline);
     if (Number.isNaN(deadline.getTime())) {
       toast.error('Enter a valid edit deadline.');
@@ -547,6 +638,7 @@ export default function GroupsManagement({
         groupNumber,
         displayName: createGroupName,
         studentErps: selectedCreateStudentErps,
+        pocErp: createPocErp,
         editDeadline: deadline.toISOString(),
       });
       setData(result.state);
@@ -556,6 +648,7 @@ export default function GroupsManagement({
       setCreateGroupName('');
       setCreateGroupDeadline(defaultDeadlineValue());
       setSelectedCreateStudentErps([]);
+      setCreatePocErp('');
       setGroupedStudentSearch('');
       setUnassignedStudentSearch('');
       toast.success(`Created Group ${groupNumber}.`);
@@ -578,9 +671,13 @@ export default function GroupsManagement({
   };
 
   const toggleCreateStudent = (studentErp: string) => {
-    setSelectedCreateStudentErps((prev) =>
-      prev.includes(studentErp) ? prev.filter((value) => value !== studentErp) : [...prev, studentErp],
-    );
+    setSelectedCreateStudentErps((prev) => {
+      if (prev.includes(studentErp)) {
+        if (createPocErp === studentErp) setCreatePocErp('');
+        return prev.filter((value) => value !== studentErp);
+      }
+      return [...prev, studentErp];
+    });
   };
 
   const openCreateDialog = () => {
@@ -588,9 +685,26 @@ export default function GroupsManagement({
     setCreateGroupName('');
     setCreateGroupDeadline(defaultDeadlineValue());
     setSelectedCreateStudentErps([]);
+    setCreatePocErp('');
     setGroupedStudentSearch('');
     setUnassignedStudentSearch('');
     setIsCreateDialogOpen(true);
+  };
+
+  const handleSetGroupPoc = async (groupNumber: number, groupId: string) => {
+    const pocErp = pocDrafts[groupId] ?? data.groups.find((group) => group.id === groupId)?.created_by_erp ?? '';
+    if (!pocErp) {
+      toast.error('Select a current member as the group POC.');
+      return;
+    }
+    await runAction(`set-poc-${groupId}`, async () => {
+      const result = await taSetGroupPoc(groupNumber, pocErp);
+      setData(result.state);
+      setPocDrafts((previous) => ({ ...previous, [groupId]: pocErp }));
+      toast.success(`Group ${groupNumber} POC updated.`);
+    }).catch((error: unknown) => {
+      toast.error(getErrorMessage(error, 'Failed to update group POC.'));
+    });
   };
 
   const openDeadlineDialog = (scope: DeadlineScope) => {
@@ -607,14 +721,19 @@ export default function GroupsManagement({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-8">
+      <div className="flex h-6 justify-end" aria-live="polite">
+        <span className={`w-24 text-right text-xs text-muted-foreground transition-opacity ${isUpdating ? 'opacity-100' : 'opacity-0'}`}>
+          Updating…
+        </span>
+      </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {METRICS.map((metric) => (
           <button
             key={metric.key}
             type="button"
             onClick={() => setActiveRosterFilter(metric.key)}
-            className={`neo-out rounded-[24px] border px-4 py-3 text-left transition ${
+            className={`neo-out h-full min-h-[88px] rounded-[24px] border p-4 text-left transition ${
               activeRosterFilter === metric.key ? 'border-primary/60 bg-primary/8' : ''
             }`}
           >
@@ -626,11 +745,38 @@ export default function GroupsManagement({
         ))}
       </div>
 
+      <Card className="ta-module-card">
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2">Pending Join Requests <Badge aria-label={`${data.join_requests.length} pending join requests`} variant={data.join_requests.length > 0 ? 'default' : 'secondary'}>{data.join_requests.length}</Badge></CardTitle>
+              <CardDescription>Review student requests before managing the full group roster.</CardDescription>
+            </div>
+            <span className="text-xs text-muted-foreground" aria-live="polite">{isUpdating ? 'Updating…' : 'Live status'}</span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {data.join_requests.length === 0 ? <p className="text-sm text-muted-foreground">No pending requests.</p> : (
+            <div className="space-y-2">
+              {data.join_requests.map((request) => {
+                const group = data.groups.find((item) => item.group_number === request.group_number);
+                const parsedRequestDate = new Date(request.created_at);
+                const requestAge = Number.isNaN(parsedRequestDate.getTime()) ? 'time unavailable' : formatDistanceToNow(parsedRequestDate, { addSuffix: true });
+                return <div key={request.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-3">
+                  <div className="min-w-0 text-sm"><div className="font-medium">{request.student_name} ({request.student_erp})</div><div className="text-muted-foreground">Class {request.class_no} · Group {request.group_number} · {group?.member_count ?? 0}/5 members</div><div className="text-xs text-muted-foreground">Requested {requestAge} · {formatDate(request.created_at, 'PPP p')}</div></div>
+                  <div className="flex gap-2"><Button size="sm" onClick={() => handleRespondToRequest(request.id, true)} disabled={busyAction?.includes(request.id)}>{busyAction === `accept-request-${request.id}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}Approve</Button><Button size="sm" variant="outline" onClick={() => handleRespondToRequest(request.id, false)} disabled={busyAction?.includes(request.id)}><X className="mr-2 h-4 w-4" />Decline</Button></div>
+                </div>;
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(420px,0.95fr)]">
         <Card className="ta-module-card">
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <CardTitle>Groups Overview</CardTitle>
                 <CardDescription>
                   Search groups, select them for bulk actions, and create new groups without using the roster list as a shared target.
@@ -639,6 +785,9 @@ export default function GroupsManagement({
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="icon" title="Create group" onClick={openCreateDialog}>
                   <Plus className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="icon" title="Download group roster CSV" onClick={handleExportGroups} disabled={data.roster.length === 0}>
+                  <Download className="h-4 w-4" />
                 </Button>
                 <div className="mx-1 h-7 w-px bg-border" />
                 <Button
@@ -745,16 +894,61 @@ export default function GroupsManagement({
                             </div>
                           </div>
                         </div>
-                        <div className="text-right text-xs text-muted-foreground">
-                          {group.is_locked ? 'Student edits locked' : `Editable until ${formatDate(group.student_edit_locked_at, 'PPP p')}`}
+                        <div className="flex flex-wrap items-center justify-end gap-2 text-right text-xs text-muted-foreground">
+                          <span>{group.is_locked ? 'Student edits locked' : `Editable until ${formatDate(group.student_edit_locked_at, 'PPP p')}`}</span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            title={`Delete Group ${group.group_number}`}
+                            aria-label={`Delete Group ${group.group_number}`}
+                            onClick={() => setPendingDeleteGroup(group)}
+                            disabled={busyAction === `delete-group-${group.group_number}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap items-end gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-3">
+                        <div className="min-w-[240px] flex-1">
+                          <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Group POC</div>
+                          <Select
+                            value={pocDrafts[group.id] ?? group.created_by_erp ?? ''}
+                            onValueChange={(value) => setPocDrafts((previous) => ({ ...previous, [group.id]: value }))}
+                            disabled={group.members.length === 0}
+                          >
+                            <SelectTrigger aria-label={`Group ${group.group_number} POC`}>
+                              <SelectValue placeholder="Select a current member" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {orderGroupMembers(group).map((member) => (
+                                <SelectItem key={member.erp} value={member.erp}>
+                                  {member.student_name} · ERP {member.erp}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void handleSetGroupPoc(group.group_number, group.id)}
+                          disabled={busyAction === `set-poc-${group.id}` || !pocDrafts[group.id] || pocDrafts[group.id] === (group.created_by_erp ?? '')}
+                        >
+                          {busyAction === `set-poc-${group.id}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                          Save POC
+                        </Button>
                       </div>
 
                       <div className="mt-4 grid gap-4 md:grid-cols-2">
                         <div>
                           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Members</div>
-                          <div className="mt-2 text-sm text-muted-foreground">
-                            {group.members.map((member) => `${member.student_name} (${member.erp})`).join(', ')}
+                          <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                            {orderGroupMembers(group).map((member) => (
+                              <div key={member.erp}>{member.student_name} ({member.erp})</div>
+                            ))}
                           </div>
                         </div>
                         <div>
@@ -801,6 +995,7 @@ export default function GroupsManagement({
             <Table containerClassName="max-h-[760px]">
               <TableHeader className="sticky top-0 z-10 bg-background">
                 <TableRow>
+                  <TableHead className={STUDENT_SERIAL_CLASS}>{STUDENT_SERIAL_HEADER}</TableHead>
                   <TableHead>Student</TableHead>
                   <TableHead>Current</TableHead>
                   <TableHead>Target</TableHead>
@@ -810,13 +1005,14 @@ export default function GroupsManagement({
               <TableBody>
                 {filteredRoster.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
                       No students match this filter.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredRoster.map((entry) => (
+                  filteredRoster.map((entry, index) => (
                     <TableRow key={entry.erp}>
+                      <TableCell className={STUDENT_SERIAL_CLASS}>{index + 1}</TableCell>
                       <TableCell>
                         <div className="space-y-1">
                           <div className="font-medium">{entry.student_name}</div>
@@ -828,7 +1024,7 @@ export default function GroupsManagement({
                       <TableCell>
                         {entry.group_number !== null ? (
                           <Badge variant="outline">
-                            {getGroupHeading(entry.group_number, groupLookup.get(entry.group_number)?.display_name ?? null)}
+                            Group {entry.group_number}
                           </Badge>
                         ) : (
                           <Badge variant="secondary">Unassigned</Badge>
@@ -889,7 +1085,7 @@ export default function GroupsManagement({
           <DialogHeader>
             <DialogTitle>Create Group</DialogTitle>
             <DialogDescription>
-              Create a numbered group, optionally add a TA-only display name, choose an edit deadline, and select members from grouped and unassigned students.
+              Create a numbered group, choose its POC, optionally add a TA-only display name, and select members from grouped and unassigned students.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 md:grid-cols-3">
@@ -965,6 +1161,24 @@ export default function GroupsManagement({
               </div>
             </div>
           </div>
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+            <div className="mb-2 space-y-1">
+              <div className="font-semibold">Group POC <span className="text-destructive">*</span></div>
+              <div className="text-sm text-muted-foreground">Select exactly one current member. The POC appears first in the group table and CSV.</div>
+            </div>
+            <Select value={createPocErp} onValueChange={setCreatePocErp} disabled={selectedCreateStudents.length === 0}>
+              <SelectTrigger aria-label="Group POC">
+                <SelectValue placeholder={selectedCreateStudents.length === 0 ? 'Select members first' : 'Select a POC'} />
+              </SelectTrigger>
+              <SelectContent>
+                {selectedCreateStudents.map((entry) => (
+                  <SelectItem key={entry.erp} value={entry.erp}>
+                    {entry.student_name} · ERP {entry.erp} · Class {entry.class_no}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
               Cancel
@@ -1031,6 +1245,27 @@ export default function GroupsManagement({
             <AlertDialogAction onClick={() => void handleClearRoster()}>
               {busyAction === 'clear-groups' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
               Delete All Groups
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={pendingDeleteGroup !== null} onOpenChange={(open) => !open && setPendingDeleteGroup(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Group {pendingDeleteGroup?.group_number}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes only this group, its memberships, join requests, grouped claim-batch metadata, and derived shared-balance adjustments. Attendance, roster students, and original individual late-day claims remain intact.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void handleDeleteGroup()}
+              disabled={pendingDeleteGroup !== null && busyAction === `delete-group-${pendingDeleteGroup.group_number}`}
+            >
+              {pendingDeleteGroup !== null && busyAction === `delete-group-${pendingDeleteGroup.group_number}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              Delete Group
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

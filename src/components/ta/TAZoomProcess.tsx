@@ -4,6 +4,7 @@ import { Button } from '@/components/ta/ui/button';
 import { Label } from '@/components/ta/ui/label';
 import { Input } from '@/components/ta/ui/input';
 import { Switch } from '@/components/ta/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ta/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ta/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ta/ui/table';
 import { Checkbox } from '@/components/ta/ui/checkbox';
@@ -18,9 +19,10 @@ import {
   Copy,
   Download,
   AlertTriangle,
+  ArrowRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
+import { emitRosterDataUpdated, subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
 import { normalizeZoomSessionReport, type ZoomReportLoadRequest, type ZoomSessionReport } from '@/lib/zoom-session-report';
@@ -29,7 +31,17 @@ import type {
   HelpContextSnapshot,
   ZoomAgentCommand,
 } from '@/lib/ta-help-actions';
-import { getCurrentSessionEmail, listRosterReference } from '@/features/zoom';
+import { listRosterReference } from '@/features/zoom';
+import { createRosterStudent } from '@/features/roster';
+import { listSessions, type SessionRow } from '@/features/sessions';
+import {
+  getZoomResolutionSuggestions,
+  getZoomTimingSummary,
+  parseZoomDisplayIdentity,
+  processZoomCsv,
+  validateZoomQuickAdd,
+  type ZoomRosterStudent,
+} from '@/lib/zoom-processor';
 import {
   readScopedSessionStorage,
   removeScopedSessionStorage,
@@ -48,6 +60,15 @@ interface ProcessedData {
   total_class_minutes?: number;
   effective_threshold_minutes?: number;
   rows?: number;
+  effective_class_minutes?: number;
+  matched_participant_count?: number;
+  unmatched_participant_count?: number;
+  session_id?: string;
+  session_number?: number;
+  session_date?: string;
+  session_start_time?: string;
+  session_end_time?: string;
+  source_zoom_file_name?: string;
 }
 
 interface RosterReference {
@@ -63,6 +84,8 @@ interface NormalizedIssue {
   reason: string;
   notInRoster: boolean;
   unidentified: boolean;
+  attendedMinutes: string;
+  email: string;
   raw: GenericRow;
 }
 
@@ -82,18 +105,19 @@ interface ZoomWorkspaceCache {
   activeTab: string;
   step: 'upload' | 'review' | 'results';
   useSavedRoster: boolean;
-  manualDuration: string;
   namazBreak: string;
   filterQuery: string;
   filterClass: string;
   penaltiesMinusOneOnly: boolean;
   ignoredKeys: string[];
+  selectedSessionId?: string;
   filterName?: string;
   filterErp?: string;
 }
 
 interface TAZoomProcessProps {
   onFinalReportReady?: (report: ZoomSessionReport | null) => void;
+  onSendToAttendance?: (report: ZoomSessionReport) => void;
   reportLoadRequest?: ZoomReportLoadRequest | null;
   onReportLoadHandled?: () => void;
   onContextChange?: (context: string | null) => void;
@@ -111,12 +135,12 @@ const getDefaultZoomWorkspaceState = (): ZoomWorkspaceCache => ({
   activeTab: 'matches',
   step: 'upload',
   useSavedRoster: true,
-  manualDuration: '',
   namazBreak: '',
   filterQuery: '',
   filterClass: '',
   penaltiesMinusOneOnly: false,
   ignoredKeys: [],
+  selectedSessionId: '',
 });
 
 const toText = (value: unknown) => (value == null ? '' : String(value).trim());
@@ -142,6 +166,15 @@ const toProcessedData = (value: ProcessedData): ProcessedData => ({
   raw_rows: toRecordArray(value.raw_rows),
   total_class_minutes: value.total_class_minutes,
   effective_threshold_minutes: value.effective_threshold_minutes,
+  effective_class_minutes: value.effective_class_minutes,
+  matched_participant_count: value.matched_participant_count,
+  unmatched_participant_count: value.unmatched_participant_count,
+  session_id: value.session_id,
+  session_number: value.session_number,
+  session_date: value.session_date,
+  session_start_time: value.session_start_time,
+  session_end_time: value.session_end_time,
+  source_zoom_file_name: value.source_zoom_file_name,
   rows: value.rows,
 });
 
@@ -263,6 +296,7 @@ const extractPenaltyAppliedValue = (row: GenericRow): unknown => {
     'penalty_applied',
     'PenaltyApplied',
     'Penalty Applied (naming)',
+    'Name Penalty',
     'Naming Penalty',
   ]);
 
@@ -310,8 +344,29 @@ const exportRosterToWorkbookBlob = async (
   });
 };
 
+const readRosterFile = async (file: File): Promise<ZoomRosterStudent[]> => {
+  const XLSX = await import('xlsx');
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+  const findValue = (row: Record<string, unknown>, candidates: string[]) => {
+    const candidateSet = new Set(candidates.map(normalizeHeaderKey));
+    const entry = Object.entries(row).find(([key]) => candidateSet.has(normalizeHeaderKey(key)));
+    return entry ? toText(entry[1]) : '';
+  };
+
+  return rows
+    .map((row) => ({
+      erp: findValue(row, ['ERP', 'ERP ID', 'Student ERP']),
+      student_name: findValue(row, ['Name', 'Full Name', 'Student Name']),
+      class_no: findValue(row, ['Class No', 'Class', 'Section']),
+    }))
+    .filter((row) => row.erp && row.student_name);
+};
+
 export default function TAZoomProcess({
   onFinalReportReady,
+  onSendToAttendance,
   reportLoadRequest,
   onReportLoadHandled,
   onContextChange,
@@ -339,8 +394,9 @@ export default function TAZoomProcess({
   const [zoomFile, setZoomFile] = useState<File | null>(null);
   const [rosterFile, setRosterFile] = useState<File | null>(null);
   const [useSavedRoster, setUseSavedRoster] = useState(() => cached?.useSavedRoster ?? true);
-  const [manualDuration, setManualDuration] = useState(() => cached?.manualDuration ?? '');
   const [namazBreak, setNamazBreak] = useState(() => cached?.namazBreak ?? '');
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState(() => cached?.selectedSessionId ?? '');
 
   const [filterQuery, setFilterQuery] = useState(() => {
     const cachedQuery = cached?.filterQuery?.trim();
@@ -358,7 +414,22 @@ export default function TAZoomProcess({
   const [penaltiesMinusOneOnly, setPenaltiesMinusOneOnly] = useState(() => cached?.penaltiesMinusOneOnly ?? false);
 
   const [ignoredKeys, setIgnoredKeys] = useState<Set<string>>(() => new Set(cached?.ignoredKeys ?? []));
+  const [issueAssignments, setIssueAssignments] = useState<Record<string, string>>({});
+  const [issueSearchQuery, setIssueSearchQuery] = useState('');
+  const [issueQueries, setIssueQueries] = useState<Record<string, string>>({});
+  const [quickAddIssueId, setQuickAddIssueId] = useState<string | null>(null);
+  const [quickAddName, setQuickAddName] = useState('');
+  const [quickAddERP, setQuickAddERP] = useState('');
+  const [quickAddClass, setQuickAddClass] = useState('');
+  const [quickAddError, setQuickAddError] = useState('');
+  const [isQuickAdding, setIsQuickAdding] = useState(false);
   const [rosterReference, setRosterReference] = useState<Record<string, RosterReference>>({});
+  const sourceContextKey = [
+    selectedSessionId,
+    useSavedRoster ? 'saved' : `file:${rosterFile?.name ?? ''}:${rosterFile?.size ?? 0}:${rosterFile?.lastModified ?? 0}`,
+    `${zoomFile?.name ?? ''}:${zoomFile?.size ?? 0}:${zoomFile?.lastModified ?? 0}`,
+  ].join('|');
+  const previousSourceContextRef = useRef(sourceContextKey);
   const selectCsvLabelRef = useRef<HTMLLabelElement>(null);
   const analyzeButtonRef = useRef<HTMLButtonElement>(null);
   const calculateButtonRef = useRef<HTMLButtonElement>(null);
@@ -376,14 +447,14 @@ export default function TAZoomProcess({
     });
   };
 
-  const loadReferenceData = async () => {
+  const loadReferenceData = async (): Promise<RosterReference[]> => {
     let rosterRows: RosterReference[];
     try {
       rosterRows = await listRosterReference();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Failed to load roster reference: ${message}`);
-      return;
+      return [];
     }
 
     const map: Record<string, RosterReference> = {};
@@ -391,10 +462,28 @@ export default function TAZoomProcess({
       map[row.erp] = row;
     }
     setRosterReference(map);
+    return rosterRows;
   };
 
   useEffect(() => {
     void loadReferenceData();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listSessions()
+      .then((items) => {
+        if (!cancelled) setSessions(items);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          toast.error(`Failed to load sessions: ${message}`);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -414,7 +503,7 @@ export default function TAZoomProcess({
       screenDescription: 'Upload Zoom data, review matches and issues, then calculate the final attendance results.',
       visibleControls:
         step === 'upload'
-          ? ['SELECT CSV', 'Use Saved', 'CUSTOM DURATION (MINS)', 'NAMAZ BREAK (MINS)', 'Analyze Matrix', 'Calculate Attendance']
+          ? ['SELECT CSV', 'Use Saved', 'Session', 'NAMAZ BREAK (MINS)', 'Analyze Matrix', 'Calculate Attendance']
           : step === 'review'
             ? ['Matches', 'Issues', 'Unidentified', 'Raw Zoom Log', 'Calculate Attendance']
             : ['Attendance', 'Absent', 'Penalties', 'Matches', 'Issues', 'Unidentified', 'Raw Zoom Log', 'Copy Absent ERPs'],
@@ -443,15 +532,15 @@ export default function TAZoomProcess({
       activeTab,
       step,
       useSavedRoster,
-      manualDuration,
       namazBreak,
       filterQuery,
       filterClass,
       penaltiesMinusOneOnly,
       ignoredKeys: Array.from(ignoredKeys),
+      selectedSessionId,
     };
 
-    if (!data && step === 'upload' && ignoredKeys.size === 0 && !filterQuery && !filterClass && !manualDuration && !namazBreak && useSavedRoster && !penaltiesMinusOneOnly) {
+    if (!data && step === 'upload' && ignoredKeys.size === 0 && !filterQuery && !filterClass && !namazBreak && useSavedRoster && !penaltiesMinusOneOnly) {
       removeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, ZOOM_WORKSPACE_STORAGE_KEY);
       return;
     }
@@ -462,18 +551,21 @@ export default function TAZoomProcess({
     activeTab,
     step,
     useSavedRoster,
-    manualDuration,
     namazBreak,
     filterQuery,
     filterClass,
     penaltiesMinusOneOnly,
     ignoredKeys,
+    selectedSessionId,
     userEmail,
   ]);
 
   useEffect(() => {
+    if (previousSourceContextRef.current === sourceContextKey) return;
+    previousSourceContextRef.current = sourceContextKey;
     setIgnoredKeys(new Set());
-  }, [data]);
+    setIssueAssignments({});
+  }, [sourceContextKey]);
 
   useEffect(() => {
     if (!isCalculating) {
@@ -507,6 +599,12 @@ export default function TAZoomProcess({
       raw_rows: normalizedReport.raw_rows,
       total_class_minutes: normalizedReport.total_class_minutes,
       effective_threshold_minutes: normalizedReport.effective_threshold_minutes,
+      effective_class_minutes: normalizedReport.effective_class_minutes,
+      matched_participant_count: normalizedReport.matched_participant_count,
+      unmatched_participant_count: normalizedReport.unmatched_participant_count,
+      session_id: normalizedReport.session_id,
+      session_number: normalizedReport.session_number,
+      session_date: normalizedReport.session_date,
       rows: normalizedReport.rows,
     };
 
@@ -521,6 +619,7 @@ export default function TAZoomProcess({
     setIsCalculating(false);
     setZoomFile(null);
     setRosterFile(null);
+    if (normalizedReport.session_id) setSelectedSessionId(normalizedReport.session_id);
     onFinalReportReady?.(normalizedReport);
     toast.success(`Loaded saved Zoom report for session #${reportLoadRequest.sessionNumber}`);
     onReportLoadHandled?.();
@@ -549,9 +648,6 @@ export default function TAZoomProcess({
         }
         break;
       case 'set-parameters':
-        if (agentCommand.command.manualDuration !== undefined) {
-          setManualDuration(agentCommand.command.manualDuration);
-        }
         if (agentCommand.command.namazBreak !== undefined) {
           setNamazBreak(agentCommand.command.namazBreak);
         }
@@ -573,6 +669,25 @@ export default function TAZoomProcess({
 
   const rosterErpSet = useMemo(() => new Set(Object.keys(rosterReference)), [rosterReference]);
   const rosterCount = Object.keys(rosterReference).length;
+  const selectedSession = useMemo(
+    () => sessions.find((session) => session.id === selectedSessionId) ?? null,
+    [selectedSessionId, sessions],
+  );
+  const sessionReady = Boolean(selectedSession?.start_time && selectedSession?.end_time);
+  const timingSummary = useMemo(() => {
+    if (!selectedSession?.start_time || !selectedSession.end_time) return null;
+    try {
+      return getZoomTimingSummary({
+        sessionDate: selectedSession.session_date,
+        startTime: selectedSession.start_time,
+        endTime: selectedSession.end_time,
+        namazBreakMinutes: namazBreak ? Number(namazBreak) : 0,
+        threshold: 0.8,
+      });
+    } catch {
+      return null;
+    }
+  }, [namazBreak, selectedSession]);
 
   const normalizedRows = useMemo(() => {
     const attendanceRows = toRecordArray(data?.attendance_rows);
@@ -602,6 +717,8 @@ export default function TAZoomProcess({
         reason,
         notInRoster: notInRosterFlag,
         unidentified: unidentifiedFlag,
+        attendedMinutes: toText(pickFirst(row, ['Attended Minutes', 'attended_minutes', 'Duration'])),
+        email: toText(pickFirst(row, ['Email', 'email'])),
         raw: row,
       };
     });
@@ -712,33 +829,7 @@ export default function TAZoomProcess({
     toast.success(`Copied ${normalizedRows.unidentifiedIssues.length} unidentified row(s)`);
   };
 
-  const fetchSavedRosterBlob = async (): Promise<Blob | null> => {
-    try {
-      const actorEmail = await getCurrentSessionEmail();
-      if (!actorEmail) {
-        throw new Error('Not authenticated. Please log in again.');
-      }
-
-      const students = await listRosterReference();
-      if (!students || students.length === 0) {
-        throw new Error('No students found in saved roster. Upload roster first in Roster Management.');
-      }
-
-      const mappedStudents = students.map((student) => ({
-        'Class No': student.class_no,
-        Name: student.student_name,
-        ERP: student.erp,
-      }));
-      return await exportRosterToWorkbookBlob(mappedStudents);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Failed to load roster.';
-      console.error('Error fetching saved roster:', error);
-      toast.error('Failed to load saved roster', { description: message });
-      return null;
-    }
-  };
-
-  const processFile = async (targetStep: 'review' | 'results') => {
+  const processFile = async (targetStep: 'review' | 'results', assignments = issueAssignments, preserveTab = false) => {
     if (!zoomFile) {
       toast.error('Please select a Zoom CSV file first.');
       return;
@@ -753,82 +844,38 @@ export default function TAZoomProcess({
     const loadingToast = toast.loading(targetStep === 'review' ? 'Analyzing matches...' : 'Generating attendance...');
 
     try {
-      const formData = new FormData();
-      formData.append('file', zoomFile);
-      formData.append('threshold', '0.8');
-
-      if (manualDuration) formData.append('manual_duration', manualDuration);
-      if (namazBreak) formData.append('namaz_break', namazBreak);
-
-      if (useSavedRoster) {
-        const rosterBlob = await fetchSavedRosterBlob();
-        if (!rosterBlob) {
-          throw new Error('Could not load saved roster.');
-        }
-
-        formData.append('roster', rosterBlob, 'saved_roster.xlsx');
-      } else if (rosterFile) {
-        formData.append('roster', rosterFile);
+      const selectedSession = sessions.find((session) => session.id === selectedSessionId);
+      const savedRoster = useSavedRoster
+        ? await listRosterReference()
+        : rosterFile
+          ? await readRosterFile(rosterFile)
+          : [];
+      if (savedRoster.length === 0) {
+        throw new Error('No students found in the selected roster. Upload a roster first in Roster Management.');
+      }
+      if (!selectedSession || !selectedSession.start_time || !selectedSession.end_time) {
+        throw new Error('Select a saved session with both start and end times before processing.');
       }
 
-      const apiUrl = import.meta.env.VITE_ZOOM_API_URL;
-      if (!import.meta.env.DEV && !apiUrl) {
-        throw new Error('VITE_ZOOM_API_URL is not configured. Add it to your deployment environment variables.');
-      }
-
-      const endpoint = import.meta.env.DEV ? '/api/process' : `${apiUrl}/api/process`;
-
-      console.groupCollapsed('[Zoom Process] Request context');
-      console.log('Mode:', import.meta.env.DEV ? 'development' : 'production');
-      console.log('Endpoint:', endpoint);
-      console.log(
-        'Form fields:',
-        [...formData.entries()].map(([key, value]) => `${key}: ${typeof value === 'object' ? (value as File).name : value}`)
-      );
-      console.groupEnd();
-
-      let response: Response;
-      try {
-        response = await fetch(endpoint, {
-          method: 'POST',
-          body: formData,
-        });
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unknown network failure';
-        throw new Error(`Network error while reaching Zoom processor API: ${message}`);
-      }
-
-      const responseText = await response.text();
-
-      if (!response.ok) {
-        let errorMessage = responseText;
-        try {
-          const parsedError = JSON.parse(responseText) as { error?: string; message?: string };
-          errorMessage = parsedError.error || parsedError.message || responseText;
-        } catch {
-          // Keep raw text fallback.
-        }
-
-        throw new Error(`Backend error (${response.status}): ${errorMessage}`);
-      }
-
-      let parsedResult: unknown;
-      try {
-        parsedResult = JSON.parse(responseText);
-      } catch {
-        throw new Error('Backend returned non-JSON response. Check /api/process logs.');
-      }
-
-      if (!parsedResult || typeof parsedResult !== 'object') {
-        throw new Error('Unexpected response shape from backend.');
-      }
-
-      const nextData = parsedResult as ProcessedData;
-      const nextProcessedData = toProcessedData(nextData);
+      const parsedResult = await processZoomCsv(await zoomFile.text(), savedRoster, {
+        sessionDate: selectedSession.session_date,
+        startTime: selectedSession.start_time,
+        endTime: selectedSession.end_time,
+        namazBreakMinutes: namazBreak ? Number(namazBreak) : 0,
+        threshold: 0.8,
+        sourceFileName: zoomFile.name,
+        participantAssignments: assignments,
+      });
+      const nextProcessedData = toProcessedData({
+        ...parsedResult,
+        session_id: selectedSession?.id,
+        session_number: selectedSession?.session_number,
+        session_date: selectedSession?.session_date,
+      });
       setData(nextProcessedData);
 
       setStep(targetStep);
-      setActiveTab(targetStep === 'review' ? 'matches' : 'attendance');
+      if (!preserveTab) setActiveTab(targetStep === 'review' ? 'matches' : 'attendance');
 
       if (targetStep === 'results') {
         const finalReport = normalizeZoomSessionReport({
@@ -836,6 +883,9 @@ export default function TAZoomProcess({
           schema_version: 1,
           generated_at: new Date().toISOString(),
           source_zoom_file_name: zoomFile?.name,
+          session_id: selectedSession?.id,
+          session_number: selectedSession?.session_number,
+          session_date: selectedSession?.session_date,
         });
         onFinalReportReady?.(finalReport);
       }
@@ -863,6 +913,71 @@ export default function TAZoomProcess({
     setStep('upload');
     setData(null);
     onFinalReportReady?.(null);
+  };
+
+  const handleSessionChange = (sessionId: string) => {
+    if (sessionId === selectedSessionId) return;
+    setSelectedSessionId(sessionId);
+    setData(null);
+    setStep('upload');
+    setActiveTab('matches');
+    setIgnoredKeys(new Set());
+    setIssueAssignments({});
+    onFinalReportReady?.(null);
+  };
+
+  const openQuickAdd = (issue: NormalizedIssue) => {
+    const identity = parseZoomDisplayIdentity(issue.name);
+    const erp = issue.erpCandidate || identity.erp;
+    if (!/^\d{5}$/.test(erp) || !identity.studentName || rosterErpSet.has(erp)) {
+      toast.error('Quick-add is available only when Zoom provides a reliable five-digit ERP and name.');
+      return;
+    }
+    setQuickAddIssueId(issue.id);
+    setQuickAddERP(erp);
+    setQuickAddName(identity.studentName);
+    setQuickAddClass('');
+    setQuickAddError('');
+  };
+
+  const handleQuickAdd = async () => {
+    if (!quickAddIssueId) return;
+    const roster = Object.values(rosterReference);
+    const validation = validateZoomQuickAdd(
+      { erp: quickAddERP, studentName: quickAddName, classNo: quickAddClass },
+      roster,
+    );
+    if (!validation.valid) {
+      setQuickAddError(validation.error);
+      return;
+    }
+
+    setQuickAddError('');
+    setIsQuickAdding(true);
+    try {
+      await createRosterStudent({ erp: quickAddERP.trim(), student_name: quickAddName.trim(), class_no: quickAddClass.trim() });
+      emitRosterDataUpdated('zoom_quick_add');
+      await loadReferenceData();
+      const issue = normalizedRows.issues.find((item) => item.id === quickAddIssueId);
+      if (issue) {
+        const nextAssignments = { ...issueAssignments, [issue.id]: quickAddERP.trim() };
+        setIssueAssignments(nextAssignments);
+        setIgnoredKeys((previous) => {
+          const next = new Set(previous);
+          next.delete(issue.id);
+          return next;
+        });
+        await processFile(step === 'results' ? 'results' : 'review', nextAssignments, true);
+      }
+      setQuickAddIssueId(null);
+      toast.success('Student added to the roster and Zoom analysis recalculated.');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Could not add student to roster.';
+      setQuickAddError(message);
+      toast.error('Could not add student to roster', { description: message });
+    } finally {
+      setIsQuickAdding(false);
+    }
   };
 
   const renderTable = (
@@ -1127,6 +1242,142 @@ export default function TAZoomProcess({
     );
   };
 
+  const renderIssuesReview = (rows: NormalizedIssue[]) => {
+    if (rows.length === 0) return <div className="p-8 text-center text-muted-foreground">No unresolved participants.</div>;
+
+    const globalQuery = issueSearchQuery.trim().toLowerCase();
+    const visibleRows = rows.filter((issue) => {
+      if (!globalQuery) return true;
+      return `${issue.name} ${issue.erpCandidate} ${issue.reason}`.toLowerCase().includes(globalQuery);
+    });
+
+    const updateAssignment = (issue: NormalizedIssue, erp: string) => {
+      const nextAssignments = { ...issueAssignments, [issue.id]: erp };
+      setIssueAssignments(nextAssignments);
+      setIgnoredKeys((previous) => {
+        const next = new Set(previous);
+        next.delete(issue.id);
+        return next;
+      });
+      void processFile(step === 'results' ? 'results' : 'review', nextAssignments, true);
+    };
+
+    const updateIgnored = (issue: NormalizedIssue) => {
+      toggleIgnoreKey(issue.id);
+      void processFile(step === 'results' ? 'results' : 'review', issueAssignments, true);
+    };
+
+    const renderResolution = (issue: NormalizedIssue, compact = false) => {
+      const assignedERP = issueAssignments[issue.id] ?? '';
+      const ignored = ignoredKeys.has(issue.id);
+      const status = ignored ? 'Ignored' : assignedERP ? 'Resolved' : 'Needs review';
+      const parsed = parseZoomDisplayIdentity(issue.name);
+      const attendedMinutes = Number(issue.attendedMinutes);
+      const meetsCutoff = Number.isFinite(attendedMinutes) && data?.effective_threshold_minutes != null
+        ? attendedMinutes >= data.effective_threshold_minutes
+        : false;
+      const reliableERP = /^\d{5}$/.test(issue.erpCandidate || parsed.erp) && Boolean(parsed.studentName) && !rosterErpSet.has(issue.erpCandidate || parsed.erp);
+      const suggestions = getZoomResolutionSuggestions(
+        parsed.studentName || issue.name,
+        issue.erpCandidate,
+        Object.values(rosterReference),
+        issueQueries[issue.id] ?? '',
+      ).slice(0, 12);
+
+      return (
+        <div className={cn('space-y-2', compact && 'w-full')}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className={cn('ta-status-chip', ignored ? 'status-all' : assignedERP ? 'status-present' : 'status-excused')}>
+              {status}
+            </Badge>
+            <Badge variant="outline" className="ta-status-chip status-all">{issue.attendedMinutes || '0'} min</Badge>
+            <Badge variant="outline" className={cn('ta-status-chip', meetsCutoff ? 'status-present' : 'status-absent')}>
+              {meetsCutoff ? 'Meets cutoff' : 'Below cutoff'}
+            </Badge>
+            {issue.reason && <span className="text-xs text-muted-foreground">{issue.reason}</span>}
+          </div>
+          {!ignored && (
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                value={issueQueries[issue.id] ?? ''}
+                onChange={(event) => setIssueQueries((previous) => ({ ...previous, [issue.id]: event.target.value }))}
+                placeholder="Search roster by ERP or name"
+                className="h-9 min-w-0 sm:max-w-[240px]"
+                aria-label={`Search roster for ${issue.name || 'participant'}`}
+              />
+              <Select value={assignedERP} onValueChange={(erp) => updateAssignment(issue, erp)} disabled={isProcessing}>
+                <SelectTrigger className="h-9 min-w-0 sm:min-w-[230px]"><SelectValue placeholder="Select roster student" /></SelectTrigger>
+                <SelectContent>
+                  {suggestions.map((student) => (
+                    <SelectItem key={student.erp} value={student.erp}>{student.erp} · {student.student_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {reliableERP && !assignedERP && !ignored && (
+            <Button type="button" size="sm" variant="outline" onClick={() => openQuickAdd(issue)} disabled={isProcessing}>
+              Add {issue.erpCandidate || parsed.erp} to roster
+            </Button>
+          )}
+        </div>
+      );
+    };
+
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#141517] neo-in p-3">
+          <div className="text-sm text-muted-foreground">{visibleRows.length} of {rows.length} participant issue(s)</div>
+          <Input value={issueSearchQuery} onChange={(event) => setIssueSearchQuery(event.target.value)} placeholder="Search issues by name or ERP" className="h-9 w-full sm:w-[260px]" aria-label="Search participant issues" />
+        </div>
+
+        <div className="hidden overflow-x-auto rounded-xl border border-[#141517] lg:block">
+          <Table>
+          <TableHeader><TableRow><TableHead className="sticky left-0 z-30 bg-background">Zoom participant / ignore</TableHead><TableHead>ERP candidate</TableHead><TableHead>Resolution</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {visibleRows.map((issue) => {
+                const ignored = ignoredKeys.has(issue.id);
+                return <TableRow key={issue.id}>
+                  <TableCell className="sticky left-0 z-20 align-top bg-background"><div className="flex min-w-[210px] items-start gap-2"><Checkbox checked={ignored} onCheckedChange={() => updateIgnored(issue)} aria-label={`Ignore ${issue.name || 'participant'}`} /><span className="max-w-[240px] break-words font-mono text-xs">{issue.name || 'Unknown participant'}</span></div></TableCell>
+                  <TableCell className="align-top font-mono text-xs">{issue.erpCandidate || 'N/A'}</TableCell>
+                  <TableCell className="min-w-[320px] align-top">{renderResolution(issue)}</TableCell>
+                </TableRow>;
+              })}
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="space-y-3 lg:hidden">
+          {visibleRows.map((issue) => {
+            const ignored = ignoredKeys.has(issue.id);
+            return <Card key={issue.id} className="neo-in border border-[#141517] p-4">
+              <div className="flex items-start gap-3"><Checkbox checked={ignored} onCheckedChange={() => updateIgnored(issue)} aria-label={`Ignore ${issue.name || 'participant'}`} /><div className="min-w-0 flex-1"><p className="break-words font-mono text-sm">{issue.name || 'Unknown participant'}</p><p className="mt-1 text-xs text-muted-foreground">ERP candidate: {issue.erpCandidate || 'N/A'}</p></div></div>
+              <div className="mt-3">{renderResolution(issue, true)}</div>
+            </Card>;
+          })}
+        </div>
+
+        {visibleRows.length === 0 && <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">No participant issues match this search.</div>}
+
+        {quickAddIssueId && (() => {
+          const issue = rows.find((item) => item.id === quickAddIssueId);
+          if (!issue) return null;
+          const classes = Array.from(new Set(Object.values(rosterReference).map((student) => student.class_no).filter(Boolean))).sort();
+          return <Card className="neo-in border border-[var(--neo-accent)] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-semibold">Add late student to roster</p><p className="text-xs text-muted-foreground">This keeps the current CSV, session, and break settings.</p></div><Button type="button" size="sm" variant="ghost" onClick={() => setQuickAddIssueId(null)}>Cancel</Button></div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1"><Label>ERP</Label><Input value={quickAddERP} onChange={(event) => setQuickAddERP(event.target.value)} /></div>
+              <div className="space-y-1"><Label>Name</Label><Input value={quickAddName} onChange={(event) => setQuickAddName(event.target.value)} /></div>
+              <div className="space-y-1"><Label>Class</Label><Select value={quickAddClass} onValueChange={setQuickAddClass}><SelectTrigger><SelectValue placeholder="Select class" /></SelectTrigger><SelectContent>{classes.map((classNo) => <SelectItem key={classNo} value={classNo}>{classNo}</SelectItem>)}</SelectContent></Select></div>
+            </div>
+            {quickAddError && <p className="mt-3 text-sm text-red-400">{quickAddError}</p>}
+            <Button type="button" className="mt-4" onClick={() => void handleQuickAdd()} disabled={isQuickAdding}>{isQuickAdding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Add and recalculate</Button>
+          </Card>;
+        })()}
+      </div>
+    );
+  };
+
   const renderUnidentifiedRows = () => {
     if (normalizedRows.unidentifiedIssues.length === 0) {
       return (
@@ -1185,7 +1436,7 @@ export default function TAZoomProcess({
   };
 
   return (
-    <div className="animate-fade-in space-y-8 pb-20  ta-module-shell">
+    <div className="ta-module-shell animate-fade-in space-y-6 pb-16 sm:space-y-8 sm:pb-20">
       <div className="space-y-1">
         <h2 className="text-3xl font-bold tracking-tight text-debossed">Zoom Processor</h2>
         <p className="text-base text-debossed-sm">Upload Zoom logs, review matches, and generate attendance.</p>
@@ -1193,12 +1444,12 @@ export default function TAZoomProcess({
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <Card className="neo-out border-0 md:col-span-2 shadow-none">
-          <CardHeader className="pb-4 border-b border-[#141517] mx-6 px-0 pt-6">
+          <CardHeader className="mx-4 border-b border-[#141517] px-0 pb-4 pt-4 sm:mx-6 sm:pt-6">
             <CardTitle className="flex items-center gap-3 text-[15px] font-semibold text-debossed">
               Upload & Match
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6 pt-6">
+          <CardContent className="space-y-6 pt-4 sm:pt-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label className="text-xs font-bold uppercase text-muted-foreground">Zoom Log</Label>
@@ -1302,9 +1553,9 @@ export default function TAZoomProcess({
                 type="button"
                 className={cn(
                   'mt-8 h-[52px] w-full neo-btn neo-out flex items-center justify-center gap-3 text-[15px] tracking-wide uppercase',
-                  isProcessing && 'opacity-50 cursor-not-allowed pointer-events-none'
+                  (isProcessing || !sessionReady) && 'opacity-50 cursor-not-allowed pointer-events-none'
                 )}
-                onClick={() => processFile('review')} disabled={isProcessing}
+                onClick={() => processFile('review')} disabled={isProcessing || !sessionReady}
               >
                 {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
                 Analyze Matrix
@@ -1313,16 +1564,33 @@ export default function TAZoomProcess({
           </CardContent>
         </Card>
 
-        <Card className={`neo-out border-0 shadow-none ${step === 'upload' ? 'pointer-events-none opacity-50' : ''}`}>
-          <CardHeader className="pb-4 border-b border-[#141517] mx-6 px-0 pt-6">
+        <Card className="neo-out border-0 shadow-none">
+          <CardHeader className="mx-4 border-b border-[#141517] px-0 pb-4 pt-4 sm:mx-6 sm:pt-6">
             <CardTitle className="flex items-center gap-3 text-[15px] font-semibold text-debossed">
               Parameters
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-5 pt-6">
+          <CardContent className="space-y-5 pt-4 sm:pt-6">
             <div className="space-y-2.5">
-              <Label className="uppercase text-[11px] font-bold text-debossed-sm tracking-wider">Custom Duration (mins)</Label>
-              <Input type="number" placeholder="Auto" value={manualDuration} onChange={(event) => setManualDuration(event.target.value)} className="neo-in h-12" />
+              <Label className="uppercase text-[11px] font-bold tracking-wider text-debossed-sm">Session</Label>
+              <Select value={selectedSessionId} onValueChange={handleSessionChange} disabled={isProcessing}>
+                <SelectTrigger className="neo-in h-12">
+                  <SelectValue placeholder="Select session" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sessions.map((session) => (
+                    <SelectItem key={session.id} value={session.id}>
+                      #{session.session_number} · {session.session_date}
+                      {session.start_time && session.end_time ? ` · ${session.start_time}–${session.end_time}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedSession && (
+                <div className="space-y-2 text-xs text-muted-foreground">
+                  <p>Official window: {selectedSession.start_time || 'start not set'}–{selectedSession.end_time || 'end not set'}.</p>
+                </div>
+              )}
             </div>
             <div className="space-y-2.5">
               <Label className="uppercase text-[11px] font-bold text-debossed-sm tracking-wider">Namaz Break (mins)</Label>
@@ -1338,7 +1606,7 @@ export default function TAZoomProcess({
                   : 'neo-btn neo-out'
               )}
               onClick={() => processFile('results')}
-              disabled={isProcessing || step === 'upload'}
+              disabled={isProcessing || step === 'upload' || !sessionReady}
             >
               {isCalculating ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -1359,13 +1627,21 @@ export default function TAZoomProcess({
 
       {data && (
         <Card className="neo-out animate-fade-in border-0 mt-8 shadow-none">
-          <CardHeader className="pb-4 border-b border-[#141517] mx-6 px-0 pt-6">
+          <CardHeader className="mx-4 border-b border-[#141517] px-0 pb-4 pt-4 sm:mx-6 sm:pt-6">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
+              <div className="space-y-2">
                 <CardTitle className="text-[17px] font-semibold text-debossed">{step === 'review' ? 'Match Review' : 'Final Results'}</CardTitle>
-                <CardDescription className="text-debossed-sm mt-1">
+                <CardDescription className="text-debossed-sm">
                   {data.rows ?? normalizedRows.rawRows.length} records processed. {step === 'review' && 'Review matches before finalizing.'}
                 </CardDescription>
+                {timingSummary && (
+                  <div aria-label="Attendance timing benchmark" className="grid grid-cols-2 gap-x-3 gap-y-1 rounded-lg border border-[#141517] neo-in p-3 text-xs text-muted-foreground sm:grid-cols-4">
+                    <span>Official: <strong>{timingSummary.officialMinutes} min</strong></span>
+                    <span>Break: <strong>{timingSummary.breakMinutes} min</strong></span>
+                    <span>Effective: <strong>{timingSummary.effectiveMinutes} min</strong></span>
+                    <span>80% required: <strong>{timingSummary.requiredMinutes} min</strong></span>
+                  </div>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="outline" className="ta-status-chip status-present status-present-table-text">
@@ -1383,6 +1659,36 @@ export default function TAZoomProcess({
                 <Badge variant="outline" className="ta-status-chip status-all">
                   Not In Roster: {diagnostics.notInRosterCount}
                 </Badge>
+                {step === 'results' && onSendToAttendance && (
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => {
+                      const unresolvedCount = normalizedRows.issuesRows.filter((row, index) => {
+                        const key = getRowKey(row, index);
+                        return !issueAssignments[key] && !ignoredKeys.has(key);
+                      }).length;
+                      if (unresolvedCount > 0) {
+                        toast.error(`Resolve or ignore ${unresolvedCount} unresolved participant(s) before sending attendance.`);
+                        setActiveTab('issues');
+                        return;
+                      }
+                      const report = normalizeZoomSessionReport({
+                        ...data,
+                        schema_version: 1,
+                        generated_at: new Date().toISOString(),
+                        source_zoom_file_name: zoomFile?.name ?? data.source_zoom_file_name,
+                        session_id: data.session_id ?? selectedSession?.id,
+                        session_number: data.session_number ?? selectedSession?.session_number,
+                        session_date: data.session_date ?? selectedSession?.session_date,
+                      });
+                      if (report) onSendToAttendance(report);
+                    }}
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                    Send to Live Attendance
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -1406,7 +1712,7 @@ export default function TAZoomProcess({
               </div>
             )}
           </CardHeader>
-          <CardContent className="pt-6">
+          <CardContent className="pt-4 sm:pt-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="mb-6 h-auto w-full justify-start overflow-x-auto neo-in p-1 border border-[#141517]">
                 {step === 'review' ? (
@@ -1446,7 +1752,7 @@ export default function TAZoomProcess({
                       </div>
                     </div>
                   )}
-                  {renderTable(normalizedRows.issuesRows)}
+                  {renderIssuesReview(normalizedRows.issues)}
                 </div>
               </TabsContent>
               <TabsContent value="unidentified" className="animate-fade-in">

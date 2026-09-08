@@ -17,16 +17,21 @@ export default function Layout({
   } = useAuth();
   const navigate = useNavigate();
   const handleSignOut = async () => {
-    await signOut();
-    navigate('/');
+    try {
+      await signOut();
+    } catch {
+      // Navigation still completes if the remote sign-out request fails.
+    } finally {
+      navigate('/', { replace: true });
+    }
   };
   return <div data-ui-surface="default" className="min-h-screen bg-background transition-colors duration-300">
     <header className="safe-sticky-header sticky top-0 z-50 w-full glass-morphism border-b border-primary/10">
-      <div className="container flex min-h-20 items-center justify-between">
-        <div className="flex items-center gap-3">
-          <CompanionBotLogo className="mt-1 -ml-6 md:-ml-8" />
+      <div className="site-header-content container flex min-h-20 items-center justify-between px-4 sm:px-8">
+        <div className="flex min-w-0 items-center gap-3">
+          <CompanionBotLogo className="h-16 w-16 shrink-0 sm:h-[72px] sm:w-[72px]" />
           <div>
-            <h1 className="text-lg font-semibold text-foreground my-0 text-center">AAMD Portal</h1>
+            <h1 className="my-0 text-lg font-semibold text-foreground">AAMD Portal</h1>
             <p className="text-xs text-muted-foreground">{isTA ? 'TA Dashboard' : 'Student Portal'}</p>
           </div>
         </div>
@@ -55,7 +60,7 @@ export default function Layout({
       </div>
     </header>
 
-    <main className="container py-6">
+    <main className="container px-4 py-6 sm:px-8">
       {children}
     </main>
   </div>;

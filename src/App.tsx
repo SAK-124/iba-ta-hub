@@ -1,11 +1,11 @@
 import { lazy, Suspense } from "react";
+import { Loader2 } from "lucide-react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { ThemeProvider } from "@/components/theme-provider";
-import PortalLoadingScreen from "@/components/PortalLoadingScreen";
 
 const Auth = lazy(() => import("./pages/Auth"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -23,16 +23,23 @@ const queryClient = new QueryClient({
   },
 });
 
-function RouteLoading() {
+export function RouteLoading() {
   return (
-    <PortalLoadingScreen
-      title="Authenticating Access"
-      subtitle="Checking your account and preparing the portal..."
-    />
+    <div
+      data-ui-surface="ta"
+      role="status"
+      aria-label="Loading portal"
+      className="min-h-screen relative overflow-hidden flex items-center justify-center px-4 py-10"
+    >
+      <div className="matte-grain" />
+      <div className="relative z-10 flex h-20 w-20 items-center justify-center rounded-2xl neo-in">
+        <Loader2 aria-hidden="true" className="h-10 w-10 animate-spin text-debossed-sm status-all-text" />
+      </div>
+    </div>
   );
 }
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading, isTA } = useAuth();
 
   if (isLoading) {
@@ -52,7 +59,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function PublicRoute({ children }: { children: React.ReactNode }) {
+export function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {

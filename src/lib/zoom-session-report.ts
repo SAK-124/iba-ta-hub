@@ -13,6 +13,13 @@ export interface ZoomSessionReport {
   rows?: number;
   generated_at: string;
   source_zoom_file_name?: string;
+  /** Optional metadata used to hand the reviewed report to Live Attendance. */
+  session_id?: string;
+  session_number?: number;
+  session_date?: string;
+  effective_class_minutes?: number;
+  matched_participant_count?: number;
+  unmatched_participant_count?: number;
 }
 
 export interface ZoomReportLoadRequest {
@@ -100,6 +107,19 @@ export const normalizeZoomSessionReport = (input: unknown): ZoomSessionReport | 
   if (sourceZoomFileName) {
     normalized.source_zoom_file_name = sourceZoomFileName;
   }
+
+  const sessionId = objectInput.session_id;
+  if (typeof sessionId === 'string' && sessionId.trim() !== '') normalized.session_id = sessionId.trim();
+  const sessionNumber = toFiniteNumber(objectInput.session_number);
+  if (sessionNumber !== undefined) normalized.session_number = sessionNumber;
+  const sessionDate = objectInput.session_date;
+  if (typeof sessionDate === 'string' && sessionDate.trim() !== '') normalized.session_date = sessionDate.trim();
+  const effectiveClassMinutes = toFiniteNumber(objectInput.effective_class_minutes);
+  if (effectiveClassMinutes !== undefined) normalized.effective_class_minutes = effectiveClassMinutes;
+  const matchedParticipantCount = toFiniteNumber(objectInput.matched_participant_count);
+  if (matchedParticipantCount !== undefined) normalized.matched_participant_count = matchedParticipantCount;
+  const unmatchedParticipantCount = toFiniteNumber(objectInput.unmatched_participant_count);
+  if (unmatchedParticipantCount !== undefined) normalized.unmatched_participant_count = unmatchedParticipantCount;
 
   return normalized;
 };

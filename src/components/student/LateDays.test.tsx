@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import LateDays from './LateDays';
 
@@ -201,5 +201,39 @@ describe('LateDays', () => {
     expect(screen.getAllByText('TA Extended Assignment')).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'Claim' })).toBeEnabled();
     expect(screen.getByText('Can Claim')).toBeInTheDocument();
+  });
+
+  it('keeps existing assignments visible when a realtime refresh fails', async () => {
+    let realtimeCallback: (() => void) | undefined;
+    subscribeToRealtimeTablesMock.mockImplementation((_name, _tables, callback) => {
+      realtimeCallback = callback;
+      return { id: 'channel-1' };
+    });
+    listStudentLateDaysDataMock
+      .mockResolvedValueOnce({
+        assignments: [
+          {
+            id: 'assignment-1',
+            active: true,
+            created_at: '2026-03-01T00:00:00.000Z',
+            due_at: '2026-12-01T00:00:00.000Z',
+            title: 'Existing Assignment',
+            updated_at: '2026-03-01T00:00:00.000Z',
+          },
+        ],
+        claims: [],
+        adjustments: [],
+      })
+      .mockRejectedValueOnce(new Error('temporary realtime failure'));
+
+    render(<LateDays />);
+
+    expect(await screen.findByText('Existing Assignment')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(realtimeCallback).toBeDefined();
+      realtimeCallback?.();
+      expect(listStudentLateDaysDataMock).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.getByText('Existing Assignment')).toBeInTheDocument();
   });
 });

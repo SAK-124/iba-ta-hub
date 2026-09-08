@@ -54,6 +54,26 @@ describe('ta-help-actions', () => {
     expect(planHelpAssistantAction('How do I create a new session for today?')).toBeNull();
   });
 
+  it('reports Issue Queue as unavailable without producing a navigation action', () => {
+    const plan = planHelpAssistantAction('open the issue queue');
+
+    expect(plan?.action).toBeNull();
+    expect(plan?.response).toContain('Issue Queue is currently unavailable');
+  });
+
+  it('does not revive an unavailable Issue Queue through a remembered follow-up', () => {
+    const plan = planHelpAssistantAction('take me there', null, {
+      kind: 'module',
+      moduleId: 'issues',
+      moduleTitle: 'Issue Queue',
+      nextAction: { type: 'open-module', module: 'issues' },
+    });
+
+    expect(plan?.action).toBeNull();
+    expect(plan?.response).toContain('Issue Queue is currently unavailable');
+    expect(plan?.rememberedIntent).toBeNull();
+  });
+
   it('infers natural language add-student prep commands', () => {
     const plan = planHelpAssistantAction('take me to where i can add a student named ahsan');
 

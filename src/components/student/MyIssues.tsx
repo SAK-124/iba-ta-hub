@@ -63,7 +63,7 @@ export default function MyIssues() {
           <Card key={ticket.id}>
             <CardHeader className="pb-2">
               <div className="flex justify-between items-start">
-                <div>
+                <div className="space-y-2">
                   <CardTitle className="text-lg font-semibold">{ticket.category}</CardTitle>
                   <CardDescription>
                     {format(new Date(ticket.created_at), 'PPP p')}
@@ -83,7 +83,7 @@ export default function MyIssues() {
               </p>
               {ticket.ta_response && (
                 <div className="mt-4 p-3 bg-muted rounded-md border text-sm">
-                  <span className="font-semibold block mb-1">TA Response:</span>
+                  <span className="font-semibold block mb-2">TA Response:</span>
                   {ticket.ta_response}
                 </div>
               )}

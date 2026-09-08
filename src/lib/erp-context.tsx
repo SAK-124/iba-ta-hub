@@ -140,3 +140,7 @@ export function useERP() {
   }
   return context;
 }
+
+export function useOptionalERP() {
+  return useContext(ERPContext);
+}

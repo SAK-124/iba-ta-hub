@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import GroupsManagement from './GroupsManagement';
 
@@ -12,6 +12,7 @@ const {
   taAdjustAllGroupLateDaysMock,
   taClearGroupRosterMock,
   taCreateGroupMock,
+  taSetGroupPocMock,
   taEnableGroupEditingAllMock,
   taEnableGroupEditingSelectedMock,
   taSetGroupEditDeadlineAllMock,
@@ -22,6 +23,7 @@ const {
   taAdjustAllGroupLateDaysMock: vi.fn(),
   taClearGroupRosterMock: vi.fn(),
   taCreateGroupMock: vi.fn(),
+  taSetGroupPocMock: vi.fn(),
   taEnableGroupEditingAllMock: vi.fn(),
   taEnableGroupEditingSelectedMock: vi.fn(),
   taSetGroupEditDeadlineAllMock: vi.fn(),
@@ -42,11 +44,14 @@ vi.mock('@/lib/auth', () => ({
 }));
 
 vi.mock('@/features/groups', () => ({
+  orderGroupMembers: (group: { created_by_erp?: string | null; members: Array<{ erp: string }> }) => [...group.members].sort((a, b) => Number(a.erp !== group.created_by_erp) - Number(b.erp !== group.created_by_erp)),
+  isGroupPoc: (group: { created_by_erp?: string | null }, erp: string) => Boolean(group.created_by_erp && group.created_by_erp === erp),
   useGroupAdminState: useGroupAdminStateMock,
   taSetStudentGroup: taSetStudentGroupMock,
   taAdjustAllGroupLateDays: taAdjustAllGroupLateDaysMock,
   taClearGroupRoster: taClearGroupRosterMock,
   taCreateGroup: taCreateGroupMock,
+  taSetGroupPoc: taSetGroupPocMock,
   taEnableGroupEditingAll: taEnableGroupEditingAllMock,
   taEnableGroupEditingSelected: taEnableGroupEditingSelectedMock,
   taSetGroupEditDeadlineAll: taSetGroupEditDeadlineAllMock,
@@ -102,6 +107,20 @@ describe('GroupsManagement', () => {
           { erp: '00000', student_name: 'Test Student', class_no: 'A', group_number: 1 },
           { erp: '12345', student_name: 'Ahsan', class_no: 'A', group_number: 1 },
           { erp: '54321', student_name: 'Sara', class_no: 'B', group_number: null },
+        ],
+        join_requests: [
+          {
+            id: 'request-1',
+            group_id: 'group-1',
+            group_number: 1,
+            student_erp: '54321',
+            student_name: 'Sara',
+            class_no: 'B',
+            status: 'pending',
+            created_at: '2026-03-22T12:00:00.000Z',
+            responded_at: null,
+            responded_by_email: null,
+          },
         ],
       },
       setData: vi.fn(),
@@ -161,7 +180,15 @@ describe('GroupsManagement', () => {
     expect(screen.getByRole('button', { name: /Total Groups/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /create group/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /enable editing for everyone/i })).toBeInTheDocument();
-    expect(screen.getByText('Group 1 · Alpha')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Group 1 · Alpha' })).toBeInTheDocument();
+    expect(screen.getByText('Pending Join Requests')).toBeInTheDocument();
+    expect(screen.getByLabelText('1 pending join requests')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /assign/i }).length).toBeGreaterThan(0);
-  });
+    expect(screen.getByText('Test Student (00000)')).toBeInTheDocument();
+    expect(screen.getByText('Ahsan (12345)')).toBeInTheDocument();
+    expect(screen.queryByText(/Test Student \(00000\).*POC/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /create group/i }));
+    expect(await screen.findByRole('combobox', { name: 'Group POC' })).toBeInTheDocument();
+  }, 15000);
 });

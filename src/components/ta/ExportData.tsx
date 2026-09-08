@@ -81,7 +81,7 @@ export default function ExportData({
                 }
             });
 
-            const header = ['Class No', 'Student Name', 'ERP', 'Naming Penalties', ...sessions.map(s => `S${s.session_number}`), 'Total Absences'];
+            const header = ['Class No', 'Student Name', 'ERP', 'Name Penalties', ...sessions.map(s => `S${s.session_number}`), 'Total Absences'];
 
             const csvRows = [header.join(',')];
 

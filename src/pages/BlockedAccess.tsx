@@ -23,7 +23,7 @@ export default function BlockedAccess() {
           <AlertCircle className="w-5 h-5 text-destructive mt-0.5 shrink-0" />
           <div className="text-sm">
             <p className="font-medium text-foreground">Why am I seeing this?</p>
-            <p className="text-muted-foreground mt-1">
+            <p className="mt-2 text-muted-foreground">
               This application is restricted to users with an <strong>@khi.iba.edu.pk</strong> email address.
               If you are a TA using a personal email, ask an admin to add you to the allowlist.
             </p>

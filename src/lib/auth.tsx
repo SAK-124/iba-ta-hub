@@ -148,10 +148,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     const currentEmail = user?.email?.trim().toLowerCase() ?? null;
+    // Clear the local auth context before waiting on the network so route guards
+    // cannot keep the user on the protected dashboard if sign-out is slow.
+    latestSyncIdRef.current += 1;
+    setUser(null);
+    setSession(null);
+    setIsTA(false);
     if (user?.id === '00000') {
-      setUser(null);
-      setSession(null);
-      setIsTA(false);
       latestKnownEmailRef.current = null;
       clearAccessChecksCache();
       clearScopedSessionStorageScope('student', currentEmail);
@@ -162,7 +165,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearAccessChecksCache();
     clearScopedSessionStorageScope('student', currentEmail);
     clearScopedSessionStorageScope('ta', currentEmail);
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // The local context is already signed out; do not strand the user on /dashboard.
+    }
   };
 
   return (

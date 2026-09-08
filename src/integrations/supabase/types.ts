@@ -411,6 +411,51 @@ export type Database = {
           },
         ]
       }
+      student_group_join_requests: {
+        Row: {
+          id: string
+          group_id: string
+          student_erp: string
+          status: string
+          created_at: string
+          responded_at: string | null
+          responded_by_email: string | null
+        }
+        Insert: {
+          id?: string
+          group_id: string
+          student_erp: string
+          status?: string
+          created_at?: string
+          responded_at?: string | null
+          responded_by_email?: string | null
+        }
+        Update: {
+          id?: string
+          group_id?: string
+          student_erp?: string
+          status?: string
+          created_at?: string
+          responded_at?: string | null
+          responded_by_email?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_group_join_requests_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "student_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_group_join_requests_student_erp_fkey"
+            columns: ["student_erp"]
+            isOneToOne: false
+            referencedRelation: "students_roster"
+            referencedColumns: ["erp"]
+          }
+        ]
+      }
       student_groups: {
         Row: {
           created_at: string
@@ -596,8 +641,10 @@ export type Database = {
         Args: { p_group_number: number; p_student_erp: string }
         Returns: Json
       }
+      student_cancel_group_join_request: { Args: { p_request_id: string }; Returns: Json }
       student_create_group: { Args: { p_group_number: number }; Returns: Json }
       student_join_group: { Args: { p_group_number: number }; Returns: Json }
+      student_request_group_join: { Args: { p_group_number: number }; Returns: Json }
       student_leave_group: { Args: never; Returns: Json }
       student_remove_group_member: {
         Args: { p_group_number: number; p_student_erp: string }
@@ -615,10 +662,15 @@ export type Database = {
         Args: { p_group_number: number }
         Returns: Json
       }
+      ta_delete_group: {
+        Args: { p_group_number: number }
+        Returns: Json
+      }
       ta_set_student_group: {
         Args: { p_group_number?: number; p_student_erp: string }
         Returns: Json
       }
+      respond_to_group_join_request: { Args: { p_accept: boolean; p_request_id: string }; Returns: Json }
       verify_ta_setup: {
         Args: { check_email: string; check_password: string }
         Returns: boolean

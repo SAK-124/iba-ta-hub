@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { listAttendanceHistoryByErp, type AttendanceHistoryRecord } from '@/features/attendance';
+import { getAbsenceCountClass } from '@/lib/absence-display';
 
 interface AttendanceProps {
   canAccess: boolean | null;
@@ -67,7 +68,7 @@ export default function Attendance({ canAccess, isBlocked }: AttendanceProps) {
         <CardContent className="py-6">
           <div className="text-center">
             <p className="text-sm opacity-80">Total Absences</p>
-            <p className="text-4xl font-bold">{totalAbsences}</p>
+            <p className={`text-4xl font-bold ${getAbsenceCountClass(totalAbsences, 'text-primary-foreground')}`}>{totalAbsences}</p>
           </div>
         </CardContent>
       </Card>

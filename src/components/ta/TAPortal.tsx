@@ -8,7 +8,6 @@ import {
   Download,
   Layers,
   LogOut,
-  MessageSquare,
   Settings,
   ShieldAlert,
   Users,
@@ -40,6 +39,7 @@ import {
   writeScopedSessionStorage,
 } from '@/lib/scoped-session-storage';
 import { cn } from '@/lib/utils';
+import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
 import {
   normalizeZoomSessionReport,
   type ZoomReportLoadRequest,
@@ -47,6 +47,11 @@ import {
 } from '@/lib/zoom-session-report';
 import PortalLoadingScreen from '@/components/PortalLoadingScreen';
 import TAHelpAssistant from './TAHelpAssistant';
+import { useGroupAdminState } from '@/features/groups';
+
+// Keep the assistant implementation available for a future re-enable without
+// exposing the floating launcher in the live portal.
+const SHOW_TA_HELP_ASSISTANT = false;
 
 const TAZoomProcess = lazy(() => import('./TAZoomProcess'));
 const AttendanceMarking = lazy(() => import('./AttendanceMarking'));
@@ -115,7 +120,6 @@ const MODULES: ModuleConfig[] = [
   { id: 'sessions', title: 'Session Management', description: 'Configure session calendar and timing rules', icon: CalendarDays, colSpan: 1 },
   { id: 'exceptions', title: 'Rule Exceptions', description: 'Manage approved exceptions and overrides', icon: ShieldAlert, colSpan: 1 },
   { id: 'late-days', title: 'Late Days', description: 'Configure late-day allowances and windows', icon: Clock3, colSpan: 1 },
-  { id: 'issues', title: 'Issue Queue', description: 'Track and resolve attendance issues', icon: MessageSquare, colSpan: 1 },
   { id: 'export', title: 'Export Data', description: 'Generate and export attendance reports', icon: Download, colSpan: 1 },
   { id: 'settings', title: 'Lists & Settings', description: 'Manage access and submission lists', icon: Settings, colSpan: 2 },
 ];
@@ -240,6 +244,22 @@ export default function TAPortal() {
   const commandTokenRef = useRef(0);
 
   const showAttendanceSwitch = activeModule === 'zoom' || activeModule === 'attendance';
+  const dashboardActive = !activeModule && !showAttendanceSwitch;
+  const { data: dashboardGroups, refetch: refetchDashboardGroups } = useGroupAdminState(dashboardActive);
+
+  useEffect(() => {
+    if (!dashboardActive) return;
+    const channel = subscribeToRealtimeTables(
+      'ta-dashboard-pending-group-requests',
+      [
+        { table: 'student_group_join_requests' },
+        { table: 'student_group_members' },
+        { table: 'student_groups' },
+      ],
+      () => { void refetchDashboardGroups(); },
+    );
+    return () => { void removeRealtimeChannel(channel); };
+  }, [dashboardActive, refetchDashboardGroups]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -364,6 +384,15 @@ export default function TAPortal() {
   };
 
   const handleOpenModule = (module: PortalModule) => {
+    if (module === 'issues') {
+      setIssueQueueAgentCommand(null);
+      if (activeModule === 'issues') {
+        setActiveModule(null);
+        setHelpModuleStage(null);
+      }
+      return;
+    }
+
     clearPendingCommands();
     setHelpSnapshotDetails({});
     setHelpModuleStage(getImmediateStageForModule(module, attendanceWorkspaceTab));
@@ -482,17 +511,13 @@ export default function TAPortal() {
         setRuleExceptionsAgentCommand(makeCommandEnvelope(action.command, nextCommandToken()));
         return;
       case 'issue-queue-command':
-        setHelpModuleStage(
-          action.command.kind === 'open-ticket' ||
-          action.command.kind === 'prepare-resolve-ticket' ||
-          action.command.kind === 'prepare-escalate-ticket' ||
-          action.command.kind === 'prepare-delete-ticket' ||
-          action.command.kind === 'prefill-response'
-            ? 'Issue Queue · ticket sheet open'
-            : 'Issue Queue · filtered list',
-        );
-        setActiveModule('issues');
-        setIssueQueueAgentCommand(makeCommandEnvelope(action.command, nextCommandToken()));
+        // Issue Queue is intentionally unavailable in the current TA portal.
+        // Keep the implementation mounted only behind the future re-enable path.
+        setIssueQueueAgentCommand(null);
+        if (activeModule === 'issues') {
+          setActiveModule(null);
+          setHelpModuleStage(null);
+        }
         return;
       case 'late-days-command':
         setHelpModuleStage(
@@ -521,8 +546,13 @@ export default function TAPortal() {
   };
 
   const handleSignOut = async () => {
-    await signOut();
-    navigate('/');
+    try {
+      await signOut();
+    } catch {
+      // Navigation still completes if the remote sign-out request fails.
+    } finally {
+      navigate('/', { replace: true });
+    }
   };
 
   const getModuleContext = () => {
@@ -564,6 +594,11 @@ export default function TAPortal() {
               <Suspense fallback={MODULE_SUSPENSE_FALLBACK}>
                 <TAZoomProcess
                   onFinalReportReady={setLatestFinalZoomReport}
+                  onSendToAttendance={(report) => {
+                    setLatestFinalZoomReport(report);
+                    setAttendanceWorkspaceTab('attendance');
+                    setLoadedAttendanceTabs((prev) => new Set(prev).add('attendance'));
+                  }}
                   reportLoadRequest={pendingZoomReportLoad}
                   onReportLoadHandled={() => setPendingZoomReportLoad(null)}
                   onContextChange={setHelpModuleStage}
@@ -719,10 +754,10 @@ export default function TAPortal() {
   const moduleContext = getModuleContext();
 
   return (
-    <div data-ui-surface="ta" className="min-h-screen p-8 font-sans relative overflow-hidden">
+    <div data-ui-surface="ta" className="min-h-screen overflow-x-hidden px-3 py-4 font-sans relative sm:px-5 sm:py-6 lg:px-8">
       <div className="matte-grain" />
 
-      <div className="max-w-6xl mx-auto">
+      <div className="mx-auto w-full max-w-6xl">
         <AnimatePresence mode="wait">
           {!activeModule ? (
             <motion.div
@@ -732,13 +767,13 @@ export default function TAPortal() {
               exit={{ opacity: 0, y: -12 }}
               transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
             >
-              <header className="mb-12 flex justify-between items-end px-4">
+              <header className="mb-8 flex flex-col gap-5 px-1 sm:mb-12 sm:flex-row sm:items-end sm:justify-between sm:px-4">
                 <div>
                   <h1 className="text-4xl font-extrabold tracking-tight mb-2 text-debossed">TA Dashboard</h1>
                   <p className="text-debossed-sm text-sm tracking-wide font-bold uppercase">Attendance Operations</p>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                   <button
                     type="button"
                     onClick={handleSignOut}
@@ -759,7 +794,7 @@ export default function TAPortal() {
                 </div>
               </header>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-7 px-4">
+              <div className="grid grid-cols-1 gap-4 px-1 sm:gap-6 sm:px-4 md:grid-cols-2 lg:grid-cols-4">
                 {MODULES.map((card) => {
                   const Icon = card.icon;
                   return (
@@ -767,7 +802,7 @@ export default function TAPortal() {
                       key={card.id}
                       onClick={() => handleOpenModule(card.id)}
                       className={cn(
-                        'ta-dashboard-card neo-btn neo-out group cursor-pointer flex flex-col justify-between min-h-[190px] rounded-[32px] p-7 relative text-left',
+                        'ta-dashboard-card neo-btn neo-out group cursor-pointer flex min-h-[180px] flex-col justify-between rounded-[26px] p-5 relative text-left sm:min-h-[190px] sm:rounded-[32px] sm:p-7',
                         card.colSpan === 2 ? 'lg:col-span-2' : 'lg:col-span-1',
                       )}
                     >
@@ -790,7 +825,14 @@ export default function TAPortal() {
                       </div>
 
                       <div>
-                        <h3 className="ta-dashboard-title text-debossed font-black mb-1.5 tracking-wide text-lg">{card.title}</h3>
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <h3 className="ta-dashboard-title text-debossed font-black tracking-wide text-lg">{card.title}</h3>
+                          {card.id === 'groups' && dashboardGroups.join_requests.length > 0 && (
+                            <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground" aria-label={`${dashboardGroups.join_requests.length} pending join requests`}>
+                              {dashboardGroups.join_requests.length} pending
+                            </span>
+                          )}
+                        </div>
                         <p className="ta-dashboard-description text-debossed-sm text-sm leading-relaxed font-semibold">{card.description}</p>
                       </div>
                     </button>
@@ -807,7 +849,7 @@ export default function TAPortal() {
               transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
               className="space-y-6"
             >
-              <div className="neo-out rounded-[32px] p-5 md:p-6">
+              <div className="neo-out rounded-[24px] p-4 sm:rounded-[32px] sm:p-5 md:p-6">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <button onClick={() => { setHelpModuleStage(null); setActiveModule(null); }} className="group/back flex items-center gap-2 text-sm font-bold tracking-wide text-debossed-sm">
                     <div className="p-1.5 rounded-full neo-in">
@@ -816,7 +858,7 @@ export default function TAPortal() {
                     Back to Modules
                   </button>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                     <button
                       type="button"
                       onClick={handleSignOut}
@@ -839,7 +881,7 @@ export default function TAPortal() {
 
                 <div className="mt-4">
                   <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-debossed">{moduleContext.title}</h2>
-                  <p className="mt-1 text-sm md:text-[15px] text-debossed-sm">{moduleContext.description}</p>
+                  <p className="mt-2 text-sm md:text-[15px] text-debossed-sm">{moduleContext.description}</p>
                 </div>
 
                 {showAttendanceSwitch && (
@@ -876,13 +918,13 @@ export default function TAPortal() {
                 )}
               </div>
 
-              <div className="neo-out rounded-[26px] p-3 md:p-4">{renderActiveModule()}</div>
+              <div className="neo-out min-w-0 rounded-[22px] p-2 sm:rounded-[26px] sm:p-3 md:p-4">{renderActiveModule()}</div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      <TAHelpAssistant snapshot={helpSnapshot} onRunAction={handleRunHelpAction} />
+      {SHOW_TA_HELP_ASSISTANT ? <TAHelpAssistant snapshot={helpSnapshot} onRunAction={handleRunHelpAction} /> : null}
     </div>
   );
 }

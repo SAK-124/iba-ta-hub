@@ -32,6 +32,7 @@ import { toast } from 'sonner';
 import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { useAuth } from '@/lib/auth';
 import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
+import { useRefreshController } from '@/hooks/use-refresh-controller';
 import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
 import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 import type {
@@ -139,6 +140,8 @@ export default function IssueManagement({
         }
     }, []);
 
+    const { requestRefresh, isUpdating } = useRefreshController(async () => fetchTickets('silent'));
+
     const applyRealtimeEvent = useCallback(async (payload: TicketRealtimePayload) => {
         if (payload.eventType === 'DELETE') {
             const deletedId = payload.old.id;
@@ -155,9 +158,9 @@ export default function IssueManagement({
             setTickets((prev) => upsertRowById(prev, ticketWithName));
         } catch {
             // Fallback to full refresh if payload augmentation fails.
-            void fetchTickets('silent');
+            void requestRefresh('background');
         }
-    }, [fetchTickets]);
+    }, [fetchTickets, requestRefresh]);
 
     // Realtime subscription
     useEffect(() => {
@@ -168,14 +171,14 @@ export default function IssueManagement({
         });
 
         const unsubscribeRoster = subscribeRosterDataUpdated(() => {
-            void fetchTickets('silent');
+            void requestRefresh('background');
         });
 
         return () => {
             unsubscribeRoster();
             void removeTicketChannel(channel);
         };
-    }, [applyRealtimeEvent, fetchTickets]);
+    }, [applyRealtimeEvent, fetchTickets, requestRefresh]);
 
     useEffect(() => {
         writeScopedSessionStorage(TA_STORAGE_SCOPE, userEmail, ISSUE_MANAGEMENT_STORAGE_KEY, {
@@ -267,7 +270,7 @@ export default function IssueManagement({
     }, [agentCommand, onAgentCommandHandled, tickets]);
 
     const { markRefreshed } = useStaleRefreshOnFocus(
-        () => fetchTickets('silent'),
+        () => requestRefresh('background'),
         { staleAfterMs: 60_000 },
     );
 
@@ -280,14 +283,14 @@ export default function IssueManagement({
             `ta-issues-roster-${userEmail ?? 'anonymous'}`,
             [{ table: 'students_roster' }],
             () => {
-                void fetchTickets('silent');
+                void requestRefresh('background');
             },
         );
 
         return () => {
             void removeRealtimeChannel(channel);
         };
-    }, [fetchTickets, userEmail]);
+    }, [requestRefresh, userEmail]);
 
     const toggleStatus = async (ticket: TicketWithStudentName) => {
         try {
@@ -343,6 +346,7 @@ export default function IssueManagement({
                         Issue Tracker
                     </h1>
                     <p className="ta-section-subtitle">Manage student tickets and inquiries with ease.</p>
+                    <div className="h-5 w-24 text-xs text-muted-foreground" aria-live="polite"><span className={`transition-opacity ${isUpdating ? 'opacity-100' : 'opacity-0'}`}>Updating…</span></div>
                 </div>
 
                 <div className="flex gap-3 flex-wrap w-full md:w-auto">
@@ -385,7 +389,7 @@ export default function IssueManagement({
                 </div>
             </div>
 
-            <div className="neo-out ta-module-card rounded-2xl border border-[#111214] overflow-hidden">
+            <div className="neo-out ta-module-card overflow-hidden rounded-2xl border border-[#111214]">
                 {isLoading ? (
                     <div className="flex items-center justify-center py-20">
                         <Loader2 className="h-10 w-10 animate-spin text-debossed-sm" />

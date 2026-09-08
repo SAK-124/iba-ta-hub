@@ -28,18 +28,34 @@ export interface GroupRosterEntry {
   group_number: number | null;
 }
 
+export interface GroupJoinRequest {
+  id: string;
+  group_id: string;
+  group_number: number;
+  student_erp: string;
+  student_name: string;
+  class_no: string;
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled';
+  created_at: string;
+  responded_at: string | null;
+  responded_by_email: string | null;
+}
+
 export interface StudentGroupState {
   student_email: string;
   student_erp: string;
   current_group_id: string | null;
   groups: GroupSummary[];
   roster: GroupRosterEntry[];
+  my_join_request: GroupJoinRequest | null;
+  incoming_join_requests: GroupJoinRequest[];
 }
 
 export interface GroupAdminState {
   viewer_email: string;
   groups: GroupSummary[];
   roster: GroupRosterEntry[];
+  join_requests: GroupJoinRequest[];
 }
 
 export interface GroupRecomputeResult {
@@ -66,6 +82,15 @@ export interface GroupClearRosterResult {
   removed_sync_adjustments: number;
 }
 
+export interface GroupDeleteResult {
+  success: boolean;
+  group_number: number;
+  removed_members: number;
+  removed_join_requests: number;
+  removed_batches: number;
+  removed_sync_adjustments: number;
+}
+
 export interface GroupDeadlineUpdateResult {
   success: boolean;
   updated_groups: number;
@@ -76,6 +101,7 @@ export interface GroupCreateInput {
   groupNumber: number;
   displayName?: string | null;
   studentErps: string[];
+  pocErp: string;
   editDeadline: string;
 }
 

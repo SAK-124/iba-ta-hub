@@ -13,6 +13,8 @@ import { Textarea } from '@/components/ta/ui/textarea';
 import { subscribeRosterDataUpdated } from '@/lib/data-sync-events';
 import { useAuth } from '@/lib/auth';
 import { useStaleRefreshOnFocus } from '@/hooks/use-stale-refresh-on-focus';
+import { useRefreshController } from '@/hooks/use-refresh-controller';
+import { sortStudentRows, STUDENT_SERIAL_CLASS, STUDENT_SERIAL_HEADER } from '@/lib/student-table';
 import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
 import { readScopedSessionStorage, writeScopedSessionStorage } from '@/lib/scoped-session-storage';
 import type {
@@ -271,22 +273,28 @@ export default function RuleExceptions({
         }
         try {
             const rosterData = await listRoster();
-            const data = rosterData.rows
+            const data = sortStudentRows(rosterData.rows
                 .map((row) => ({ id: row.id, erp: row.erp, student_name: row.student_name, class_no: row.class_no }))
-                .sort((a, b) => a.class_no.localeCompare(b.class_no) || a.student_name.localeCompare(b.student_name));
+            );
             setRosterStudents(data as RosterStudentRow[]);
             hasLoadedRosterRef.current = true;
             markRefreshedRef.current();
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : 'Unknown error';
             toast.error(`Failed to load roster: ${message}`);
-            setRosterStudents([]);
+            if (shouldShowLoader) {
+                setRosterStudents([]);
+            }
         } finally {
             if (shouldShowLoader) {
                 setIsRosterLoading(false);
             }
         }
     }, []);
+
+    const { requestRefresh, isUpdating } = useRefreshController(async () => {
+        await Promise.all([fetchExceptions('silent'), fetchRosterStudents('silent')]);
+    });
 
     useEffect(() => {
         void fetchExceptions('initial');
@@ -295,11 +303,11 @@ export default function RuleExceptions({
 
     useEffect(() => {
         const unsubscribe = subscribeRosterDataUpdated(() => {
-            void fetchRosterStudents('silent');
+            void requestRefresh('background');
         });
 
         return unsubscribe;
-    }, [fetchRosterStudents]);
+    }, [requestRefresh]);
 
     const handleAddException = async () => {
         if (!newErp) return;
@@ -401,9 +409,7 @@ export default function RuleExceptions({
     const warnedCount = Object.keys(cameraWarnings).length;
     const expiredCount = Object.values(cameraWarnings).filter((warnedAtMs) => clockMs - warnedAtMs >= CAMERA_WARNING_DURATION_MS).length;
     const { markRefreshed } = useStaleRefreshOnFocus(
-        async () => {
-            await Promise.all([fetchExceptions('silent'), fetchRosterStudents('silent')]);
-        },
+        () => requestRefresh('background'),
         { staleAfterMs: 60_000 },
     );
 
@@ -419,25 +425,25 @@ export default function RuleExceptions({
                 { table: 'students_roster' },
             ],
             () => {
-                void fetchExceptions('silent');
-                void fetchRosterStudents('silent');
+                void requestRefresh('background');
             },
         );
 
         return () => {
             void removeRealtimeChannel(channel);
         };
-    }, [fetchExceptions, fetchRosterStudents, userEmail]);
+    }, [requestRefresh, userEmail]);
 
     return (
         <div className="ta-module-shell space-y-6">
             <Card className="ta-module-card">
                 <CardHeader>
                     <div className="flex justify-between items-center">
-                        <div>
+                        <div className="space-y-2">
                             <CardTitle>Rule Exceptions</CardTitle>
                             <CardDescription>Manage special cases like camera exemptions.</CardDescription>
                         </div>
+                        <span className={`w-24 text-right text-xs text-muted-foreground transition-opacity ${isUpdating ? 'opacity-100' : 'opacity-0'}`} aria-live="polite">Updating…</span>
                         <div className="flex gap-2">
                             <Select value={filterDay} onValueChange={setFilterDay}>
                                 <SelectTrigger className="w-[150px]"><SelectValue placeholder="Filter Day" /></SelectTrigger>
@@ -506,6 +512,7 @@ export default function RuleExceptions({
                             <Table scrollClassName="overflow-x-auto">
                                 <TableHeader>
                                     <TableRow>
+                                        <TableHead className={STUDENT_SERIAL_CLASS}>{STUDENT_SERIAL_HEADER}</TableHead>
                                         <TableHead>Student</TableHead>
                                         <TableHead>Type</TableHead>
                                         <TableHead>Day</TableHead>
@@ -514,8 +521,9 @@ export default function RuleExceptions({
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {filteredExceptions.map((ex) => (
+                                    {filteredExceptions.map((ex, index) => (
                                         <TableRow key={ex.id}>
+                                            <TableCell className={STUDENT_SERIAL_CLASS}>{index + 1}</TableCell>
                                             <TableCell>
                                                 <div className="flex flex-col">
                                                     <span className="font-medium">{ex.student_name}</span>
@@ -536,7 +544,7 @@ export default function RuleExceptions({
                                     ))}
                                     {filteredExceptions.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                                            <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                                                 No exceptions found.
                                             </TableCell>
                                         </TableRow>
@@ -550,7 +558,7 @@ export default function RuleExceptions({
             <Card className="ta-module-card">
                 <CardHeader>
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                        <div>
+                        <div className="space-y-2">
                             <CardTitle>Camera Closed Tracker</CardTitle>
                             <CardDescription>
                                 Search roster students and mark <span className="font-medium">Warned</span> to start a live 5-minute countdown.
@@ -586,6 +594,7 @@ export default function RuleExceptions({
                             <Table scrollClassName="overflow-x-auto">
                                 <TableHeader>
                                     <TableRow>
+                                        <TableHead className={STUDENT_SERIAL_CLASS}>{STUDENT_SERIAL_HEADER}</TableHead>
                                         <TableHead>Class</TableHead>
                                         <TableHead>Name</TableHead>
                                         <TableHead>ERP</TableHead>
@@ -595,7 +604,7 @@ export default function RuleExceptions({
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {filteredTrackerStudents.map((student) => {
+                                    {filteredTrackerStudents.map((student, index) => {
                                         const warnedAtMs = cameraWarnings[student.erp];
                                         const isWarned = typeof warnedAtMs === 'number';
                                         const elapsedMs = isWarned ? Math.max(clockMs - warnedAtMs, 0) : 0;
@@ -604,6 +613,7 @@ export default function RuleExceptions({
 
                                         return (
                                             <TableRow key={student.id}>
+                                                <TableCell className={STUDENT_SERIAL_CLASS}>{index + 1}</TableCell>
                                                 <TableCell>{student.class_no}</TableCell>
                                                 <TableCell>{student.student_name}</TableCell>
                                                 <TableCell>{student.erp}</TableCell>
@@ -650,7 +660,7 @@ export default function RuleExceptions({
                                     })}
                                     {filteredTrackerStudents.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                                            <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                                                 No roster students match this search.
                                             </TableCell>
                                         </TableRow>

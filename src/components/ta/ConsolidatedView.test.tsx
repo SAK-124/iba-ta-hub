@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ConsolidatedView from '@/components/ta/ConsolidatedView';
 import type { PublicAttendanceBoardData } from '@/lib/public-attendance-sync';
@@ -36,6 +36,10 @@ vi.mock('@/lib/test-student-settings', async () => {
 vi.mock('@/lib/data-sync-events', () => ({
   subscribeAttendanceDataUpdated: vi.fn(() => () => {}),
   subscribeRosterDataUpdated: vi.fn(() => () => {}),
+}));
+
+vi.mock('@/components/student/AttendanceView', () => ({
+  default: ({ previewErp }: { previewErp?: string | null }) => <div>Attendance preview {previewErp}</div>,
 }));
 
 vi.mock('sonner', () => ({
@@ -80,6 +84,15 @@ const buildBoard = (): PublicAttendanceBoardData => ({
       total_penalties: 1,
       total_absences: 0,
       session_status: { 'session-1': 'present', 'session-2': 'present' },
+        penalty_entries: [],
+    },
+    {
+      class_no: '100004',
+      student_name: 'Scenario Student',
+      erp: 'ERP004',
+      total_penalties: 1,
+      total_absences: 1,
+      session_status: { 'session-1': 'present', 'session-2': 'absent' },
       penalty_entries: [],
     },
   ],
@@ -109,7 +122,7 @@ describe('ConsolidatedView', () => {
 
     const penalizedRow = screen.getByText('Penalized Student').closest('tr');
     expect(penalizedRow).not.toBeNull();
-    const penaltyTrigger = within(penalizedRow as HTMLTableRowElement).getByText('2');
+    const penaltyTrigger = within(penalizedRow as HTMLTableRowElement).getAllByText('2').find((element) => element.hasAttribute('title'))!;
     const penaltyCell = penaltyTrigger.closest('td');
     expect(penaltyCell).toHaveClass('status-absent-table-text');
   });
@@ -119,7 +132,7 @@ describe('ConsolidatedView', () => {
 
     const penalizedRow = (await screen.findByText('Penalized Student')).closest('tr');
     expect(penalizedRow).not.toBeNull();
-    const penaltyTrigger = within(penalizedRow as HTMLTableRowElement).getByText('2');
+    const penaltyTrigger = within(penalizedRow as HTMLTableRowElement).getAllByText('2').find((element) => element.hasAttribute('title'))!;
 
     expect(penaltyTrigger).toHaveAttribute('title', 'Penalty sessions: S1, S2');
   });
@@ -132,5 +145,16 @@ describe('ConsolidatedView', () => {
     const penaltyTrigger = within(missingDetailsRow as HTMLTableRowElement).getByText('1');
 
     expect(penaltyTrigger).toHaveAttribute('title', 'Session info unavailable');
+  });
+
+  it('opens a read-only student preview and recommends a mixed attendance case', async () => {
+    render(<ConsolidatedView isActive />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview Student' }));
+    expect(screen.getByText('Recommended: present, absent, and name penalty')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Scenario Student/ }));
+    expect(screen.getByText('Attendance preview ERP004')).toBeInTheDocument();
+    expect(screen.getByText(/No student login or credentials are used/)).toBeInTheDocument();
   });
 });

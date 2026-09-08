@@ -120,6 +120,25 @@
 }
 
 @layer components {
+  /* Keep the brand and controls readable on narrow phones instead of forcing
+     both clusters into a row that cannot fit beside the wide theme toggle. */
+  @media (max-width: 480px) {
+    .site-header-content {
+      align-content: center;
+      flex-wrap: wrap;
+      row-gap: 0.75rem;
+    }
+
+    .site-header-content > :first-child,
+    .site-header-content > :last-child {
+      flex: 1 1 100%;
+    }
+
+    .site-header-content > :last-child {
+      justify-content: flex-end;
+    }
+  }
+
   .card-elevated {
     @apply bg-card rounded-xl border shadow-sm transition-all duration-300 hover:shadow-md hover:border-primary/20;
   }

@@ -313,6 +313,30 @@
 /* TA primitive bridge classes (no custom glow/border effects). */
 [data-ui-surface='ta'] .ta-module-shell {
   color: #838b94;
+  width: 100%;
+  min-width: 0;
+}
+
+[data-ui-surface='ta'] .ta-module-shell > * {
+  min-width: 0;
+}
+
+[data-ui-surface='ta'] .ta-ui-card-header,
+[data-ui-surface='ta'] .ta-ui-card-content,
+[data-ui-surface='ta'] .ta-ui-card-footer {
+  min-width: 0;
+}
+
+[data-ui-surface='ta'] .ta-ui-card-header {
+  gap: 0.5rem;
+}
+
+[data-ui-surface='ta'] .ta-ui-card-description,
+[data-ui-surface='ta'] .ta-ui-dialog-description,
+[data-ui-surface='ta'] .ta-ui-alert-dialog-description,
+[data-ui-surface='ta'] .ta-ui-sheet-description {
+  max-width: 70ch;
+  line-height: 1.55;
 }
 
 [data-ui-surface='ta'] .ta-ui-card,
@@ -457,25 +481,50 @@
 
 [data-ui-surface='ta'] .ta-ui-table-shell {
   border: 1px solid #111214;
-  border-radius: 32px;
+  border-radius: 20px;
   overflow: hidden;
   background-color: var(--neo-base);
   box-shadow: 10px 10px 20px var(--neo-dark), -10px -10px 20px var(--neo-light);
 }
 
 [data-ui-surface='ta'] .ta-ui-table-scroll {
+  width: 100%;
+  max-width: 100%;
   overflow: auto;
   max-height: inherit;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 [data-ui-surface='ta'] .ta-ui-table {
   border-collapse: collapse;
   color: #838b94;
+  min-width: 100%;
+  table-layout: auto;
 }
 
 [data-ui-surface='ta'] .ta-ui-table-header .ta-ui-table-row {
   border-bottom: 1px solid var(--neo-dark);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+[data-ui-surface='ta'] .ta-ui-table-header.sticky {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background-color: var(--neo-base) !important;
+}
+
+[data-ui-surface='ta'] .ta-ui-table-header.sticky .ta-ui-table-head-cell {
+  background-color: var(--neo-base) !important;
+}
+
+[data-ui-surface='ta'] .ta-ui-table-header.sticky .ta-ui-table-head-cell.sticky {
+  z-index: 30;
+}
+
+[data-ui-surface='ta'] .ta-ui-table-cell.sticky {
+  z-index: 10;
 }
 
 [data-ui-surface='ta'] .ta-ui-table-head-cell {
@@ -487,6 +536,11 @@
 [data-ui-surface='ta'] .ta-ui-table-cell {
   color: #838b94 !important;
   text-shadow: -1px -1px 2px rgba(0, 0, 0, 1), 1px 1px 1px rgba(255, 255, 255, 0.04) !important;
+}
+
+[data-ui-surface='ta'] .ta-ui-table-head-cell,
+[data-ui-surface='ta'] .ta-ui-table-cell {
+  white-space: nowrap;
 }
 
 [data-ui-surface='ta'] .ta-ui-table-head-cell:first-child {
@@ -550,6 +604,47 @@
   .ta-ui-table-header.sticky
 ) {
   background-color: var(--neo-base) !important;
+}
+
+/* Keep keyboard focus visible against the low-contrast skeuomorphic surface. */
+[data-ui-surface='ta'] :is(button, a, input, textarea, select, [role='button'], [role='tab'], [role='checkbox'], [role='switch']):focus-visible {
+  outline: 2px solid var(--color-all) !important;
+  outline-offset: 2px;
+}
+
+[data-ui-surface='ta'] .ta-ui-dialog-content,
+[data-ui-surface='ta'] .ta-ui-alert-dialog-content {
+  scrollbar-gutter: stable;
+}
+
+[data-ui-surface='ta'] .ta-ui-dialog-footer,
+[data-ui-surface='ta'] .ta-ui-alert-dialog-footer,
+[data-ui-surface='ta'] .ta-ui-sheet-footer {
+  align-items: stretch;
+}
+
+@media (min-width: 640px) {
+  [data-ui-surface='ta'] .ta-ui-table-shell {
+    border-radius: 26px;
+  }
+
+  [data-ui-surface='ta'] .ta-ui-dialog-content,
+  [data-ui-surface='ta'] .ta-ui-alert-dialog-content {
+    max-height: min(90vh, 760px);
+  }
+}
+
+@media (max-width: 639px) {
+  [data-ui-surface='ta'] .ta-ui-card-footer > *,
+  [data-ui-surface='ta'] .ta-ui-dialog-footer > *,
+  [data-ui-surface='ta'] .ta-ui-alert-dialog-footer > * {
+    width: 100%;
+  }
+
+  [data-ui-surface='ta'] .ta-ui-table-head-cell,
+  [data-ui-surface='ta'] .ta-ui-table-cell {
+    padding-inline: 0.75rem;
+  }
 }
 
 [data-ui-surface='ta'] .ta-ui-tabs-list {

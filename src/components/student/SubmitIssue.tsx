@@ -191,7 +191,7 @@ export default function SubmitIssue() {
 
   const renderClassIssues = () => (
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
-      <RadioGroup onValueChange={setSpecificIssue} className="grid gap-4">
+      <RadioGroup onValueChange={setSpecificIssue} className="grid gap-4 sm:grid-cols-2">
         <div>
           <RadioGroupItem value="join_2_devices" id="join_2_devices" className="peer sr-only" />
           <Label
@@ -239,7 +239,7 @@ export default function SubmitIssue() {
             <CardTitle className="text-base">Camera Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex flex-col sm:flex-row gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <Button
                 variant={reason === 'not_working' ? 'default' : 'outline'}
                 className="flex-1 whitespace-normal h-auto py-2"
@@ -334,7 +334,7 @@ export default function SubmitIssue() {
               {sessions.slice(0, 5).map(s => <SelectItem key={s.id} value={s.id}>Session {s.session_number} ({s.session_date})</SelectItem>)}
             </SelectContent>
           </Select>
-          <div className="text-xs text-muted-foreground p-2 bg-muted rounded">Naming penalties can only be reported within 24 hours.</div>
+          <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">Name penalties can only be reported within 24 hours.</div>
           <Textarea placeholder="Query details..." value={query} onChange={e => setQuery(e.target.value)} />
         </div>
       )}
@@ -370,7 +370,7 @@ export default function SubmitIssue() {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Button
             variant={issueType === 'class' ? 'default' : 'outline'}
             className="h-auto py-6 text-lg whitespace-normal text-center"

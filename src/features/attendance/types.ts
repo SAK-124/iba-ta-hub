@@ -15,11 +15,26 @@ export type RuleExceptionRow = TableRow<'rule_exceptions'>;
 export type RuleExceptionInsert = TableInsert<'rule_exceptions'>;
 
 export interface StudentAttendanceRecord {
+  session_id?: string;
   session_number: number;
   session_date: string;
   day_of_week: string;
   status: string;
   naming_penalty: boolean;
+  details_available?: boolean;
+  source_type?: string;
+  session_start_time?: string | null;
+  session_end_time?: string | null;
+  official_minutes?: number | null;
+  effective_minutes?: number | null;
+  namaz_break_minutes?: number | null;
+  attended_minutes?: number | null;
+  required_minutes?: number | null;
+  shortfall_minutes?: number | null;
+  zoom_names?: string | null;
+  name_format?: string | null;
+  match_method?: string | null;
+  explanation_code?: string;
 }
 
 export interface AttendanceHistoryRecord {

@@ -18,6 +18,8 @@ export const useStaleRefreshOnFocus = (
     staleAfterMs = DEFAULT_STALE_AFTER_MS,
     dedupeWindowMs = DEFAULT_DEDUPE_WINDOW_MS,
   } = options;
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
   const lastSuccessfulRefreshAtRef = useRef(0);
   const lastRefreshAttemptAtRef = useRef(0);
 
@@ -44,7 +46,7 @@ export const useStaleRefreshOnFocus = (
       }
 
       lastRefreshAttemptAtRef.current = now;
-      void refresh();
+      void refreshRef.current();
     };
 
     window.addEventListener('focus', refreshIfStale);
@@ -54,7 +56,7 @@ export const useStaleRefreshOnFocus = (
       window.removeEventListener('focus', refreshIfStale);
       document.removeEventListener('visibilitychange', refreshIfStale);
     };
-  }, [dedupeWindowMs, enabled, refresh, staleAfterMs]);
+  }, [dedupeWindowMs, enabled, staleAfterMs]);
 
   const markRefreshed = useCallback(() => {
     lastSuccessfulRefreshAtRef.current = Date.now();

@@ -11,6 +11,17 @@ const taAllowlistCache = new Map<string, CacheEntry<boolean>>();
 const rosterCache = new Map<string, CacheEntry<{ found: boolean; student_name?: string; class_no?: string }>>();
 let rosterVerificationCache: CacheEntry<boolean> | null = null;
 
+export class AccessCheckError extends Error {
+  readonly operation: 'ta-allowlist' | 'roster';
+
+  constructor(operation: 'ta-allowlist' | 'roster', cause: unknown) {
+    super(`Unable to verify ${operation === 'ta-allowlist' ? 'TA authorization' : 'the course roster'}.`);
+    this.name = 'AccessCheckError';
+    this.operation = operation;
+    this.cause = cause;
+  }
+}
+
 const now = () => Date.now();
 
 const getCachedValue = <T>(entry: CacheEntry<T> | undefined | null): T | null => {
@@ -36,7 +47,7 @@ export const checkTaAllowlistCached = async (email: string): Promise<boolean> =>
 
   const { data, error } = await supabase.rpc('check_ta_allowlist', { check_email: key });
   if (error) {
-    return false;
+    throw new AccessCheckError('ta-allowlist', error);
   }
 
   const allowed = Boolean(data);
@@ -73,7 +84,7 @@ export const checkRosterCached = async (
 
   const { data, error } = await supabase.rpc('check_roster', { check_erp: key });
   if (error) {
-    return { found: false };
+    throw new AccessCheckError('roster', error);
   }
 
   const result = (data ?? { found: false }) as { found: boolean; student_name?: string; class_no?: string };

@@ -6,8 +6,10 @@ import type {
   GroupAdminState,
   GroupAdjustAllResult,
   GroupClearRosterResult,
+  GroupDeleteResult,
   GroupCreateInput,
   GroupDeadlineUpdateResult,
+  GroupJoinRequest,
   GroupMember,
   GroupMutationResult,
   GroupRecomputeResult,
@@ -68,6 +70,24 @@ const parseRosterEntry = (value: unknown): GroupRosterEntry | null => {
   };
 };
 
+const parseJoinRequest = (value: unknown): GroupJoinRequest | null => {
+  if (!isObjectRecord(value) || !isString(value.id) || !isString(value.group_id) || !isString(value.student_erp)) {
+    return null;
+  }
+  return {
+    id: value.id,
+    group_id: value.group_id,
+    group_number: toNumberOr(value.group_number, 0),
+    student_erp: value.student_erp,
+    student_name: isString(value.student_name) ? value.student_name : '',
+    class_no: isString(value.class_no) ? value.class_no : '',
+    status: value.status === 'accepted' || value.status === 'declined' || value.status === 'cancelled' ? value.status : 'pending',
+    created_at: isString(value.created_at) ? value.created_at : '',
+    responded_at: isString(value.responded_at) ? value.responded_at : null,
+    responded_by_email: isString(value.responded_by_email) ? value.responded_by_email : null,
+  };
+};
+
 const parseStudentGroupState = (value: unknown): StudentGroupState => {
   if (!isObjectRecord(value) || !isString(value.student_email) || !isString(value.student_erp)) {
     throw new Error('Invalid student group state payload');
@@ -82,6 +102,10 @@ const parseStudentGroupState = (value: unknown): StudentGroupState => {
       : [],
     roster: Array.isArray(value.roster)
       ? value.roster.map(parseRosterEntry).filter((entry): entry is GroupRosterEntry => entry !== null)
+      : [],
+    my_join_request: parseJoinRequest(value.my_join_request),
+    incoming_join_requests: Array.isArray(value.incoming_join_requests)
+      ? value.incoming_join_requests.map(parseJoinRequest).filter((request): request is GroupJoinRequest => request !== null)
       : [],
   };
 };
@@ -98,6 +122,9 @@ const parseGroupAdminState = (value: unknown): GroupAdminState => {
       : [],
     roster: Array.isArray(value.roster)
       ? value.roster.map(parseRosterEntry).filter((entry): entry is GroupRosterEntry => entry !== null)
+      : [],
+    join_requests: Array.isArray(value.join_requests)
+      ? value.join_requests.map(parseJoinRequest).filter((request): request is GroupJoinRequest => request !== null)
       : [],
   };
 };
@@ -196,11 +223,41 @@ export const studentCreateGroup = async (groupNumber: number): Promise<GroupMuta
 };
 
 export const studentJoinGroup = async (groupNumber: number): Promise<GroupMutationResult<StudentGroupState>> => {
-  const { data, error } = await supabase.rpc('student_join_group', { p_group_number: groupNumber });
+  const { data, error } = await supabase.rpc('student_request_group_join', { p_group_number: groupNumber });
   if (error) {
-    throw toAppError(error, 'student_group_join_failed');
+    throw toAppError(error, 'student_group_join_request_failed');
   }
 
+  return makeStudentMutationResult(data);
+};
+
+export const studentRequestGroupJoin = studentJoinGroup;
+
+export const studentCancelGroupJoinRequest = async (
+  requestId: string,
+): Promise<GroupMutationResult<StudentGroupState>> => {
+  const { data, error } = await supabase.rpc('student_cancel_group_join_request', { p_request_id: requestId });
+  if (error) {
+    throw toAppError(error, 'student_group_join_request_cancel_failed');
+  }
+  return makeStudentMutationResult(data);
+};
+
+export const respondToGroupJoinRequest = async (
+  requestId: string,
+  accept: boolean,
+): Promise<GroupMutationResult<GroupAdminState | StudentGroupState>> => {
+  const { data, error } = await supabase.rpc('respond_to_group_join_request', {
+    p_request_id: requestId,
+    p_accept: accept,
+  });
+  if (error) {
+    throw toAppError(error, 'group_join_request_response_failed');
+  }
+
+  if (isObjectRecord(data) && 'viewer_email' in data) {
+    return makeAdminMutationResult(data);
+  }
   return makeStudentMutationResult(data);
 };
 
@@ -289,15 +346,51 @@ export const taClearGroupRoster = async (): Promise<GroupClearRosterResult> => {
   return parseGroupClearRosterResult(data);
 };
 
+export const taDeleteGroup = async (groupNumber: number): Promise<GroupDeleteResult> => {
+  const { data, error } = await supabase.rpc('ta_delete_group', { p_group_number: groupNumber });
+  if (error) {
+    throw toAppError(error, 'ta_delete_group_failed');
+  }
+
+  if (!isObjectRecord(data)) {
+    throw new Error('Invalid group delete payload');
+  }
+
+  return {
+    success: data.success !== false,
+    group_number: toNumberOr(data.group_number, groupNumber),
+    removed_members: toNumberOr(data.removed_members),
+    removed_join_requests: toNumberOr(data.removed_join_requests),
+    removed_batches: toNumberOr(data.removed_batches),
+    removed_sync_adjustments: toNumberOr(data.removed_sync_adjustments),
+  };
+};
+
 export const taCreateGroup = async (input: GroupCreateInput): Promise<GroupMutationResult<GroupAdminState>> => {
-  const { data, error } = await supabase.rpc('ta_create_group', {
+  const { data, error } = await supabase.rpc('ta_create_group_with_poc', {
     p_group_number: input.groupNumber,
     p_display_name: input.displayName?.trim() || null,
     p_student_erps: input.studentErps,
     p_edit_deadline: input.editDeadline,
+    p_poc_erp: input.pocErp,
   });
   if (error) {
     throw toAppError(error, 'ta_create_group_failed');
+  }
+
+  return makeAdminMutationResult(data);
+};
+
+export const taSetGroupPoc = async (
+  groupNumber: number,
+  pocErp: string,
+): Promise<GroupMutationResult<GroupAdminState>> => {
+  const { data, error } = await supabase.rpc('ta_set_group_poc', {
+    p_group_number: groupNumber,
+    p_poc_erp: pocErp,
+  });
+  if (error) {
+    throw toAppError(error, 'ta_set_group_poc_failed');
   }
 
   return makeAdminMutationResult(data);

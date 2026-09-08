@@ -9,8 +9,8 @@ type TableProps = React.HTMLAttributes<HTMLTableElement> & {
 
 const Table = React.forwardRef<HTMLTableElement, TableProps>(
   ({ className, containerClassName, scrollClassName, ...props }, ref) => (
-    <div className={cn("ta-ui-table-shell neo-out relative w-full border", containerClassName)}>
-      <div className={cn("ta-ui-table-scroll w-full overflow-auto", scrollClassName)}>
+    <div className={cn("ta-ui-table-shell neo-out relative w-full min-w-0 border", containerClassName)}>
+      <div className={cn("ta-ui-table-scroll w-full min-w-0 overflow-auto", scrollClassName)}>
         <table ref={ref} className={cn("ta-ui-table w-full caption-bottom text-sm", className)} {...props} />
       </div>
     </div>
@@ -58,7 +58,7 @@ const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<
     <th
       ref={ref}
       className={cn(
-        "ta-ui-table-head-cell h-12 px-4 text-left align-middle text-xs font-semibold uppercase tracking-[0.08em] [&:has([role=checkbox])]:pr-0",
+        "ta-ui-table-head-cell h-11 px-3 text-left align-middle text-xs font-semibold uppercase tracking-[0.08em] sm:px-4 [&:has([role=checkbox])]:pr-0",
         className,
       )}
       {...props}
@@ -69,7 +69,7 @@ TableHead.displayName = "TableHead";
 
 const TableCell = React.forwardRef<HTMLTableCellElement, React.TdHTMLAttributes<HTMLTableCellElement>>(
   ({ className, ...props }, ref) => (
-    <td ref={ref} className={cn("ta-ui-table-cell p-4 align-middle [&:has([role=checkbox])]:pr-0", className)} {...props} />
+    <td ref={ref} className={cn("ta-ui-table-cell p-3 align-middle sm:p-4 [&:has([role=checkbox])]:pr-0", className)} {...props} />
   ),
 );
 TableCell.displayName = "TableCell";

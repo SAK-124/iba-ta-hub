@@ -36,7 +36,6 @@ const TA_MODULE_NAMES = [
   'Session Management',
   'Rule Exceptions',
   'Late Days',
-  'Issue Queue',
   'Export Data',
   'Lists & Settings',
 ];
@@ -334,7 +333,7 @@ export default function TAHelpAssistant({ snapshot, onRunAction }: TAHelpAssista
         </button>
 
         <div
-          className={`aux-chat-panel absolute inset-0 z-20 flex flex-col p-5 ${
+          className={`aux-chat-panel absolute inset-0 z-20 flex flex-col p-4 sm:p-5 ${
             isOpen ? 'pointer-events-auto opacity-100 translate-y-0' : 'pointer-events-none opacity-0 translate-y-8'
           }`}
         >

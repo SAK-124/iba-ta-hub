@@ -1,19 +1,20 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
-import { checkRosterCached, checkTaAllowlistCached } from '@/lib/access-checks';
+import { AccessCheckError, checkRosterCached, checkTaAllowlistCached } from '@/lib/access-checks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
 import { ModeToggle } from '@/components/mode-toggle';
 import CompanionBotLogo from '@/components/CompanionBotLogo';
 
 type AuthMode = 'student' | 'ta';
 
 const DEFAULT_PASSWORD = 'iba-student-password-2024';
+const ACCESS_CHECK_UNAVAILABLE_MESSAGE = 'Access verification is temporarily unavailable. Please try again in a moment.';
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -127,7 +128,11 @@ export default function Auth() {
 
       navigate('/dashboard');
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Something went wrong while signing in.';
+      const message = err instanceof AccessCheckError
+        ? ACCESS_CHECK_UNAVAILABLE_MESSAGE
+        : err instanceof Error
+          ? err.message
+          : 'Something went wrong while signing in.';
       setError(message);
     } finally {
       setIsLoading(false);
@@ -135,14 +140,21 @@ export default function Auth() {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="absolute right-4 top-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-background px-4 py-8 sm:px-6">
+      <div className="absolute right-4 top-4 sm:right-6">
         <ModeToggle />
       </div>
       <div className="w-full max-w-md animate-fade-in">
-        <div className="mb-8 flex items-center justify-center">
+        <Link
+          to="/"
+          className="mb-5 inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          <span>Back to dashboard</span>
+        </Link>
+        <div className="mb-8 flex items-center justify-center px-2">
           <div className="flex items-center gap-3">
-            <CompanionBotLogo className="h-14 w-14" />
+            <CompanionBotLogo className="h-[72px] w-[72px] shrink-0" />
             <div>
               <h1 className="text-2xl font-bold text-foreground">Course Portal</h1>
               <p className="text-sm text-muted-foreground">Sign in to continue</p>
@@ -151,8 +163,8 @@ export default function Auth() {
         </div>
 
         <Card className="shadow-lg">
-          <CardHeader className="space-y-4">
-            <div>
+          <CardHeader className="space-y-6">
+            <div className="space-y-2">
               <CardTitle>{isStudentMode ? 'Student Login' : 'TA Login'}</CardTitle>
               <CardDescription>
                 {isStudentMode
@@ -170,16 +182,14 @@ export default function Auth() {
           </CardHeader>
 
           <CardContent className="space-y-4">
-            <div className="min-h-[40px]">
-              {error && (
-                <div className="animate-in fade-in zoom-in-95 duration-200 flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
-            </div>
+            {error && (
+              <div role="alert" className="animate-in fade-in zoom-in-95 flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive duration-200">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
 
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-5">
               <div className="space-y-2">
                 <Label htmlFor="email">{isStudentMode ? 'IBA Email' : 'TA Email'}</Label>
                 <Input

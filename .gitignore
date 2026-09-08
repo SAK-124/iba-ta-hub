@@ -27,3 +27,7 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+
+# Local enrollment source spreadsheets (never commit)
+Enrolled Students List - UMS/
+supabase/manual/generated/

@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { sendNtfyNotification } from '@/lib/ntfy';
 import { removeRealtimeChannel, subscribeToRealtimeTables } from '@/lib/realtime-table-subscriptions';
 import { useStudentGroupsState } from '@/features/groups';
+import { useRefreshController } from '@/hooks/use-refresh-controller';
 import {
   claimLateDays,
   getAllowedLateDayClaimOptions,
@@ -252,10 +253,12 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
 
   const fetchLateDays = useCallback(async (mode: 'initial' | 'silent' = 'initial') => {
     if (!user?.email || !erp) {
-      setAssignments([]);
-      setClaimBatches([]);
-      setClaims([]);
-      setAdjustments([]);
+      if (mode === 'initial') {
+        setAssignments([]);
+        setClaimBatches([]);
+        setClaims([]);
+        setAdjustments([]);
+      }
       setIsLoading(false);
       return;
     }
@@ -273,10 +276,12 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Failed to load late-day data: ${message}`);
-      setAssignments([]);
-      setClaimBatches([]);
-      setClaims([]);
-      setAdjustments([]);
+      if (mode === 'initial') {
+        setAssignments([]);
+        setClaimBatches([]);
+        setClaims([]);
+        setAdjustments([]);
+      }
     } finally {
       if (mode === 'initial') {
         setIsLoading(false);
@@ -284,9 +289,14 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
     }
   }, [erp, user?.email]);
 
+  const { requestRefresh, isUpdating } = useRefreshController(
+    async (mode) => fetchLateDays(mode === 'initial' ? 'initial' : 'silent'),
+    Boolean(user?.email && erp),
+  );
+
   useEffect(() => {
-    void fetchLateDays('initial');
-  }, [fetchLateDays]);
+    void requestRefresh('initial');
+  }, [requestRefresh]);
 
   useEffect(() => {
     if (!user?.email || !erp) {
@@ -302,14 +312,14 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
         { table: 'late_day_adjustments' },
       ],
       () => {
-        void fetchLateDays('silent');
+        void requestRefresh('background');
       },
     );
 
     return () => {
       void removeRealtimeChannel(channel);
     };
-  }, [erp, fetchLateDays, user?.email]);
+  }, [erp, requestRefresh, user?.email]);
 
   const openClaimDialog = (assignmentId?: string) => {
     const nextAssignmentId = assignmentId ?? claimableSummaries[0]?.assignment.id ?? '';
@@ -430,7 +440,8 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="flex h-6 justify-end" aria-live="polite"><span className={`w-24 text-right text-xs text-muted-foreground transition-opacity ${isUpdating ? 'opacity-100' : 'opacity-0'}`}>Updating…</span></div>
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>{currentGroup ? 'Shared Late Days Left' : 'Late Days Left'}</CardDescription>
@@ -487,7 +498,7 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <CardTitle>Assignment Status</CardTitle>
+              <CardTitle className="mb-2">Assignment Status</CardTitle>
               <CardDescription>
                 Claiming late days always uses your remaining balance. If you are in a group, the claim also uses the shared group total.
               </CardDescription>
@@ -509,8 +520,8 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
             </div>
           )}
 
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
+          <div className="rounded-md border">
+            <Table className="min-w-[720px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Assignment</TableHead>
@@ -580,8 +591,8 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
           <CardDescription>Claims you personally made.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
+          <div className="rounded-md border">
+            <Table className="min-w-[720px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Assignment</TableHead>
@@ -626,8 +637,8 @@ export default function LateDays({ onSummaryChange }: LateDaysProps) {
             <CardDescription>Who in your group claimed late days, when they claimed, and how many days they used.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border overflow-x-auto">
-              <Table>
+            <div className="rounded-md border">
+              <Table className="min-w-[560px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Assignment</TableHead>
